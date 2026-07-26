@@ -43,15 +43,6 @@ const char* DirectPunctuation(char c) {
   }
 }
 
-// Returns the number of bytes of the last UTF-8 code point in `s`
-// (0 if empty).
-size_t LastUtf8CharBytes(const std::string& s) {
-  if (s.empty()) return 0;
-  size_t i = s.size();
-  while (i > 0 && (static_cast<unsigned char>(s[i - 1]) & 0xC0) == 0x80) --i;
-  return s.size() - (i > 0 ? i - 1 : 0);
-}
-
 // Splits `s` after `n` code points.
 void SplitAtCodePoints(const std::string& s, size_t n, std::string* left,
                        std::string* right) {
@@ -65,6 +56,23 @@ void SplitAtCodePoints(const std::string& s, size_t n, std::string* left,
   *right = s.substr(i);
 }
 
+// Returns the number of bytes of the last UTF-8 code point in `s`
+// (0 if empty).
+size_t LastUtf8CharBytes(const std::string& s) {
+  if (s.empty()) return 0;
+  size_t i = s.size();
+  while (i > 0 && (static_cast<unsigned char>(s[i - 1]) & 0xC0) == 0x80) --i;
+  return s.size() - (i > 0 ? i - 1 : 0);
+}
+
+// Returns the number of bytes of the first UTF-8 code point in `s`.
+size_t FirstUtf8CharBytes(const std::string& s) {
+  if (s.empty()) return 0;
+  size_t i = 1;
+  while (i < s.size() && (static_cast<unsigned char>(s[i]) & 0xC0) == 0x80) ++i;
+  return i;
+}
+
 const char* ToneMark(char digit) {
   switch (digit) {
     case '1': return kToneSentinel1;
@@ -74,6 +82,10 @@ const char* ToneMark(char digit) {
     case '5': return kTone5;
     default: return nullptr;
   }
+}
+
+bool IsPrintableAscii(char c) {
+  return c >= 0x20 && c < 0x7f;
 }
 
 }  // namespace
@@ -90,10 +102,12 @@ Composer::DisplaySegments Composer::displaySegments() const {
   for (const auto& v : walk_.valuesAsStrings()) walked += v;
 
   // Split the walked text at the cursor. Readings map 1:1 to characters
-  // for Chinese, so the reading cursor doubles as a code-point offset.
+  // for Chinese (and literals), so the reading cursor doubles as a
+  // code-point offset.
   DisplaySegments segments;
   std::string left;
-  SplitAtCodePoints(walked, grid_.cursor(), &left, &segments.after);
+  std::string right;
+  SplitAtCodePoints(walked, grid_.cursor(), &left, &right);
 
   if (lastWasBare_ && !left.empty()) {
     // The just-inserted bare syllable (left of the cursor) is still
@@ -104,36 +118,41 @@ Composer::DisplaySegments Composer::displaySegments() const {
   }
   segments.before = std::move(left);
   segments.unconfirmed += pending_.displayText();
+
+  // The character right of the cursor is the selection anchor; emphasize
+  // it so the user can see where digit-8 selection would start.
+  if (!right.empty()) {
+    size_t n = FirstUtf8CharBytes(right);
+    segments.highlighted = right.substr(0, n);
+    segments.after = right.substr(n);
+  }
   return segments;
 }
 
 std::string Composer::composedText() const {
   DisplaySegments segments = displaySegments();
-  return segments.before + segments.unconfirmed + segments.after;
+  return segments.before + segments.unconfirmed + segments.highlighted +
+         segments.after;
 }
 
 std::string Composer::unconfirmedTail() const {
   return displaySegments().unconfirmed;
 }
 
-Composer::Result Composer::feedLeft() {
-  if (state_ == State::kSelecting) return {true, ""};
-  if (state_ != State::kComposing) return {false, ""};
-  if (!pending_.empty()) return {true, ""};  // settle the syllable first
-  lastWasBare_ = false;  // moving away ends the tone-retrofit window
-  size_t cursor = grid_.cursor();
-  if (cursor > 0) grid_.setCursor(cursor - 1);
-  return {true, ""};
+size_t Composer::candidatePageCount() const {
+  if (candidates_.empty()) return 0;
+  return (candidates_.size() + kCandidatePageSize - 1) / kCandidatePageSize;
 }
 
-Composer::Result Composer::feedRight() {
-  if (state_ == State::kSelecting) return {true, ""};
-  if (state_ != State::kComposing) return {false, ""};
-  if (!pending_.empty()) return {true, ""};
-  lastWasBare_ = false;
-  size_t cursor = grid_.cursor();
-  if (cursor < grid_.length()) grid_.setCursor(cursor + 1);
-  return {true, ""};
+std::vector<Formosa::Gramambular2::ReadingGrid::Candidate>
+Composer::currentPageCandidates() const {
+  std::vector<Formosa::Gramambular2::ReadingGrid::Candidate> page;
+  const size_t start = pageIndex_ * kCandidatePageSize;
+  for (size_t i = start;
+       i < candidates_.size() && i < start + kCandidatePageSize; ++i) {
+    page.push_back(candidates_[i]);
+  }
+  return page;
 }
 
 bool Composer::insertReading(const std::string& reading) {
@@ -161,6 +180,31 @@ bool Composer::insertReading(const std::string& reading) {
     }
   }
   return true;
+}
+
+bool Composer::insertLiteral(char c) {
+  // Literal grid nodes use a sentinel-prefixed reading that RelaxedToneLM
+  // resolves to a single fixed candidate; no UOM/suggestion pass needed.
+  std::string reading;
+  reading.push_back(kLiteralPrefix);
+  reading.push_back(c);
+  if (!grid_.insertReading(reading)) return false;
+  walk_ = grid_.walk();
+  lastWasBare_ = false;
+  state_ = State::kComposing;
+  return true;
+}
+
+void Composer::moveCursor(int delta) {
+  lastWasBare_ = false;  // moving away ends the tone-retrofit window
+  const size_t cursor = grid_.cursor();
+  const size_t length = grid_.length();
+  if (length == 0) return;
+  if (delta < 0) {
+    grid_.setCursor(cursor == 0 ? length : cursor - 1);
+  } else {
+    grid_.setCursor(cursor >= length ? 0 : cursor + 1);
+  }
 }
 
 bool Composer::finalizePendingBare() {
@@ -221,7 +265,9 @@ void Composer::reset() {
   lastBareSyllables_.clear();
   lastWasBare_ = false;
   selectionLocation_ = 0;
+  pageIndex_ = 0;
   state_ = State::kEmpty;
+  // englishMode_ deliberately survives: it is a device-level toggle.
 }
 
 void Composer::updateStateAfterMutation() {
@@ -235,6 +281,11 @@ void Composer::updateStateAfterMutation() {
 bool Composer::wouldConsume(char c) const {
   if (state_ == State::kSelecting) return true;
   const bool composing = state_ == State::kComposing;
+  if (englishMode_) {
+    // Idle English mode passes everything to the application; while a
+    // composition is open, printable keys become literal insertions.
+    return composing && IsPrintableAscii(c);
+  }
   if (c >= 'a' && c <= 'z') return true;
   if (DirectPunctuation(c) != nullptr || c == '"' || c == '\'') return true;
   if (c >= '1' && c <= '5') {
@@ -242,19 +293,38 @@ bool Composer::wouldConsume(char c) const {
     if (pending_.empty() && lastWasBare_) return true;
     return composing;
   }
-  // Space, other digits, everything else printable.
+  // Space, control digits (6-0), everything else printable.
   return composing;
 }
 
 Composer::Result Composer::feedChar(char c) {
   if (state_ == State::kSelecting) {
-    if (c >= '1' && c <= '9') {
-      return selectCandidate(static_cast<size_t>(c - '1'));
+    if (c >= '1' && c <= '6') {
+      return selectOnCurrentPage(static_cast<size_t>(c - '1'));
     }
-    return {true, ""};  // eat everything else while the window is open
+    if (c == '7') {  // previous page (no wrap)
+      if (pageIndex_ > 0) --pageIndex_;
+      return {true, ""};
+    }
+    if (c == '8') {  // next page (no wrap)
+      if (pageIndex_ + 1 < candidatePageCount()) ++pageIndex_;
+      return {true, ""};
+    }
+    // Any other key closes the menu and then performs its normal function.
+    dismissMenu();
   }
 
   const bool composing = state_ == State::kComposing;
+
+  // English mode: literal insertion while composing, pass-through when idle.
+  if (englishMode_) {
+    if (!composing) return {false, ""};
+    if (IsPrintableAscii(c)) {
+      insertLiteral(c);
+      return {true, ""};
+    }
+    return {true, ""};
+  }
 
   // Tone digits: first choice is a pending syllable awaiting its tone;
   // otherwise retrofit the tone onto the just-inserted bare syllable.
@@ -269,7 +339,7 @@ Composer::Result Composer::feedChar(char c) {
       updateStateAfterMutation();
       return {true, ""};
     }
-    // Not a tone position: fall through to the literal-key handling below.
+    // Not a tone position: fall through to the control-digit handling below.
   }
 
   // Letters and ';' build syllables. (';' doubles as the ing final key;
@@ -301,6 +371,25 @@ Composer::Result Composer::feedChar(char c) {
     // fall through: lone ';' becomes full-width punctuation
   }
 
+  // Digits while composing are controls, never literal text:
+  //   8 opens the menu, 9/0 move the cursor (wrapping), the rest no-op.
+  // When idle they pass through to the application.
+  if (c >= '0' && c <= '9') {
+    if (!composing) return {false, ""};
+    switch (c) {
+      case '8':
+        return openCandidateMenu();
+      case '9':
+        moveCursor(-1);
+        return {true, ""};
+      case '0':
+        moveCursor(+1);
+        return {true, ""};
+      default:  // 6, 7 and non-tone-position 1-5
+        return {true, ""};
+    }
+  }
+
   // Quotes alternate between opening and closing forms.
   if (c == '"' || c == '\'') {
     bool& open = (c == '"') ? doubleQuoteOpen_ : singleQuoteOpen_;
@@ -328,19 +417,16 @@ Composer::Result Composer::feedChar(char c) {
     return {true, takeCommitText()};
   }
 
-  // Everything else (non-tone digits, unhandled printable): pass through
-  // when idle; commit-then-emit while composing.
+  // Everything else printable: pass through when idle; eaten while
+  // composing (digits are controls now, so nothing may leak mid-buffer).
   if (!composing) return {false, ""};
-  std::string commit = takeCommitText();
-  commit.push_back(c);
-  return {true, commit};
+  return {true, ""};
 }
 
 Composer::Result Composer::feedBackspace() {
   if (state_ == State::kSelecting) {
-    state_ = State::kComposing;
-    candidates_.clear();
-    return {true, ""};
+    // Close the menu, then delete as usual.
+    dismissMenu();
   }
   if (state_ == State::kEmpty) return {false, ""};
 
@@ -357,53 +443,76 @@ Composer::Result Composer::feedBackspace() {
 
 Composer::Result Composer::feedEnter() {
   if (state_ == State::kSelecting) {
-    state_ = State::kComposing;
-    candidates_.clear();
-    return {true, ""};
+    // Close the menu, then commit as usual.
+    dismissMenu();
   }
   if (state_ == State::kEmpty) return {false, ""};
   return {true, takeCommitText()};
 }
 
 Composer::Result Composer::feedEsc() {
-  switch (state_) {
-    case State::kSelecting:
-      state_ = State::kComposing;
-      candidates_.clear();
-      return {true, ""};
-    case State::kComposing:
-      reset();
-      return {true, ""};
-    case State::kEmpty:
-    default:
-      return {false, ""};
-  }
+  if (state_ == State::kEmpty) return {false, ""};
+  // Selecting or Composing: cancel the whole composition (the menu, if
+  // open, closes as part of the reset).
+  reset();
+  return {true, ""};
 }
 
-Composer::Result Composer::feedDown() {
-  if (state_ != State::kComposing) {
-    return {state_ == State::kSelecting, ""};
+Composer::Result Composer::feedShiftTap() {
+  if (state_ == State::kSelecting) {
+    dismissMenu();
   }
+  if (state_ == State::kComposing) {
+    // Settle the pending syllable the way commit would: a complete
+    // toneless syllable is finalized, a half-typed one is dropped.
+    if (pending_.complete()) finalizePendingBare();
+    pending_.clear();
+    lastWasBare_ = false;
+    // The mode switch inserts a half-width space at the cursor, both when
+    // entering and when leaving English; the underline stays.
+    insertLiteral(' ');
+    englishMode_ = !englishMode_;
+    updateStateAfterMutation();
+    return {true, ""};
+  }
+  // Idle: plain device-level toggle, no space.
+  englishMode_ = !englishMode_;
+  return {true, ""};
+}
+
+Composer::Result Composer::closeCandidateMenu() {
+  if (state_ != State::kSelecting) return {false, ""};
+  dismissMenu();
+  return {true, ""};
+}
+
+Composer::Result Composer::openCandidateMenu() {
   if (pending_.complete() && !finalizePendingBare()) return {true, ""};
   if (grid_.length() == 0) return {true, ""};
 
-  // Select at the span before the (end-of-buffer) cursor; candidatesAt
-  // handles the end boundary internally.
+  // Select at the cursor: candidatesAt targets the character right of the
+  // cursor and falls back to the last character at the end of the buffer.
   selectionLocation_ = grid_.cursor();
   candidates_ = grid_.candidatesAt(selectionLocation_);
   if (candidates_.empty()) return {true, ""};
   lastWasBare_ = false;
+  pageIndex_ = 0;
   state_ = State::kSelecting;
   return {true, ""};
 }
 
-Composer::Result Composer::feedUp() {
-  if (state_ == State::kSelecting) {
-    state_ = State::kComposing;
-    candidates_.clear();
-    return {true, ""};
+void Composer::dismissMenu() {
+  candidates_.clear();
+  pageIndex_ = 0;
+  state_ = State::kComposing;
+}
+
+Composer::Result Composer::selectOnCurrentPage(size_t indexInPage) {
+  const size_t index = pageIndex_ * kCandidatePageSize + indexInPage;
+  if (indexInPage >= kCandidatePageSize || index >= candidates_.size()) {
+    return {true, ""};  // number without a candidate on this page: no-op
   }
-  return {false, ""};
+  return selectCandidate(index);
 }
 
 Composer::Result Composer::selectCandidate(size_t index) {
@@ -427,8 +536,7 @@ Composer::Result Composer::selectCandidate(size_t index) {
     onManualSelection(reading, chosen.value);
   }
 
-  candidates_.clear();
-  state_ = State::kComposing;
+  dismissMenu();
   return {true, ""};
 }
 

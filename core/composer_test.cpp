@@ -14,6 +14,15 @@ class ComposerTest : public ::testing::Test {
   void SetUp() override {
     auto inner = std::make_shared<testing::FakeLM>();
     inner->add("ㄨㄛ", "窝", -5);
+    // Extra homophones so the ㄨㄛ menu spans two pages (page size 6).
+    inner->add("ㄨㄛ", "倭", -5.5);
+    inner->add("ㄨㄛ", "渦", -5.6);
+    inner->add("ㄨㄛ", "窩", -5.7);
+    inner->add("ㄨㄛ", "蝸", -5.8);
+    inner->add("ㄨㄛ", "萵", -5.9);
+    inner->add("ㄨㄛ", "撾", -6.0);
+    inner->add("ㄨㄛ", "喔", -6.1);
+    inner->add("ㄨㄛ", "偓", -6.2);
     inner->add("ㄨㄛˇ", "我", -3);
     inner->add("ㄓㄨㄥ", "中", -3);
     inner->add("ㄓㄨㄥˇ", "種", -4);
@@ -49,10 +58,11 @@ TEST_F(ComposerTest, EagerConversionOnSyllableCompletion) {
 TEST_F(ComposerTest, ToneRetrofitsJustCompletedSyllable) {
   Type("vs3");
   EXPECT_EQ(composer_->composedText(), "種");
-  // A second tone digit is no longer a tone: it commits buffer + literal.
+  // A second tone digit is no longer a tone: eaten, nothing leaks.
   auto r = composer_->feedChar('3');
   EXPECT_TRUE(r.consumed);
-  EXPECT_EQ(r.commitText, "種3");
+  EXPECT_EQ(r.commitText, "");
+  EXPECT_EQ(composer_->composedText(), "種");
 }
 
 TEST_F(ComposerTest, SpecSyllables) {
@@ -129,31 +139,55 @@ TEST_F(ComposerTest, CursorMovementAndMidBufferEditing) {
   Type("ni3hk3");  // 你好
   EXPECT_EQ(composer_->composedText(), "你好");
 
-  // Move between 你 and 好; candidates there must include 好.
-  composer_->feedLeft();
-  composer_->feedDown();
+  // 9 moves left: cursor between 你 and 好; 8 opens the menu there and
+  // the candidates must include 好 (the char right of the cursor).
+  Type("98");
   ASSERT_EQ(composer_->state(), Composer::State::kSelecting);
   bool found = false;
   for (const auto& c : composer_->candidates()) {
     if (c.value == "好") found = true;
   }
   EXPECT_TRUE(found);
-  composer_->feedEsc();
+  composer_->closeCandidateMenu();
+  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
 
   // Move to the very front and insert 我 there.
-  composer_->feedLeft();
+  Type("9");
   Type("wo3");
   EXPECT_EQ(composer_->composedText(), "我你好");
 
-  // Segments: caret after 我, tone settled everywhere.
+  // Segments: caret after 我, tone settled everywhere; 你 (right of the
+  // cursor) is the highlighted selection anchor.
   auto segments = composer_->displaySegments();
   EXPECT_EQ(segments.before, "我");
   EXPECT_EQ(segments.unconfirmed, "");
-  EXPECT_EQ(segments.after, "你好");
+  EXPECT_EQ(segments.highlighted, "你");
+  EXPECT_EQ(segments.after, "好");
 
   // Enter commits the whole buffer regardless of cursor position.
   auto r = composer_->feedEnter();
   EXPECT_EQ(r.commitText, "我你好");
+}
+
+TEST_F(ComposerTest, CursorWrapsAtBothEnds) {
+  Type("ni3hk3");  // 你好, cursor at the right end (2)
+  auto segments = composer_->displaySegments();
+  EXPECT_EQ(segments.highlighted, "");  // nothing right of the cursor
+
+  Type("0");  // right at the right end: wrap to the far left
+  segments = composer_->displaySegments();
+  EXPECT_EQ(segments.before, "");
+  EXPECT_EQ(segments.highlighted, "你");
+
+  Type("9");  // left at the far left: wrap to the right end
+  segments = composer_->displaySegments();
+  EXPECT_EQ(segments.before, "你好");
+  EXPECT_EQ(segments.highlighted, "");
+
+  Type("9");  // normal step left
+  segments = composer_->displaySegments();
+  EXPECT_EQ(segments.before, "你");
+  EXPECT_EQ(segments.highlighted, "好");
 }
 
 TEST_F(ComposerTest, DirectPunctuation) {
@@ -236,7 +270,7 @@ TEST_F(ComposerTest, BackspaceDeletesSyllableThenEmpties) {
 
 TEST_F(ComposerTest, SelectionFlow) {
   Type("de");
-  auto r = composer_->feedDown();
+  auto r = composer_->feedChar('8');
   EXPECT_TRUE(r.consumed);
   ASSERT_EQ(composer_->state(), Composer::State::kSelecting);
   ASSERT_GE(composer_->candidates().size(), 2u);
@@ -249,13 +283,183 @@ TEST_F(ComposerTest, SelectionFlow) {
   EXPECT_EQ(composer_->composedText(), "得");
 }
 
-TEST_F(ComposerTest, EscClosesSelectionThenClearsBuffer) {
-  Type("de");
-  composer_->feedDown();
-  composer_->feedEsc();
+TEST_F(ComposerTest, SelectDigitWithoutCandidateIsNoOp) {
+  Type("de8");
+  ASSERT_EQ(composer_->state(), Composer::State::kSelecting);
+  const size_t count = composer_->candidates().size();
+  ASSERT_LT(count, 5u);
+  composer_->feedChar('5');  // no 5th candidate on this page
+  EXPECT_EQ(composer_->state(), Composer::State::kSelecting);
+}
+
+TEST_F(ComposerTest, MenuPagingNoWrap) {
+  Type("wo8");
+  ASSERT_EQ(composer_->state(), Composer::State::kSelecting);
+  ASSERT_GE(composer_->candidates().size(), 8u);
+  EXPECT_EQ(composer_->candidatePageCount(), 2u);
+  EXPECT_EQ(composer_->candidatePageIndex(), 0u);
+  EXPECT_EQ(composer_->currentPageCandidates().size(), 6u);
+
+  composer_->feedChar('7');  // previous page on the first page: no-op
+  EXPECT_EQ(composer_->candidatePageIndex(), 0u);
+
+  composer_->feedChar('8');  // next page
+  EXPECT_EQ(composer_->candidatePageIndex(), 1u);
+  EXPECT_LE(composer_->currentPageCandidates().size(), 6u);
+
+  composer_->feedChar('8');  // next page on the last page: no-op
+  EXPECT_EQ(composer_->candidatePageIndex(), 1u);
+
+  composer_->feedChar('7');  // back to the first page
+  EXPECT_EQ(composer_->candidatePageIndex(), 0u);
+
+  // Selection digit is page-relative: 1 on page 2 = 7th candidate.
+  composer_->feedChar('8');
+  const std::string seventh = composer_->candidates()[6].value;
+  composer_->feedChar('1');
   EXPECT_EQ(composer_->state(), Composer::State::kComposing);
-  composer_->feedEsc();
+  EXPECT_EQ(composer_->composedText(), seventh);
+}
+
+TEST_F(ComposerTest, AnyOtherKeyClosesMenuAndActs) {
+  // 9/0 close the menu and move the cursor.
+  Type("ni3hk3");
+  Type("8");
+  ASSERT_EQ(composer_->state(), Composer::State::kSelecting);
+  Type("9");
+  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
+  EXPECT_EQ(composer_->displaySegments().highlighted, "好");
+
+  // A letter closes the menu and starts a new syllable at the cursor.
+  Type("8");
+  ASSERT_EQ(composer_->state(), Composer::State::kSelecting);
+  Type("wo3");
+  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
+  EXPECT_EQ(composer_->composedText(), "你我好");
+
+  // Backspace closes the menu and deletes as usual.
+  Type("8");
+  ASSERT_EQ(composer_->state(), Composer::State::kSelecting);
+  composer_->feedBackspace();
+  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
+  EXPECT_EQ(composer_->composedText(), "你好");
+
+  // Enter closes the menu and commits.
+  Type("8");
+  ASSERT_EQ(composer_->state(), Composer::State::kSelecting);
+  auto r = composer_->feedEnter();
+  EXPECT_EQ(r.commitText, "你好");
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
+}
+
+TEST_F(ComposerTest, MenuOpensAtLastCharWhenCursorAtEnd) {
+  Type("ni3hk3");  // cursor at the right end
+  Type("8");
+  ASSERT_EQ(composer_->state(), Composer::State::kSelecting);
+  bool found = false;
+  for (const auto& c : composer_->candidates()) {
+    if (c.value == "好") found = true;
+  }
+  EXPECT_TRUE(found);
+}
+
+TEST_F(ComposerTest, Digits67EatenWhileComposing) {
+  Type("vs");
+  auto r = composer_->feedChar('6');
+  EXPECT_TRUE(r.consumed);
+  EXPECT_EQ(r.commitText, "");
+  r = composer_->feedChar('7');
+  EXPECT_TRUE(r.consumed);
+  EXPECT_EQ(r.commitText, "");
+  EXPECT_EQ(composer_->composedText(), "中");
+}
+
+TEST_F(ComposerTest, EscCancelsSelectionAndComposition) {
+  Type("de8");
+  ASSERT_EQ(composer_->state(), Composer::State::kSelecting);
+  auto r = composer_->feedEsc();
+  EXPECT_TRUE(r.consumed);
+  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
+}
+
+TEST_F(ComposerTest, ShiftTapTogglesEnglishWhenIdle) {
+  EXPECT_FALSE(composer_->englishMode());
+  composer_->feedShiftTap();
+  EXPECT_TRUE(composer_->englishMode());
+  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
+
+  // Idle English mode: everything passes through untouched.
+  EXPECT_FALSE(composer_->wouldConsume('a'));
+  auto r = composer_->feedChar('a');
+  EXPECT_FALSE(r.consumed);
+
+  composer_->feedShiftTap();
+  EXPECT_FALSE(composer_->englishMode());
+  EXPECT_TRUE(composer_->wouldConsume('a'));
+}
+
+TEST_F(ComposerTest, ShiftTapMidCompositionInsertsSpaces) {
+  Type("ni3hk3");  // 你好
+  composer_->feedShiftTap();
+  EXPECT_TRUE(composer_->englishMode());
+  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
+  EXPECT_EQ(composer_->composedText(), "你好 ");
+
+  // English segment: literals, including digits and space, at the cursor.
+  Type("ok");
+  Type(" ");
+  Type("77");
+  EXPECT_EQ(composer_->composedText(), "你好 ok 77");
+  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
+
+  // Uppercase reaches the composer unlowered in English mode.
+  EXPECT_TRUE(composer_->wouldConsume('K'));
+  composer_->feedChar('K');
+  EXPECT_EQ(composer_->composedText(), "你好 ok 77K");
+
+  // Tap back to Chinese: another space, still uncommitted.
+  composer_->feedShiftTap();
+  EXPECT_FALSE(composer_->englishMode());
+  EXPECT_EQ(composer_->composedText(), "你好 ok 77K ");
+  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
+
+  Type("wo3");
+  EXPECT_EQ(composer_->composedText(), "你好 ok 77K 我");
+
+  auto r = composer_->feedEnter();
+  EXPECT_EQ(r.commitText, "你好 ok 77K 我");
+  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
+  // The mode itself is untouched by the commit.
+  EXPECT_FALSE(composer_->englishMode());
+}
+
+TEST_F(ComposerTest, EnglishSegmentInsertsAtCursor) {
+  Type("ni3hk3");  // 你好
+  Type("9");       // cursor between 你 and 好
+  composer_->feedShiftTap();
+  Type("x");
+  EXPECT_EQ(composer_->composedText(), "你 x好");
+  composer_->feedShiftTap();
+  EXPECT_EQ(composer_->composedText(), "你 x 好");
+}
+
+TEST_F(ComposerTest, ShiftTapDropsHalfTypedSyllable) {
+  Type("vs3n");  // 種 + pending ㄋ
+  EXPECT_EQ(composer_->composedText(), "種ㄋ");
+  composer_->feedShiftTap();
+  EXPECT_EQ(composer_->composedText(), "種 ");
+  EXPECT_TRUE(composer_->englishMode());
+}
+
+TEST_F(ComposerTest, EnterCommitsEnglishSegment) {
+  composer_->feedShiftTap();  // idle toggle: English
+  composer_->feedShiftTap();  // back: no stray state
+  Type("de");
+  composer_->feedShiftTap();
+  Type("abc");
+  auto r = composer_->feedEnter();
+  EXPECT_TRUE(r.consumed);
+  EXPECT_EQ(r.commitText, "的 abc");
 }
 
 }  // namespace

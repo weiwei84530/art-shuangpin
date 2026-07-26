@@ -3,6 +3,18 @@
 // (or the CLI REPL) feeds abstract keys and renders the outputs.
 //
 // Behavior contract: docs/spec.md §6.
+//
+// Key map while composing (digits are never typed literally mid-buffer):
+//   1-5  tone digits (pending syllable or retrofit)
+//   6,7  eaten, no-op
+//   8    open the candidate menu at the cursor
+//   9/0  move the cursor left/right, wrapping at both ends
+// While the candidate menu is open:
+//   1-6  pick the numbered candidate on the current page
+//   7/8  previous/next page (no wrap; out-of-range is a no-op)
+//   any other key closes the menu AND performs its normal function.
+// A bare Shift tap toggles English mode; mid-composition it also inserts a
+// half-width space at the cursor (both on entering and leaving English).
 
 #pragma once
 
@@ -22,6 +34,9 @@ class Composer {
  public:
   enum class State { kEmpty, kComposing, kSelecting };
 
+  // Candidates shown per menu page; selection digits are 1..6.
+  static constexpr size_t kCandidatePageSize = 6;
+
   struct Result {
     // Whether the key was eaten by the composer. When false, the shell must
     // let the application handle the key (e.g. literal space/digit with no
@@ -35,6 +50,11 @@ class Composer {
 
   State state() const { return state_; }
 
+  // English mode (toggled by a bare Shift tap). While kEmpty, every key
+  // passes through to the application; while composing, printable keys are
+  // inserted literally at the cursor.
+  bool englishMode() const { return englishMode_; }
+
   // Inline composition text: walked sentence followed by the pending
   // syllable's display (e.g. 我喜歡ㄋ while typing ㄋㄧˇ).
   std::string composedText() const;
@@ -43,13 +63,18 @@ class Composer {
   //   before      tone-settled text left of the active area
   //   unconfirmed the pending syllable display plus, if the syllable just
   //               inserted is still tone-retrofittable, its character
-  //   after       tone-settled text right of the caret (cursor movement)
-  // The caret sits between `unconfirmed` and `after`. The shell renders
-  // `unconfirmed` with the "input" attribute (blue) and the rest as
-  // "converted" (black); the whole string stays underlined until commit.
+  //   highlighted the single character right of the cursor (the selection
+  //               anchor emphasized with a background color); empty when
+  //               the cursor is at the right end
+  //   after       tone-settled text right of `highlighted`
+  // The caret sits between `unconfirmed` and `highlighted`. The shell
+  // renders `unconfirmed` with the "input" attribute (blue), `highlighted`
+  // with the background-highlight attribute and the rest as "converted"
+  // (black); the whole string stays underlined until commit.
   struct DisplaySegments {
     std::string before;
     std::string unconfirmed;
+    std::string highlighted;
     std::string after;
   };
   DisplaySegments displaySegments() const;
@@ -57,15 +82,19 @@ class Composer {
   // Convenience for tests: displaySegments().unconfirmed.
   std::string unconfirmedTail() const;
 
-  // Cursor movement inside the composition (MS-Bopomofo style).
-  Result feedLeft();
-  Result feedRight();
-
   // Candidates of the span being selected (valid in kSelecting).
   const std::vector<Formosa::Gramambular2::ReadingGrid::Candidate>&
   candidates() const {
     return candidates_;
   }
+
+  // Menu paging (valid in kSelecting).
+  size_t candidatePageIndex() const { return pageIndex_; }
+  size_t candidatePageCount() const;
+  // The slice of candidates() visible on the current page (at most
+  // kCandidatePageSize entries).
+  std::vector<Formosa::Gramambular2::ReadingGrid::Candidate>
+  currentPageCandidates() const;
 
   // Side-effect-free preview of feedChar's consumption decision. TSF calls
   // OnTestKeyDown before OnKeyDown, so the eat/pass decision must not
@@ -76,9 +105,16 @@ class Composer {
   Result feedChar(char c);
   Result feedBackspace();
   Result feedEnter();
+  // Esc cancels the whole composition (closing the menu first if open).
   Result feedEsc();
-  Result feedDown();
-  Result feedUp();
+  // A bare Shift tap (no other key between down and up).
+  Result feedShiftTap();
+
+  // Closes the candidate menu without touching the composition (used by the
+  // shell for window-only teardown, e.g. mouse dismissal).
+  Result closeCandidateMenu();
+  // Unconditionally resets the composer (app-terminated composition).
+  void cancel() { reset(); }
 
   // Selects a candidate by index into candidates() (kSelecting only).
   Result selectCandidate(size_t index);
@@ -103,6 +139,17 @@ class Composer {
   bool retrofitToneToLastSyllable(char digit);
   // Inserts a reading into the grid and re-walks.
   bool insertReading(const std::string& reading);
+  // Inserts a literal character (English-mode text, auto space) at the
+  // cursor as a single-candidate grid node.
+  bool insertLiteral(char c);
+  // Moves the cursor by delta with wrap-around at both ends.
+  void moveCursor(int delta);
+  // Opens the candidate menu at the cursor span (digit 8).
+  Result openCandidateMenu();
+  // Clears menu state and returns to kComposing.
+  void dismissMenu();
+  // Selects by page-relative index ('1'..'6'); out of range is a no-op.
+  Result selectOnCurrentPage(size_t indexInPage);
   // Commits the current buffer (dropping a half-typed syllable) and resets.
   std::string takeCommitText();
   void reset();
@@ -127,8 +174,12 @@ class Composer {
   bool doubleQuoteOpen_ = false;
   bool singleQuoteOpen_ = false;
 
+  // English mode survives commits/resets; it is a device-level toggle.
+  bool englishMode_ = false;
+
   // Selection state.
   size_t selectionLocation_ = 0;
+  size_t pageIndex_ = 0;
   std::vector<Formosa::Gramambular2::ReadingGrid::Candidate> candidates_;
 };
 

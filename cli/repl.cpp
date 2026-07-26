@@ -4,9 +4,11 @@
 //                 e.g. repl.exe ㄒㄧㄣ ㄎㄨˋ ㄧㄣ ㄕㄨ ㄖㄨˋ ㄈㄚˇ
 // Key mode:       repl.exe --keys "ni3hk3."
 //                 feeds raw double-pinyin keys through the Composer and
-//                 prints every state transition. Control tokens:
-//                   {  Down (open candidates)   }  Up (close)
+//                 prints every state transition. Digits are live controls
+//                 (8 opens the menu, 9/0 move the cursor, 1-6 select,
+//                 7/8 page). Control tokens:
 //                   <  Backspace                !  Esc
+//                   @  Shift tap (Chinese/English toggle)
 //                   \n (in piped key mode)      Enter
 // Piped mode:     each stdin line = whitespace-separated bopomofo readings.
 
@@ -82,17 +84,22 @@ const char* StateName(mspy::Composer::State s) {
 
 void PrintComposerState(const mspy::Composer& composer,
                         const mspy::Composer::Result& result, char key) {
-  std::cout << "  '" << key << "' -> [" << StateName(composer.state()) << "] \""
+  std::cout << "  '" << key << "' -> [" << StateName(composer.state())
+            << (composer.englishMode() ? "|EN" : "") << "] \""
             << composer.composedText() << "\"";
+  auto segments = composer.displaySegments();
+  if (!segments.highlighted.empty())
+    std::cout << " anchor:[" << segments.highlighted << "]";
   if (!result.consumed) std::cout << " (pass-through)";
   if (!result.commitText.empty())
     std::cout << " COMMIT:\"" << result.commitText << "\"";
   if (composer.state() == mspy::Composer::State::kSelecting) {
-    std::cout << " candidates:";
+    std::cout << " candidates(page " << (composer.candidatePageIndex() + 1)
+              << "/" << composer.candidatePageCount() << "):";
     size_t shown = 0;
-    for (const auto& c : composer.candidates()) {
+    for (const auto& c : composer.currentPageCandidates()) {
       std::cout << " " << (shown + 1) << "." << c.value;
-      if (++shown >= 9) break;
+      ++shown;
     }
   }
   std::cout << "\n";
@@ -105,10 +112,9 @@ void RunKeyMode(std::shared_ptr<McBopomofo::McBopomofoLM> lm,
   for (char c : keys) {
     mspy::Composer::Result r;
     switch (c) {
-      case '{': r = composer.feedDown(); break;
-      case '}': r = composer.feedUp(); break;
       case '<': r = composer.feedBackspace(); break;
       case '!': r = composer.feedEsc(); break;
+      case '@': r = composer.feedShiftTap(); break;
       case '\n': r = composer.feedEnter(); break;
       default: r = composer.feedChar(c); break;
     }
