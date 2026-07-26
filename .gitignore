@@ -17,3 +17,4 @@ __pycache__/
 
 # Generated inside data\ by frequency_builder
 data/PhraseFreq.txt
+build32/

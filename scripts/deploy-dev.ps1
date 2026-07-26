@@ -43,16 +43,14 @@ function Deploy-One([string]$srcDir, [string]$arch) {
 Deploy-One $X64Build "x64"
 Deploy-One $X86Build "x86"
 
-# SampleIME (M0 stock build) resolves TEXTSERVICE_DIC directly NEXT TO the
-# DLL (verified via debug log), so the dictionary goes into the arch root.
-$dictSrc = Join-Path $root "ime\SampleIME\Dictionary\SampleIMESimplifiedQuanPin.txt"
-if (Test-Path $dictSrc) {
+# The IME loads mspy-data.txt (the McBopomofo dictionary built by
+# build-data.ps1) from the directory next to the DLL.
+$mspyData = Join-Path $root "out\data.txt"
+if (Test-Path $mspyData) {
     foreach ($arch in "x64", "x86") {
         $dstDir = Join-Path $deployDir $arch
         if (Test-Path $dstDir) {
-            Copy-Item -Force $dictSrc $dstDir
-            $legacy = Join-Path $dstDir "Dictionary"
-            if (Test-Path $legacy) { Remove-Item -Recurse -Force $legacy }
+            Copy-Item -Force $mspyData (Join-Path $dstDir "mspy-data.txt")
         }
     }
 }

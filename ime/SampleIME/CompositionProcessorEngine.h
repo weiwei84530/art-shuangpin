@@ -16,11 +16,16 @@
 #include "Compartment.h"
 #include "define.h"
 
+class CMspyBridge;  // [MspyIME]
+
 class CCompositionProcessorEngine
 {
 public:
     CCompositionProcessorEngine(void);
     ~CCompositionProcessorEngine(void);
+
+    // [MspyIME] The bridge owns the conversion engine + modal composer.
+    CMspyBridge* GetBridge() { return _pMspyBridge; }
 
     BOOL SetupLanguageProfile(LANGID langid, REFGUID guidLanguageProfile, _In_ ITfThreadMgr *pThreadMgr, TfClientId tfClientId, BOOL isSecureMode, BOOL isComLessMode);
 
@@ -37,6 +42,8 @@ public:
     }
 
     BOOL IsVirtualKeyNeed(UINT uCode, _In_reads_(1) WCHAR *pwch, BOOL fComposing, CANDIDATE_MODE candidateMode, BOOL hasCandidateWithWildcard, _Out_opt_ _KEYSTROKE_STATE *pKeyState);
+    // [MspyIME] Composer-driven replacement for IsVirtualKeyNeed.
+    BOOL IsVirtualKeyNeedMspy(UINT uCode, _In_reads_(1) WCHAR *pwch, _Out_opt_ _KEYSTROKE_STATE *pKeyState);
 
     BOOL AddVirtualKey(WCHAR wch);
     void RemoveVirtualKey(DWORD_PTR dwIndex);
@@ -179,6 +186,9 @@ private:
     CCompartmentEventSink* _pCompartmentPunctuationEventSink;
 
     // Configuration data
+    // [MspyIME] conversion engine bridge (owned).
+    CMspyBridge* _pMspyBridge = nullptr;
+
     // [MspyIME] signed-BOOL one-bit bitfields overflow when assigned TRUE
     // (C4463 with v143); plain BOOLs instead.
     BOOL _isWildcard;

@@ -116,6 +116,20 @@ void Composer::updateStateAfterMutation() {
   }
 }
 
+bool Composer::wouldConsume(char c) const {
+  if (state_ == State::kSelecting) return true;
+  const bool composing = state_ == State::kComposing;
+  if (c >= 'a' && c <= 'z') return true;
+  if (c == ',' || c == '.') return true;
+  if (c >= '1' && c <= '5') {
+    if (pending_.complete()) return true;
+    if (pending_.empty() && lastWasBare_) return true;
+    return composing;
+  }
+  // ';', space, other digits, everything else printable.
+  return composing;
+}
+
 Composer::Result Composer::feedChar(char c) {
   if (state_ == State::kSelecting) {
     if (c >= '1' && c <= '9') {

@@ -43,6 +43,11 @@ class Composer {
     return candidates_;
   }
 
+  // Side-effect-free preview of feedChar's consumption decision. TSF calls
+  // OnTestKeyDown before OnKeyDown, so the eat/pass decision must not
+  // mutate state.
+  bool wouldConsume(char c) const;
+
   // Feeds a printable character (letters, ';', digits, space, ',', '.').
   Result feedChar(char c);
   Result feedBackspace();

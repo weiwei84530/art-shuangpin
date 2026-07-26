@@ -12,6 +12,7 @@
 #include "DictionarySearch.h"
 #include "TfInputProcessorProfile.h"
 #include "Globals.h"
+#include "MspyBridge.h"  // [MspyIME]
 #include "Compartment.h"
 #include "LanguageBar.h"
 #include "RegKey.h"
@@ -137,6 +138,13 @@ CCompositionProcessorEngine::CCompositionProcessorEngine()
 
 CCompositionProcessorEngine::~CCompositionProcessorEngine()
 {
+    // [MspyIME]
+    if (_pMspyBridge)
+    {
+        delete _pMspyBridge;
+        _pMspyBridge = nullptr;
+    }
+
     if (_pTableDictionaryEngine)
     {
         delete _pTableDictionaryEngine;
@@ -977,9 +985,23 @@ BOOL CCompositionProcessorEngine::InitLanguageBar(_In_ CLangBarItemButton *pLang
 //----------------------------------------------------------------------------
 
 BOOL CCompositionProcessorEngine::SetupDictionaryFile()
-{	
-    // Not yet registered
-    // Register CFileMapping
+{
+    // [MspyIME] The demo table dictionary is gone; this now boots the mspy
+    // conversion stack (McBopomofoLM + RelaxedToneLM + Composer).
+    if (_pMspyBridge == nullptr)
+    {
+        _pMspyBridge = new (std::nothrow) CMspyBridge();
+        if (_pMspyBridge == nullptr)
+        {
+            return FALSE;
+        }
+    }
+    return _pMspyBridge->Initialize();
+}
+
+#if 0  // [MspyIME] dead sample code preserved for reference
+BOOL CCompositionProcessorEngine__SetupDictionaryFile_Original()
+{
     WCHAR wszFileName[MAX_PATH] = {'\0'};
     DWORD cchA = GetModuleFileName(Global::dllInstanceHandle, wszFileName, ARRAYSIZE(wszFileName));
     size_t iDicFileNameLen = cchA + wcslen(TEXTSERVICE_DIC);
@@ -1013,11 +1035,8 @@ BOOL CCompositionProcessorEngine::SetupDictionaryFile()
     }
     if (!(_pDictionaryFile)->CreateFile(pwszFileName, GENERIC_READ, OPEN_EXISTING, FILE_SHARE_READ))
     {
-        Global::DebugLog(L"SetupDictionaryFile FAILED: %s (gle=%lu)",
-                         pwszFileName, GetLastError());
         goto ErrorExit;
     }
-    Global::DebugLog(L"SetupDictionaryFile ok: %s", pwszFileName);
 
     _pTableDictionaryEngine = new (std::nothrow) CTableDictionaryEngine(GetLocale(), _pDictionaryFile);
     if (!_pTableDictionaryEngine)
@@ -1034,6 +1053,7 @@ ErrorExit:
     }
     return FALSE;
 }
+#endif  // [MspyIME] end of dead sample code
 
 //+---------------------------------------------------------------------------
 //
@@ -1573,6 +1593,112 @@ void CCompositionProcessorEngine::SetDefaultCandidateTextFont()
 
 BOOL CCompositionProcessorEngine::IsVirtualKeyNeed(UINT uCode, _In_reads_(1) WCHAR *pwch, BOOL fComposing, CANDIDATE_MODE candidateMode, BOOL hasCandidateWithWildcard, _Out_opt_ _KEYSTROKE_STATE *pKeyState)
 {
+    // [MspyIME] The modal composer decides everything; the sample's
+    // keystroke-table logic below is dead code kept only to minimize diff.
+    fComposing; candidateMode; hasCandidateWithWildcard;
+    return IsVirtualKeyNeedMspy(uCode, pwch, pKeyState);
+}
+
+// [MspyIME] Key routing per docs/m3-design.md.
+BOOL CCompositionProcessorEngine::IsVirtualKeyNeedMspy(UINT uCode, _In_reads_(1) WCHAR *pwch, _Out_opt_ _KEYSTROKE_STATE *pKeyState)
+{
+    if (pKeyState)
+    {
+        pKeyState->Category = CATEGORY_NONE;
+        pKeyState->Function = FUNCTION_NONE;
+    }
+    if (_pMspyBridge == nullptr || !_pMspyBridge->IsReady())
+    {
+        return FALSE;
+    }
+
+    mspy::Composer* composer = _pMspyBridge->Composer();
+    const mspy::Composer::State state = composer->state();
+    const bool selecting = state == mspy::Composer::State::kSelecting;
+    const bool active = state != mspy::Composer::State::kEmpty;
+
+    auto eat = [pKeyState](KEYSTROKE_CATEGORY cat, KEYSTROKE_FUNCTION fn) -> BOOL
+    {
+        if (pKeyState)
+        {
+            pKeyState->Category = cat;
+            pKeyState->Function = fn;
+        }
+        return TRUE;
+    };
+
+    switch (uCode)
+    {
+    case VK_BACK:
+        return active ? eat(CATEGORY_COMPOSING, FUNCTION_BACKSPACE) : FALSE;
+    case VK_RETURN:
+        return active ? eat(CATEGORY_COMPOSING, FUNCTION_FINALIZE_TEXTSTORE) : FALSE;
+    case VK_ESCAPE:
+        if (selecting)
+        {
+            // Close the candidate window only (keep composing); routed to
+            // _HandleCandidateFinalize which we rewired to feedEsc+sync.
+            return eat(CATEGORY_CANDIDATE, FUNCTION_FINALIZE_CANDIDATELIST);
+        }
+        return active ? eat(CATEGORY_COMPOSING, FUNCTION_CANCEL) : FALSE;
+    case VK_DOWN:
+        if (state == mspy::Composer::State::kComposing)
+        {
+            return eat(CATEGORY_COMPOSING, FUNCTION_CONVERT);  // open candidates
+        }
+        if (selecting)
+        {
+            return eat(CATEGORY_CANDIDATE, FUNCTION_MOVE_DOWN);
+        }
+        return FALSE;
+    case VK_UP:
+        // Same close-window-only semantics as Esc during selection.
+        return selecting ? eat(CATEGORY_CANDIDATE, FUNCTION_FINALIZE_CANDIDATELIST) : FALSE;
+    case VK_PRIOR:
+        return selecting ? eat(CATEGORY_CANDIDATE, FUNCTION_MOVE_PAGE_UP) : FALSE;
+    case VK_NEXT:
+        return selecting ? eat(CATEGORY_CANDIDATE, FUNCTION_MOVE_PAGE_DOWN) : FALSE;
+    case VK_LEFT:
+    case VK_RIGHT:
+        // v0.1: eaten and ignored while active so the caret cannot escape
+        // the composition.
+        return active ? eat(CATEGORY_COMPOSING,
+                            uCode == VK_LEFT ? FUNCTION_MOVE_LEFT : FUNCTION_MOVE_RIGHT)
+                      : FALSE;
+    default:
+        break;
+    }
+
+    WCHAR wch = pwch ? *pwch : L'\0';
+    if (wch >= L'A' && wch <= L'Z')
+    {
+        wch = wch - L'A' + L'a';
+    }
+    if (wch == L'\0' || wch >= 0x80)
+    {
+        return FALSE;
+    }
+
+    if (selecting && wch >= L'1' && wch <= L'9')
+    {
+        return eat(CATEGORY_CANDIDATE, FUNCTION_SELECT_BY_NUMBER);
+    }
+
+    if (composer->wouldConsume(static_cast<char>(wch)))
+    {
+        if (pwch)
+        {
+            *pwch = wch;  // normalized (lowercased) for the handler
+        }
+        return eat(CATEGORY_COMPOSING, FUNCTION_INPUT);
+    }
+
+    return FALSE;
+}
+
+#if 0  // [MspyIME] dead sample code preserved for reference
+BOOL CCompositionProcessorEngine__IsVirtualKeyNeed_Original(UINT uCode, _In_reads_(1) WCHAR *pwch, BOOL fComposing, CANDIDATE_MODE candidateMode, BOOL hasCandidateWithWildcard, _Out_opt_ _KEYSTROKE_STATE *pKeyState)
+{
     if (pKeyState)
     {
         pKeyState->Category = CATEGORY_NONE;
@@ -1809,6 +1935,7 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeed(UINT uCode, _In_reads_(1) WCH
 
     return FALSE;
 }
+#endif  // [MspyIME] end of dead sample code
 
 //+---------------------------------------------------------------------------
 //

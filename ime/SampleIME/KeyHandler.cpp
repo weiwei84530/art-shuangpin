@@ -11,6 +11,8 @@
 #include "SampleIME.h"
 #include "CandidateListUIPresenter.h"
 #include "CompositionProcessorEngine.h"
+#include "MspyBridge.h"  // [MspyIME]
+#include <string>        // [MspyIME]
 
 //////////////////////////////////////////////////////////////////////
 //
@@ -92,11 +94,112 @@ HRESULT CSampleIME::_HandleComplete(TfEditCookie ec, _In_ ITfContext *pContext)
 
 HRESULT CSampleIME::_HandleCancel(TfEditCookie ec, _In_ ITfContext *pContext)
 {
+    // [MspyIME] Reset the composer too (Selecting -> Composing -> Empty).
+    CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
+    if (pBridge && pBridge->IsReady())
+    {
+        pBridge->Composer()->feedEsc();
+        pBridge->Composer()->feedEsc();
+    }
+
     _RemoveDummyCompositionForComposing(ec, _pComposition);
 
     _DeleteCandidateList(FALSE, pContext);
 
     _TerminateComposition(ec, pContext);
+
+    return S_OK;
+}
+
+// [MspyIME]
+void CSampleIME::_DestroyCandidatePresenter()
+{
+    if (_pCandidateListUIPresenter)
+    {
+        _pCandidateListUIPresenter->_EndCandidateList();
+        delete _pCandidateListUIPresenter;
+        _pCandidateListUIPresenter = nullptr;
+
+        _candidateMode = CANDIDATE_NONE;
+        _isCandidateWithWildcard = FALSE;
+    }
+}
+
+// [MspyIME] Single place where the composer's state is reflected into TSF.
+HRESULT CSampleIME::_SyncComposer(TfEditCookie ec, _In_ ITfContext *pContext, const char* commitUtf8)
+{
+    CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
+    if (pBridge == nullptr || !pBridge->IsReady())
+    {
+        return S_OK;
+    }
+    mspy::Composer* pComposer = pBridge->Composer();
+
+    if (commitUtf8 != nullptr && commitUtf8[0] != '\0')
+    {
+        std::wstring commitText = CMspyBridge::ToWide(commitUtf8);
+        if (!_IsComposing())
+        {
+            _StartComposition(pContext);
+        }
+        CStringRange commitRange;
+        commitRange.Set(commitText.c_str(), commitText.length());
+        _AddComposingAndChar(ec, pContext, &commitRange);
+        _DestroyCandidatePresenter();
+        _TerminateComposition(ec, pContext);
+        // The composer is Empty after producing commit text.
+    }
+
+    const mspy::Composer::State state = pComposer->state();
+
+    if (state == mspy::Composer::State::kEmpty)
+    {
+        _DestroyCandidatePresenter();
+        if (_IsComposing())
+        {
+            _RemoveDummyCompositionForComposing(ec, _pComposition);
+            _TerminateComposition(ec, pContext);
+        }
+        return S_OK;
+    }
+
+    // Composing or Selecting: refresh the inline composition text.
+    if (!_IsComposing())
+    {
+        _StartComposition(pContext);
+    }
+    const std::wstring& composedText = pBridge->ComposedText();
+    CStringRange composedRange;
+    composedRange.Set(composedText.c_str(), composedText.length());
+    HRESULT hr = _AddComposingAndChar(ec, pContext, &composedRange);
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    if (state == mspy::Composer::State::kSelecting)
+    {
+        hr = _CreateAndStartCandidate(_pCompositionProcessorEngine, ec, pContext);
+        if (SUCCEEDED(hr) && _pCandidateListUIPresenter)
+        {
+            CSampleImeArray<CCandidateListItem> items;
+            const std::vector<std::wstring>& texts = pBridge->CandidateTexts();
+            for (const std::wstring& text : texts)
+            {
+                CCandidateListItem* pItem = items.Append();
+                if (pItem)
+                {
+                    pItem->_ItemString.Set(text.c_str(), text.length());
+                }
+            }
+            _pCandidateListUIPresenter->_ClearList();
+            _pCandidateListUIPresenter->_SetText(&items, FALSE);
+        }
+    }
+    else
+    {
+        _DestroyCandidatePresenter();
+    }
 
     return S_OK;
 }
@@ -111,52 +214,21 @@ HRESULT CSampleIME::_HandleCancel(TfEditCookie ec, _In_ ITfContext *pContext)
 
 HRESULT CSampleIME::_HandleCompositionInput(TfEditCookie ec, _In_ ITfContext *pContext, WCHAR wch)
 {
-    ITfRange* pRangeComposition = nullptr;
-    TF_SELECTION tfSelection;
-    ULONG fetched = 0;
-    BOOL isCovered = TRUE;
-
-    CCompositionProcessorEngine* pCompositionProcessorEngine = nullptr;
-    pCompositionProcessorEngine = _pCompositionProcessorEngine;
-
-    if ((_pCandidateListUIPresenter != nullptr) && (_candidateMode != CANDIDATE_INCREMENTAL))
+    // [MspyIME] Feed the printable key into the modal composer and mirror
+    // the outcome into TSF.
+    CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
+    if (pBridge == nullptr || !pBridge->IsReady() || wch >= 0x80)
     {
-        _HandleCompositionFinalize(ec, pContext, FALSE);
+        return S_OK;
     }
 
-    // Start the new (std::nothrow) compositon if there is no composition.
     if (!_IsComposing())
     {
         _StartComposition(pContext);
     }
 
-    // first, test where a keystroke would go in the document if we did an insert
-    if (pContext->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &tfSelection, &fetched) != S_OK || fetched != 1)
-    {
-        return S_FALSE;
-    }
-
-    // is the insertion point covered by a composition?
-    if (SUCCEEDED(_pComposition->GetRange(&pRangeComposition)))
-    {
-        isCovered = _IsRangeCovered(ec, tfSelection.range, pRangeComposition);
-
-        pRangeComposition->Release();
-
-        if (!isCovered)
-        {
-            goto Exit;
-        }
-    }
-
-    // Add virtual key to composition processor engine
-    pCompositionProcessorEngine->AddVirtualKey(wch);
-
-    _HandleCompositionInputWorker(pCompositionProcessorEngine, ec, pContext);
-
-Exit:
-    tfSelection.range->Release();
-    return S_OK;
+    mspy::Composer::Result result = pBridge->Composer()->feedChar(static_cast<char>(wch));
+    return _SyncComposer(ec, pContext, result.commitText.c_str());
 }
 
 //+---------------------------------------------------------------------------
@@ -283,60 +355,15 @@ HRESULT CSampleIME::_CreateAndStartCandidate(_In_ CCompositionProcessorEngine *p
 
 HRESULT CSampleIME::_HandleCompositionFinalize(TfEditCookie ec, _In_ ITfContext *pContext, BOOL isCandidateList)
 {
-    HRESULT hr = S_OK;
-
-    if (isCandidateList && _pCandidateListUIPresenter)
+    // [MspyIME] Enter commits the whole buffer through the composer.
+    isCandidateList;
+    CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
+    if (pBridge == nullptr || !pBridge->IsReady())
     {
-        // Finalize selected candidate string from CCandidateListUIPresenter
-        DWORD_PTR candidateLen = 0;
-        const WCHAR *pCandidateString = nullptr;
-
-        candidateLen = _pCandidateListUIPresenter->_GetSelectedCandidateString(&pCandidateString);
-
-        CStringRange candidateString;
-        candidateString.Set(pCandidateString, candidateLen);
-
-        if (candidateLen)
-        {
-            // Finalize character
-            hr = _AddCharAndFinalize(ec, pContext, &candidateString);
-            if (FAILED(hr))
-            {
-                return hr;
-            }
-        }
+        return S_OK;
     }
-    else
-    {
-        // Finalize current text store strings
-        if (_IsComposing())
-        {
-            ULONG fetched = 0;
-            TF_SELECTION tfSelection;
-
-            if (FAILED(pContext->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &tfSelection, &fetched)) || fetched != 1)
-            {
-                return S_FALSE;
-            }
-
-            ITfRange* pRangeComposition = nullptr;
-            if (SUCCEEDED(_pComposition->GetRange(&pRangeComposition)))
-            {
-                if (_IsRangeCovered(ec, tfSelection.range, pRangeComposition))
-                {
-                    _EndComposition(pContext);
-                }
-
-                pRangeComposition->Release();
-            }
-
-            tfSelection.range->Release();
-        }
-    }
-
-    _HandleCancel(ec, pContext);
-
-    return S_OK;
+    mspy::Composer::Result result = pBridge->Composer()->feedEnter();
+    return _SyncComposer(ec, pContext, result.commitText.c_str());
 }
 
 //+---------------------------------------------------------------------------
@@ -347,71 +374,15 @@ HRESULT CSampleIME::_HandleCompositionFinalize(TfEditCookie ec, _In_ ITfContext 
 
 HRESULT CSampleIME::_HandleCompositionConvert(TfEditCookie ec, _In_ ITfContext *pContext, BOOL isWildcardSearch)
 {
-    HRESULT hr = S_OK;
-
-    CSampleImeArray<CCandidateListItem> candidateList;
-
-    //
-    // Get candidate string from composition processor engine
-    //
-    CCompositionProcessorEngine* pCompositionProcessorEngine = nullptr;
-    pCompositionProcessorEngine = _pCompositionProcessorEngine;
-    pCompositionProcessorEngine->GetCandidateList(&candidateList, FALSE, isWildcardSearch);
-
-    // If there is no candlidate listin the current reading string, we don't do anything. Just wait for
-    // next char to be ready for the conversion with it.
-    int nCount = candidateList.Count();
-    if (nCount)
+    // [MspyIME] Down arrow: open the candidate window at the cursor span.
+    isWildcardSearch;
+    CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
+    if (pBridge == nullptr || !pBridge->IsReady())
     {
-        if (_pCandidateListUIPresenter)
-        {
-            _pCandidateListUIPresenter->_EndCandidateList();
-            delete _pCandidateListUIPresenter;
-            _pCandidateListUIPresenter = nullptr;
-
-            _candidateMode = CANDIDATE_NONE;
-            _isCandidateWithWildcard = FALSE;
-        }
-
-        // 
-        // create an instance of the candidate list class.
-        // 
-        if (_pCandidateListUIPresenter == nullptr)
-        {
-            _pCandidateListUIPresenter = new (std::nothrow) CCandidateListUIPresenter(this, Global::AtomCandidateWindow,
-                CATEGORY_CANDIDATE,
-                pCompositionProcessorEngine->GetCandidateListIndexRange(),
-                FALSE);
-            if (!_pCandidateListUIPresenter)
-            {
-                return E_OUTOFMEMORY;
-            }
-
-            _candidateMode = CANDIDATE_ORIGINAL;
-        }
-
-        _isCandidateWithWildcard = isWildcardSearch;
-
-        // we don't cache the document manager object. So get it from pContext.
-        ITfDocumentMgr* pDocumentMgr = nullptr;
-        if (SUCCEEDED(pContext->GetDocumentMgr(&pDocumentMgr)))
-        {
-            // get the composition range.
-            ITfRange* pRange = nullptr;
-            if (SUCCEEDED(_pComposition->GetRange(&pRange)))
-            {
-                hr = _pCandidateListUIPresenter->_StartCandidateList(_tfClientId, pDocumentMgr, pContext, ec, pRange, pCompositionProcessorEngine->GetCandidateWindowWidth());
-                pRange->Release();
-            }
-            pDocumentMgr->Release();
-        }
-        if (SUCCEEDED(hr))
-        {
-            _pCandidateListUIPresenter->_SetText(&candidateList, FALSE);
-        }
+        return S_OK;
     }
-
-    return hr;
+    mspy::Composer::Result result = pBridge->Composer()->feedDown();
+    return _SyncComposer(ec, pContext, result.commitText.c_str());
 }
 
 //+---------------------------------------------------------------------------
@@ -422,61 +393,14 @@ HRESULT CSampleIME::_HandleCompositionConvert(TfEditCookie ec, _In_ ITfContext *
 
 HRESULT CSampleIME::_HandleCompositionBackspace(TfEditCookie ec, _In_ ITfContext *pContext)
 {
-    ITfRange* pRangeComposition = nullptr;
-    TF_SELECTION tfSelection;
-    ULONG fetched = 0;
-    BOOL isCovered = TRUE;
-
-    // Start the new (std::nothrow) compositon if there is no composition.
-    if (!_IsComposing())
+    // [MspyIME]
+    CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
+    if (pBridge == nullptr || !pBridge->IsReady())
     {
         return S_OK;
     }
-
-    // first, test where a keystroke would go in the document if we did an insert
-    if (FAILED(pContext->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &tfSelection, &fetched)) || fetched != 1)
-    {
-        return S_FALSE;
-    }
-
-    // is the insertion point covered by a composition?
-    if (SUCCEEDED(_pComposition->GetRange(&pRangeComposition)))
-    {
-        isCovered = _IsRangeCovered(ec, tfSelection.range, pRangeComposition);
-
-        pRangeComposition->Release();
-
-        if (!isCovered)
-        {
-            goto Exit;
-        }
-    }
-
-    //
-    // Add virtual key to composition processor engine
-    //
-    CCompositionProcessorEngine* pCompositionProcessorEngine = nullptr;
-    pCompositionProcessorEngine = _pCompositionProcessorEngine;
-
-    DWORD_PTR vKeyLen = pCompositionProcessorEngine->GetVirtualKeyLength();
-
-    if (vKeyLen)
-    {
-        pCompositionProcessorEngine->RemoveVirtualKey(vKeyLen - 1);
-
-        if (pCompositionProcessorEngine->GetVirtualKeyLength())
-        {
-            _HandleCompositionInputWorker(pCompositionProcessorEngine, ec, pContext);
-        }
-        else
-        {
-            _HandleCancel(ec, pContext);
-        }
-    }
-
-Exit:
-    tfSelection.range->Release();
-    return S_OK;
+    mspy::Composer::Result result = pBridge->Composer()->feedBackspace();
+    return _SyncComposer(ec, pContext, result.commitText.c_str());
 }
 
 //+---------------------------------------------------------------------------
@@ -489,36 +413,10 @@ Exit:
 
 HRESULT CSampleIME::_HandleCompositionArrowKey(TfEditCookie ec, _In_ ITfContext *pContext, KEYSTROKE_FUNCTION keyFunction)
 {
-    ITfRange* pRangeComposition = nullptr;
-    TF_SELECTION tfSelection;
-    ULONG fetched = 0;
-
-    // get the selection
-    if (FAILED(pContext->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &tfSelection, &fetched))
-        || fetched != 1)
-    {
-        // no selection, eat the keystroke
-        return S_OK;
-    }
-
-    // get the composition range
-    if (FAILED(_pComposition->GetRange(&pRangeComposition)))
-    {
-        goto Exit;
-    }
-
-    // For incremental candidate list
-    if (_pCandidateListUIPresenter)
-    {
-        _pCandidateListUIPresenter->AdviseUIChangedByArrowKey(keyFunction);
-    }
-
-    pContext->SetSelection(ec, 1, &tfSelection);
-
-    pRangeComposition->Release();
-
-Exit:
-    tfSelection.range->Release();
+    // [MspyIME] v0.1: Left/Right are eaten and ignored while composing so
+    // the caret cannot escape the composition. (Cursor movement inside the
+    // buffer is a later feature.)
+    ec; pContext; keyFunction;
     return S_OK;
 }
 
@@ -530,44 +428,8 @@ Exit:
 
 HRESULT CSampleIME::_HandleCompositionPunctuation(TfEditCookie ec, _In_ ITfContext *pContext, WCHAR wch)
 {
-    HRESULT hr = S_OK;
-
-    if (_candidateMode != CANDIDATE_NONE && _pCandidateListUIPresenter)
-    {
-        DWORD_PTR candidateLen = 0;
-        const WCHAR* pCandidateString = nullptr;
-
-        candidateLen = _pCandidateListUIPresenter->_GetSelectedCandidateString(&pCandidateString);
-
-        CStringRange candidateString;
-        candidateString.Set(pCandidateString, candidateLen);
-
-        if (candidateLen)
-        {
-            _AddComposingAndChar(ec, pContext, &candidateString);
-        }
-    }
-    //
-    // Get punctuation char from composition processor engine
-    //
-    CCompositionProcessorEngine* pCompositionProcessorEngine = nullptr;
-    pCompositionProcessorEngine = _pCompositionProcessorEngine;
-
-    WCHAR punctuation = pCompositionProcessorEngine->GetPunctuation(wch);
-
-    CStringRange punctuationString;
-    punctuationString.Set(&punctuation, 1);
-
-    // Finalize character
-    hr = _AddCharAndFinalize(ec, pContext, &punctuationString);
-    if (FAILED(hr))
-    {
-        return hr;
-    }
-
-    _HandleCancel(ec, pContext);
-
-    return S_OK;
+    // [MspyIME] Same path as normal input; the composer maps ,/. itself.
+    return _HandleCompositionInput(ec, pContext, wch);
 }
 
 //+---------------------------------------------------------------------------

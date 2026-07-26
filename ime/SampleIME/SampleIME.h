@@ -103,6 +103,11 @@ public:
     // key event handlers for composition/candidate/phrase common objects.
     HRESULT _HandleComplete(TfEditCookie ec, _In_ ITfContext *pContext);
     HRESULT _HandleCancel(TfEditCookie ec, _In_ ITfContext *pContext);
+    // [MspyIME] Reflects the composer's state into TSF: commits text,
+    // updates the inline composition, and shows/hides the candidate UI.
+    HRESULT _SyncComposer(TfEditCookie ec, _In_ ITfContext *pContext, const char* commitUtf8);
+    // [MspyIME] Ends and deletes the candidate list presenter, if any.
+    void _DestroyCandidatePresenter();
 
     // key event handlers for composition object.
     HRESULT _HandleCompositionInput(TfEditCookie ec, _In_ ITfContext *pContext, WCHAR wch);

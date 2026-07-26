@@ -11,6 +11,8 @@
 #include "CandidateListUIPresenter.h"
 #include "CompositionProcessorEngine.h"
 #include "SampleIMEBaseStructure.h"
+#include "MspyBridge.h"  // [MspyIME]
+#include <string>        // [MspyIME]
 
 //////////////////////////////////////////////////////////////////////
 //
@@ -30,35 +32,15 @@ const int MOVETO_BOTTOM = -1;
 
 HRESULT CSampleIME::_HandleCandidateFinalize(TfEditCookie ec, _In_ ITfContext *pContext)
 {
-    HRESULT hr = S_OK;
-    DWORD_PTR candidateLen = 0;
-    const WCHAR* pCandidateString = nullptr;
-    CStringRange candidateString;
-
-    if (nullptr == _pCandidateListUIPresenter)
+    // [MspyIME] Esc/Up during selection: close the candidate window only
+    // and keep composing (spec §6).
+    CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
+    if (pBridge == nullptr || !pBridge->IsReady())
     {
-        goto NoPresenter;
+        return S_OK;
     }
-
-    candidateLen = _pCandidateListUIPresenter->_GetSelectedCandidateString(&pCandidateString);
-
-    candidateString.Set(pCandidateString, candidateLen);
-
-    if (candidateLen)
-    {
-        hr = _AddComposingAndChar(ec, pContext, &candidateString);
-
-        if (FAILED(hr))
-        {
-            return hr;
-        }
-    }
-
-NoPresenter:
-
-    _HandleComplete(ec, pContext);
-
-    return hr;
+    mspy::Composer::Result result = pBridge->Composer()->feedEsc();
+    return _SyncComposer(ec, pContext, result.commitText.c_str());
 }
 
 //+---------------------------------------------------------------------------
@@ -223,14 +205,36 @@ HRESULT CSampleIME::_HandleCandidateSelectByNumber(TfEditCookie ec, _In_ ITfCont
         return S_FALSE;
     }
 
-    if (_pCandidateListUIPresenter)
+    // [MspyIME] Resolve the page-relative number to the highlighted string,
+    // find it in the composer's candidate list, and pin the selection.
+    CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
+    if (pBridge == nullptr || !pBridge->IsReady() || _pCandidateListUIPresenter == nullptr)
     {
-        if (_pCandidateListUIPresenter->_SetSelectionInPage(iSelectAsNumber))
-        {
-            return _HandleCandidateConvert(ec, pContext);
-        }
+        return S_FALSE;
+    }
+    if (!_pCandidateListUIPresenter->_SetSelectionInPage(iSelectAsNumber))
+    {
+        return S_FALSE;
     }
 
+    const WCHAR* pSelected = nullptr;
+    DWORD_PTR selectedLen = _pCandidateListUIPresenter->_GetSelectedCandidateString(&pSelected);
+    if (selectedLen == 0 || pSelected == nullptr)
+    {
+        return S_FALSE;
+    }
+    std::string selectedUtf8 = CMspyBridge::ToUtf8(std::wstring(pSelected, selectedLen));
+
+    mspy::Composer* pComposer = pBridge->Composer();
+    const auto& candidates = pComposer->candidates();
+    for (size_t i = 0; i < candidates.size(); ++i)
+    {
+        if (candidates[i].value == selectedUtf8)
+        {
+            mspy::Composer::Result result = pComposer->selectCandidate(i);
+            return _SyncComposer(ec, pContext, result.commitText.c_str());
+        }
+    }
     return S_FALSE;
 }
 
