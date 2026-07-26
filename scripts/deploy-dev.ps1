@@ -21,7 +21,14 @@ function Deploy-One([string]$srcDir, [string]$arch) {
     $dst = Join-Path $dstDir $DllName
     if (Test-Path $dst) {
         $old = "$dst.old"
-        if (Test-Path $old) { try { Remove-Item $old -Force -ErrorAction Stop } catch {} }
+        if (Test-Path $old) {
+            try { Remove-Item $old -Force -ErrorAction Stop }
+            catch {
+                # Previous .old is still mapped by a process; park under a
+                # unique name instead.
+                $old = "$dst.old." + [Guid]::NewGuid().ToString("N").Substring(0, 8)
+            }
+        }
         try { Copy-Item $src $dst -Force -ErrorAction Stop }
         catch {
             Rename-Item $dst $old -Force

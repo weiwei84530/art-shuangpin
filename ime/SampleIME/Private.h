@@ -7,6 +7,10 @@
 
 #pragma once
 
+// [MspyIME] Dev builds write diagnostics to %TEMP%\MspyIME.debug.log; remove
+// for release packaging.
+#define MSPY_DEBUG_LOG
+
 #include "stdafx.h"
 #include "sal.h"
 

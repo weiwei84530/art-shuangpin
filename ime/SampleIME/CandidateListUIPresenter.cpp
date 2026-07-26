@@ -770,6 +770,7 @@ HRESULT CCandidateListUIPresenter::_StartCandidateList(TfClientId tfClientId, _I
 
     if (FAILED(_StartLayout(pContextDocument, ec, pRangeComposition)))
     {
+        Global::DebugLog(L"_StartCandidateList: _StartLayout FAILED");
         goto Exit;
     }
 
@@ -778,9 +779,11 @@ HRESULT CCandidateListUIPresenter::_StartCandidateList(TfClientId tfClientId, _I
     hr = MakeCandidateWindow(pContextDocument, wndWidth);
     if (FAILED(hr))
     {
+        Global::DebugLog(L"_StartCandidateList: MakeCandidateWindow hr=0x%08X", hr);
         goto Exit;
     }
 
+    Global::DebugLog(L"_StartCandidateList: isShowMode=%d", _isShowMode);
     Show(_isShowMode);
 
     RECT rcTextExt;
@@ -1288,9 +1291,12 @@ HRESULT CCandidateListUIPresenter::MakeCandidateWindow(_In_ ITfContext *pContext
     {
         parentWndHandle = GetFocus();
     }
+    Global::DebugLog(L"MakeCandidateWindow: parentWnd=%p", parentWndHandle);
 
     if (!_pCandidateWnd->_Create(_atom, wndWidth, parentWndHandle))
     {
+        Global::DebugLog(L"MakeCandidateWindow: _Create FAILED (gle=%lu)",
+                         GetLastError());
         hr = E_OUTOFMEMORY;
         goto Exit;
     }

@@ -11,6 +11,36 @@
 #include "define.h"
 #include "SampleIMEBaseStructure.h"
 
+// [MspyIME] Dev diagnostics: append a line to %TEMP%\MspyIME.debug.log.
+#ifdef MSPY_DEBUG_LOG
+#include <stdio.h>
+#include <stdarg.h>
+namespace Global {
+void DebugLog(_In_ PCWSTR pwszFormat, ...)
+{
+    WCHAR path[MAX_PATH] = {L'\0'};
+    if (!GetTempPathW(ARRAYSIZE(path), path)) return;
+    wcscat_s(path, L"MspyIME.debug.log");
+    FILE* f = nullptr;
+    if (_wfopen_s(&f, path, L"a, ccs=UTF-8") != 0 || f == nullptr) return;
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    fwprintf(f, L"%02u:%02u:%02u.%03u [%lu] ", st.wHour, st.wMinute,
+             st.wSecond, st.wMilliseconds, GetCurrentProcessId());
+    va_list args;
+    va_start(args, pwszFormat);
+    vfwprintf(f, pwszFormat, args);
+    va_end(args);
+    fwprintf(f, L"\n");
+    fclose(f);
+}
+}  // namespace Global
+#else
+namespace Global {
+void DebugLog(_In_ PCWSTR, ...) {}
+}  // namespace Global
+#endif
+
 namespace Global {
 HINSTANCE dllInstanceHandle;
 
@@ -23,7 +53,7 @@ HFONT defaultlFontHandle;				// Global font object we use everywhere
 // SampleIME CLSID
 //---------------------------------------------------------------------
 // {D2291A80-84D8-4641-9AB2-BDD1472C846B}
-extern const CLSID SampleIMECLSID = { 
+extern const CLSID SampleIMECLSID = {
     0xd2291a80,
     0x84d8,
     0x4641,

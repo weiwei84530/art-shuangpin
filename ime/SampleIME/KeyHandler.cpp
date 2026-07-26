@@ -194,9 +194,13 @@ HRESULT CSampleIME::_HandleCompositionInputWorker(_In_ CCompositionProcessorEngi
 
     pCompositionProcessorEngine->GetCandidateList(&candidateList, TRUE, FALSE);
 
+    Global::DebugLog(L"InputWorker: readings=%u candidates=%u",
+                     readingStrings.Count(), candidateList.Count());
+
     if ((candidateList.Count()))
     {
         hr = _CreateAndStartCandidate(pCompositionProcessorEngine, ec, pContext);
+        Global::DebugLog(L"CreateAndStartCandidate hr=0x%08X", hr);
         if (SUCCEEDED(hr))
         {
             _pCandidateListUIPresenter->_ClearList();

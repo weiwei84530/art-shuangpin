@@ -1013,8 +1013,11 @@ BOOL CCompositionProcessorEngine::SetupDictionaryFile()
     }
     if (!(_pDictionaryFile)->CreateFile(pwszFileName, GENERIC_READ, OPEN_EXISTING, FILE_SHARE_READ))
     {
+        Global::DebugLog(L"SetupDictionaryFile FAILED: %s (gle=%lu)",
+                         pwszFileName, GetLastError());
         goto ErrorExit;
     }
+    Global::DebugLog(L"SetupDictionaryFile ok: %s", pwszFileName);
 
     _pTableDictionaryEngine = new (std::nothrow) CTableDictionaryEngine(GetLocale(), _pDictionaryFile);
     if (!_pTableDictionaryEngine)

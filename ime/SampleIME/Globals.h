@@ -16,6 +16,11 @@ void DllRelease();
 
 
 namespace Global {
+
+// [MspyIME] Appends a line to %TEMP%\MspyIME.debug.log. Dev diagnostics
+// only; compiled out unless MSPY_DEBUG_LOG is defined.
+void DebugLog(_In_ PCWSTR pwszFormat, ...);
+
 //---------------------------------------------------------------------
 // inline
 //---------------------------------------------------------------------
