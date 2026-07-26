@@ -1281,6 +1281,14 @@ HRESULT CCandidateListUIPresenter::MakeCandidateWindow(_In_ ITfContext *pContext
         pView->GetWnd(&parentWndHandle);
     }
 
+    // [MspyIME] On Windows 11 hosts (e.g. modern Notepad) GetWnd returns
+    // nullptr, leaving the candidate window without an owner and invisible.
+    // Fall back to the focused window.
+    if (parentWndHandle == nullptr)
+    {
+        parentWndHandle = GetFocus();
+    }
+
     if (!_pCandidateWnd->_Create(_atom, wndWidth, parentWndHandle))
     {
         hr = E_OUTOFMEMORY;
