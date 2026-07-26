@@ -179,10 +179,12 @@ private:
     CCompartmentEventSink* _pCompartmentPunctuationEventSink;
 
     // Configuration data
-    BOOL _isWildcard : 1;
-    BOOL _isDisableWildcardAtFirst : 1;
-    BOOL _hasMakePhraseFromText : 1;
-    BOOL _isKeystrokeSort : 1;
+    // [MspyIME] signed-BOOL one-bit bitfields overflow when assigned TRUE
+    // (C4463 with v143); plain BOOLs instead.
+    BOOL _isWildcard;
+    BOOL _isDisableWildcardAtFirst;
+    BOOL _hasMakePhraseFromText;
+    BOOL _isKeystrokeSort;
     BOOL _isComLessMode : 1;
     CCandidateRange _candidateListIndexRange;
     UINT _candidateListPhraseModifier;

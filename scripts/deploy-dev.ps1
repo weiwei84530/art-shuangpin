@@ -5,7 +5,8 @@ param(
     [string]$DllName = "SampleIME.dll",
     # Build output locations; adjusted when the build system changes (M0: msbuild, M1+: CMake).
     [string]$X64Build = "ime\x64\Release",
-    [string]$X86Build = "ime\Win32\Release"
+    # The Win32 configuration writes to ime\Release (no platform subdir).
+    [string]$X86Build = "ime\Release"
 )
 $ErrorActionPreference = "Stop"
 
@@ -34,4 +35,16 @@ function Deploy-One([string]$srcDir, [string]$arch) {
 
 Deploy-One $X64Build "x64"
 Deploy-One $X86Build "x86"
+
+# SampleIME (M0 stock build) loads its demo dictionary from a Dictionary\
+# folder next to the DLL.
+$dictSrc = Join-Path $root "ime\SampleIME\Dictionary"
+if (Test-Path $dictSrc) {
+    foreach ($arch in "x64", "x86") {
+        $dstDir = Join-Path $deployDir $arch
+        if (Test-Path $dstDir) {
+            Copy-Item -Recurse -Force $dictSrc (Join-Path $dstDir "Dictionary")
+        }
+    }
+}
 Write-Output "Restart the test app (e.g. Notepad) to load the new DLL."

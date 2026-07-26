@@ -8,6 +8,9 @@ param(
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path $PSScriptRoot -Parent
+# This script usually runs in an elevated window that closes immediately;
+# keep a log so the outcome can be checked afterwards.
+Start-Transcript -Path (Join-Path $root "out\register-dev.log") -Append | Out-Null
 $deployDir = Join-Path $root "out\deploy"
 $x64Dll = Join-Path $deployDir "x64\$DllName"
 $x86Dll = Join-Path $deployDir "x86\$DllName"
