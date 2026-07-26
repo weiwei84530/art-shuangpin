@@ -9,7 +9,9 @@
 #include "resource.h"
 
 #define TEXTSERVICE_MODEL        L"Apartment"
-#define TEXTSERVICE_LANGID       MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED)
+// [MspyIME] zh-TW (0x0404): this IME lives under the user's Traditional
+// Chinese (Taiwan) language so no extra system language is needed.
+#define TEXTSERVICE_LANGID       MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_TRADITIONAL)
 #define TEXTSERVICE_ICON_INDEX   -IDIS_SAMPLEIME
 #define TEXTSERVICE_DIC L"SampleIMESimplifiedQuanPin.txt"
 
