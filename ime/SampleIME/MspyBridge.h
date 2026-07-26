@@ -34,17 +34,22 @@ public:
     static std::string ToUtf8(const std::wstring& wide);
 
     // UTF-16 mirror of mspy::Composer::DisplaySegments; the caret sits
-    // after `unconfirmed`.
+    // after `unconfirmed`, `highlighted` is the selection-anchor char.
     struct Segments
     {
         std::wstring before;
         std::wstring unconfirmed;
+        std::wstring highlighted;
         std::wstring after;
-        std::wstring FullText() const { return before + unconfirmed + after; }
+        std::wstring FullText() const
+        {
+            return before + unconfirmed + highlighted + after;
+        }
     };
     // Refreshes and returns the current display segments.
     const Segments& GetSegments();
-    // Refreshes and returns the candidate strings (Selecting state).
+    // Refreshes and returns the candidate strings of the CURRENT MENU PAGE
+    // (at most Composer::kCandidatePageSize entries, Selecting state).
     const std::vector<std::wstring>& CandidateTexts();
 
 private:

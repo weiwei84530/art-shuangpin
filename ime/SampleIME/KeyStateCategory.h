@@ -97,6 +97,9 @@ protected:
     // HandleKeySelectByNumber
     virtual HRESULT HandleKeySelectByNumber(KeyHandlerEditSessionDTO dto);
 
+    // [MspyIME] HandleKeyShiftTap
+    virtual HRESULT HandleKeyShiftTap(KeyHandlerEditSessionDTO dto);
+
 protected:
     CSampleIME* _pTextService;
 };
@@ -142,6 +145,9 @@ protected:
 
     // HandleKeyCompositionPunctuation
     HRESULT HandleKeyPunctuation(KeyHandlerEditSessionDTO dto);
+
+    // [MspyIME] HandleKeyShiftTap
+    HRESULT HandleKeyShiftTap(KeyHandlerEditSessionDTO dto);
 };
 
 class CKeyStateCandidate : public CKeyStateCategory

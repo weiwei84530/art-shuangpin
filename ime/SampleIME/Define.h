@@ -22,18 +22,24 @@
 #define IME_PUNCTUATION_ON_INDEX    IDI_PUNCTUATION_ON
 #define IME_PUNCTUATION_OFF_INDEX   IDI_PUNCTUATION_OFF
 
-#define SAMPLEIME_FONT_DEFAULT L"Microsoft YaHei UI"
+// [MspyIME] Traditional-Chinese UI font.
+#define SAMPLEIME_FONT_DEFAULT L"Microsoft JhengHei UI"
 
 //---------------------------------------------------------------------
 // defined Candidated Window
+// [MspyIME] Modern light theme: white card, thin border, soft accent
+// highlight for the numbered selection, gray digits, page indicator.
 //---------------------------------------------------------------------
-#define CANDWND_ROW_WIDTH				(30)
-#define CANDWND_BORDER_COLOR			(RGB(0x00, 0x00, 0x00))
-#define CANDWND_BORDER_WIDTH			(2)
-#define CANDWND_NUM_COLOR				(RGB(0xB4, 0xB4, 0xB4))
-#define CANDWND_SELECTED_ITEM_COLOR		(RGB(0xFF, 0xFF, 0xFF))
-#define CANDWND_SELECTED_BK_COLOR		(RGB(0xA6, 0xA6, 0x00))
-#define CANDWND_ITEM_COLOR				(RGB(0x00, 0x00, 0x00))
+#define CANDWND_ROW_WIDTH				(34)
+#define CANDWND_BORDER_COLOR			(RGB(0xD8, 0xD8, 0xD8))
+#define CANDWND_BORDER_WIDTH			(1)
+#define CANDWND_NUM_COLOR				(RGB(0x9A, 0x9A, 0x9A))
+#define CANDWND_SELECTED_ITEM_COLOR		(RGB(0x1A, 0x1A, 0x1A))
+#define CANDWND_SELECTED_BK_COLOR		(RGB(0xE3, 0xEE, 0xFC))
+#define CANDWND_ITEM_COLOR				(RGB(0x20, 0x20, 0x20))
+#define CANDWND_BK_COLOR				(RGB(0xFF, 0xFF, 0xFF))
+#define CANDWND_PAGE_COLOR				(RGB(0xA0, 0xA0, 0xA0))
+#define CANDWND_PAGEBAR_HEIGHT			(20)
 
 //---------------------------------------------------------------------
 // defined modifier

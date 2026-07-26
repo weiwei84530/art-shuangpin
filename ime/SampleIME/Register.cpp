@@ -13,7 +13,7 @@ static const WCHAR RegInfo_Key_InProSvr32[] = L"InProcServer32";
 static const WCHAR RegInfo_Key_ThreadModel[] = L"ThreadingModel";
 
 // [MspyIME]
-static const WCHAR TEXTSERVICE_DESC[] = L"Wei雙音拚輸入法";
+static const WCHAR TEXTSERVICE_DESC[] = L"阿特雙拼輸入法";
 
 static const GUID SupportCategories[] = {
     GUID_TFCAT_TIP_KEYBOARD,

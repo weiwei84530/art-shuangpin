@@ -78,6 +78,8 @@ CSampleIME::CSampleIME()
     _pCandidateListUIPresenter = nullptr;
     _isCandidateWithWildcard = FALSE;
 
+    _shiftTapArmed = FALSE;  // [MspyIME]
+
     _pDocMgrLastFocused = nullptr;
 
     _pSIPIMEOnOffCompartment = nullptr;

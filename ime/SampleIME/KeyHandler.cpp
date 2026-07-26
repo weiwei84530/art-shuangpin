@@ -94,12 +94,11 @@ HRESULT CSampleIME::_HandleComplete(TfEditCookie ec, _In_ ITfContext *pContext)
 
 HRESULT CSampleIME::_HandleCancel(TfEditCookie ec, _In_ ITfContext *pContext)
 {
-    // [MspyIME] Reset the composer too (Selecting -> Composing -> Empty).
+    // [MspyIME] Reset the composer too (any state -> Empty).
     CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
     if (pBridge && pBridge->IsReady())
     {
-        pBridge->Composer()->feedEsc();
-        pBridge->Composer()->feedEsc();
+        pBridge->Composer()->cancel();
     }
 
     _RemoveDummyCompositionForComposing(ec, _pComposition);
@@ -198,11 +197,13 @@ HRESULT CSampleIME::_SyncComposer(TfEditCookie ec, _In_ ITfContext *pContext, co
         return hr;
     }
 
-    // Two-tone rendering: tone-settled text in black (still underlined
-    // until commit), the unconfirmed segment in blue.
+    // Three-part rendering: tone-settled text in black (still underlined
+    // until commit), the unconfirmed segment in blue, and the selection
+    // anchor (char right of the cursor) with a highlight background.
     _SetCompositionDisplayAttributesSplit(ec, pContext,
                                           (LONG)segments.before.length(),
-                                          (LONG)segments.unconfirmed.length());
+                                          (LONG)segments.unconfirmed.length(),
+                                          (LONG)segments.highlighted.length());
 
     // The app caret follows the composer cursor (after the unconfirmed
     // segment) so mid-buffer editing is visible.
@@ -214,6 +215,8 @@ HRESULT CSampleIME::_SyncComposer(TfEditCookie ec, _In_ ITfContext *pContext, co
         hr = _CreateAndStartCandidate(_pCompositionProcessorEngine, ec, pContext);
         if (SUCCEEDED(hr) && _pCandidateListUIPresenter)
         {
+            // The composer owns paging: the window shows exactly the
+            // current page (at most 6 entries) plus a page indicator.
             CSampleImeArray<CCandidateListItem> items;
             const std::vector<std::wstring>& texts = pBridge->CandidateTexts();
             for (const std::wstring& text : texts)
@@ -226,6 +229,9 @@ HRESULT CSampleIME::_SyncComposer(TfEditCookie ec, _In_ ITfContext *pContext, co
             }
             _pCandidateListUIPresenter->_ClearList();
             _pCandidateListUIPresenter->_SetText(&items, FALSE);
+            _pCandidateListUIPresenter->_SetPageStatus(
+                (UINT)(pBridge->Composer()->candidatePageIndex() + 1),
+                (UINT)pBridge->Composer()->candidatePageCount());
         }
     }
     else
@@ -406,15 +412,10 @@ HRESULT CSampleIME::_HandleCompositionFinalize(TfEditCookie ec, _In_ ITfContext 
 
 HRESULT CSampleIME::_HandleCompositionConvert(TfEditCookie ec, _In_ ITfContext *pContext, BOOL isWildcardSearch)
 {
-    // [MspyIME] Down arrow: open the candidate window at the cursor span.
-    isWildcardSearch;
-    CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
-    if (pBridge == nullptr || !pBridge->IsReady())
-    {
-        return S_OK;
-    }
-    mspy::Composer::Result result = pBridge->Composer()->feedDown();
-    return _SyncComposer(ec, pContext, result.commitText.c_str());
+    // [MspyIME] Unused since the menu moved to digit 8 (kept because the
+    // sample's candidate plumbing still references this entry point).
+    ec; pContext; isWildcardSearch;
+    return S_OK;
 }
 
 //+---------------------------------------------------------------------------
@@ -445,17 +446,10 @@ HRESULT CSampleIME::_HandleCompositionBackspace(TfEditCookie ec, _In_ ITfContext
 
 HRESULT CSampleIME::_HandleCompositionArrowKey(TfEditCookie ec, _In_ ITfContext *pContext, KEYSTROKE_FUNCTION keyFunction)
 {
-    // [MspyIME] Left/Right move the composer cursor inside the composition
-    // (MS-Bopomofo style: move, then Down opens candidates at that spot).
-    CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
-    if (pBridge == nullptr || !pBridge->IsReady())
-    {
-        return S_OK;
-    }
-    mspy::Composer::Result result =
-        (keyFunction == FUNCTION_MOVE_LEFT) ? pBridge->Composer()->feedLeft()
-                                            : pBridge->Composer()->feedRight();
-    return _SyncComposer(ec, pContext, result.commitText.c_str());
+    // [MspyIME] Cursor movement moved to digits 9/0; arrows are eaten as
+    // no-ops upstream and never routed here anymore.
+    ec; pContext; keyFunction;
+    return S_OK;
 }
 
 //+---------------------------------------------------------------------------
@@ -468,6 +462,23 @@ HRESULT CSampleIME::_HandleCompositionPunctuation(TfEditCookie ec, _In_ ITfConte
 {
     // [MspyIME] Same path as normal input; the composer maps ,/. itself.
     return _HandleCompositionInput(ec, pContext, wch);
+}
+
+//+---------------------------------------------------------------------------
+//
+// _HandleShiftTap    [MspyIME]
+//
+//----------------------------------------------------------------------------
+
+HRESULT CSampleIME::_HandleShiftTap(TfEditCookie ec, _In_ ITfContext *pContext)
+{
+    CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
+    if (pBridge == nullptr || !pBridge->IsReady())
+    {
+        return S_OK;
+    }
+    mspy::Composer::Result result = pBridge->Composer()->feedShiftTap();
+    return _SyncComposer(ec, pContext, result.commitText.c_str());
 }
 
 //+---------------------------------------------------------------------------

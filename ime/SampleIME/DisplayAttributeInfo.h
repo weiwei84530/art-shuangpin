@@ -85,3 +85,28 @@ public:
     static const WCHAR _s_szDescription[];
     static const WCHAR _s_szValueName[];
 };
+
+//+---------------------------------------------------------------------------
+//
+// CDisplayAttributeInfoAnchor class    [MspyIME]
+//
+// Background-highlighted selection anchor: the character right of the
+// composer cursor, emphasized so the user can see where digit-8 selection
+// starts.
+//----------------------------------------------------------------------------
+
+class CDisplayAttributeInfoAnchor : public CDisplayAttributeInfo
+{
+public:
+    CDisplayAttributeInfoAnchor()
+    {
+        _pguid = &Global::SampleIMEGuidDisplayAttributeAnchor;
+        _pDisplayAttribute = &_s_DisplayAttribute;
+        _pDescription = _s_szDescription;
+        _pValueName = _s_szValueName;
+    }
+
+    static const TF_DISPLAYATTRIBUTE _s_DisplayAttribute;
+    static const WCHAR _s_szDescription[];
+    static const WCHAR _s_szValueName[];
+};

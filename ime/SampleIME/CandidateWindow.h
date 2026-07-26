@@ -44,6 +44,10 @@ public:
 
     void _AddString(_Inout_ CCandidateListItem *pCandidateItem, _In_ BOOL isAddFindKeyCode);
     void _ClearList();
+    // [MspyIME] Page indicator data ("current/total") for the bottom strip.
+    void _SetPageStatus(_In_ UINT current, _In_ UINT total);
+    // [MspyIME] Re-fits the window height to the rows currently in the list.
+    void _OnListUpdated();
     UINT _GetCount()
     {
         return _candidateList.Count();
@@ -115,4 +119,8 @@ private:
 
     BOOL _dontAdjustOnEmptyItemPage;
     BOOL _isStoreAppMode;
+
+    // [MspyIME] Page indicator (1-based current page / total pages).
+    UINT _pageStatusCur;
+    UINT _pageStatusTotal;
 };

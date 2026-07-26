@@ -19,10 +19,12 @@
 // the registry values of the custmized display attributes
 const WCHAR CDisplayAttributeInfoInput::_s_szValueName[] = L"DisplayAttributeInput";
 const WCHAR CDisplayAttributeInfoConverted::_s_szValueName[] = L"DisplayAttributeConverted";
+const WCHAR CDisplayAttributeInfoAnchor::_s_szValueName[] = L"DisplayAttributeAnchor";  // [MspyIME]
 
 // The descriptions
 const WCHAR CDisplayAttributeInfoInput::_s_szDescription[] = L"Sample IME Text Service Display Attribute Input";
 const WCHAR CDisplayAttributeInfoConverted::_s_szDescription[] = L"Sample IME Text Service Display Attribute Converted";
+const WCHAR CDisplayAttributeInfoAnchor::_s_szDescription[] = L"Mspy IME Selection Anchor Highlight";  // [MspyIME]
 
 //+---------------------------------------------------------------------------
 //
@@ -53,6 +55,18 @@ const TF_DISPLAYATTRIBUTE CDisplayAttributeInfoConverted::_s_DisplayAttribute =
     FALSE,                                  // underline boldness
     { TF_CT_NONE, 0 },                      // underline color (app default)
     TF_ATTR_TARGET_CONVERTED                // attribute info
+};
+
+// [MspyIME] Selection anchor: soft accent background so the character the
+// digit-8 menu would target stands out; text/underline as Converted.
+const TF_DISPLAYATTRIBUTE CDisplayAttributeInfoAnchor::_s_DisplayAttribute =
+{
+    { TF_CT_COLORREF, RGB(0x1a, 0x1a, 0x1a) },  // near-black text
+    { TF_CT_COLORREF, RGB(0xcc, 0xe0, 0xf7) },  // light blue highlight
+    TF_LS_DOT,                                  // keep the dotted underline
+    FALSE,                                      // underline boldness
+    { TF_CT_NONE, 0 },                          // underline color default
+    TF_ATTR_TARGET_CONVERTED                    // attribute info
 };
 
 //+---------------------------------------------------------------------------

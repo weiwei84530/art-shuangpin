@@ -75,6 +75,8 @@ public:
 
     void _SetText(_In_ CSampleImeArray<CCandidateListItem> *pCandidateList, BOOL isAddFindKeyCode);
     void _ClearList();
+    // [MspyIME] Forwards page indicator data ("current/total") to the window.
+    void _SetPageStatus(UINT current, UINT total);
     VOID _SetTextColor(COLORREF crColor, COLORREF crBkColor);
     VOID _SetFillColor(HBRUSH hBrush);
 

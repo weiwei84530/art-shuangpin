@@ -135,7 +135,7 @@ STDAPI CEnumDisplayAttributeInfo::Clone(_Out_ IEnumTfDisplayAttributeInfo **ppEn
 // Returns an array of display attribute info objects supported by this service.
 //----------------------------------------------------------------------------
 
-const int MAX_DISPLAY_ATTRIBUTE_INFO = 2;
+const int MAX_DISPLAY_ATTRIBUTE_INFO = 3;  // [MspyIME] +Anchor
 
 STDAPI CEnumDisplayAttributeInfo::Next(ULONG ulCount, __RPC__out_ecount_part(ulCount, *pcFetched) ITfDisplayAttributeInfo **rgInfo, __RPC__out ULONG *pcFetched)
 {
@@ -173,6 +173,15 @@ STDAPI CEnumDisplayAttributeInfo::Next(ULONG ulCount, __RPC__out_ecount_part(ulC
                 return E_OUTOFMEMORY;
             }
 
+        }
+        else if (_index == 2)
+        {
+            // [MspyIME]
+            pDisplayAttributeInfo = new (std::nothrow) CDisplayAttributeInfoAnchor();
+            if ((pDisplayAttributeInfo) == nullptr)
+            {
+                return E_OUTOFMEMORY;
+            }
         }
         else
         {

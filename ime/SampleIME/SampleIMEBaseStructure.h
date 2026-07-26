@@ -65,7 +65,10 @@ enum KEYSTROKE_FUNCTION
     FUNCTION_DOUBLE_SINGLE_BYTE,
 
     // Function Punctuation
-    FUNCTION_PUNCTUATION
+    FUNCTION_PUNCTUATION,
+
+    // [MspyIME] Bare Shift tap: Chinese/English mode toggle.
+    FUNCTION_SHIFT_TAP
 };
 
 //---------------------------------------------------------------------

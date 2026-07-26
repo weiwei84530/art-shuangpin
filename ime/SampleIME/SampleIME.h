@@ -120,6 +120,9 @@ public:
     HRESULT _HandleCompositionArrowKey(TfEditCookie ec, _In_ ITfContext *pContext, KEYSTROKE_FUNCTION keyFunction);
     HRESULT _HandleCompositionPunctuation(TfEditCookie ec, _In_ ITfContext *pContext, WCHAR wch);
     HRESULT _HandleCompositionDoubleSingleByte(TfEditCookie ec, _In_ ITfContext *pContext, WCHAR wch);
+    // [MspyIME] Bare Shift tap: Chinese/English toggle (with mid-composition
+    // space insertion handled by the composer).
+    HRESULT _HandleShiftTap(TfEditCookie ec, _In_ ITfContext *pContext);
 
     // key event handlers for candidate object.
     HRESULT _HandleCandidateFinalize(TfEditCookie ec, _In_ ITfContext *pContext);
@@ -175,7 +178,7 @@ private:
     // [MspyIME] Renders [inputStart, inputStart+inputLen) with the Input
     // attribute (blue) and the rest of the composition as Converted
     // (black, still underlined). Offsets are UTF-16 code units.
-    BOOL _SetCompositionDisplayAttributesSplit(TfEditCookie ec, _In_ ITfContext *pContext, LONG inputStart, LONG inputLen);
+    BOOL _SetCompositionDisplayAttributesSplit(TfEditCookie ec, _In_ ITfContext *pContext, LONG inputStart, LONG inputLen, LONG anchorLen);
     // [MspyIME] Places the app caret inside the composition.
     void _SetCaretInComposition(TfEditCookie ec, _In_ ITfContext *pContext, LONG caretOffset);
     BOOL _InitDisplayAttributeGuidAtom();
@@ -241,6 +244,13 @@ private:
     // guidatom for the display attibute.
     TfGuidAtom _gaDisplayAttributeInput;
     TfGuidAtom _gaDisplayAttributeConverted;
+    // [MspyIME] background-highlighted selection anchor (char right of the
+    // composer cursor).
+    TfGuidAtom _gaDisplayAttributeAnchor;
+
+    // [MspyIME] TRUE between a Shift key-down and key-up with no other key
+    // in between; a Shift key-up while armed is a "bare Shift tap".
+    BOOL _shiftTapArmed;
 
     CANDIDATE_MODE _candidateMode;
     CCandidateListUIPresenter *_pCandidateListUIPresenter;

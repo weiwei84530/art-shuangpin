@@ -162,6 +162,15 @@ extern const GUID SampleIMEGuidDisplayAttributeConverted = {
     { 0xbb, 0xbb, 0x8b, 0x9d, 0x25, 0x5f, 0x10, 0xf8 }
 };
 
+// [MspyIME] selection anchor (char right of the cursor), highlighted bk
+// {3A89ADB3-9FDF-40FB-AB77-601DB679562F}
+extern const GUID SampleIMEGuidDisplayAttributeAnchor = {
+    0x3a89adb3,
+    0x9fdf,
+    0x40fb,
+    { 0xab, 0x77, 0x60, 0x1d, 0xb6, 0x79, 0x56, 0x2f }
+};
+
 
 //---------------------------------------------------------------------
 // UI element

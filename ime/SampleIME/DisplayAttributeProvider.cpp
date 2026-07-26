@@ -71,6 +71,15 @@ STDAPI CSampleIME::GetDisplayAttributeInfo(__RPC__in REFGUID guidInfo, __RPC__de
             return E_OUTOFMEMORY;
         }
     }
+    else if (IsEqualGUID(guidInfo, Global::SampleIMEGuidDisplayAttributeAnchor))
+    {
+        // [MspyIME]
+        *ppInfo = new (std::nothrow) CDisplayAttributeInfoAnchor();
+        if ((*ppInfo) == nullptr)
+        {
+            return E_OUTOFMEMORY;
+        }
+    }
     else
     {
         return E_INVALIDARG;

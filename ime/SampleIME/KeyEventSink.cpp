@@ -280,6 +280,17 @@ STDAPI CSampleIME::OnTestKeyDown(ITfContext *pContext, WPARAM wParam, LPARAM lPa
 {
     Global::UpdateModifiers(wParam, lParam);
 
+    // [MspyIME] Mirror the arm/disarm in OnKeyDown: some hosts only issue
+    // the Test variant for keys the IME does not eat.
+    if (wParam == VK_SHIFT || wParam == VK_LSHIFT || wParam == VK_RSHIFT)
+    {
+        _shiftTapArmed = TRUE;
+    }
+    else
+    {
+        _shiftTapArmed = FALSE;
+    }
+
     _KEYSTROKE_STATE KeystrokeState;
     WCHAR wch = '\0';
     UINT code = 0;
@@ -309,6 +320,18 @@ STDAPI CSampleIME::OnTestKeyDown(ITfContext *pContext, WPARAM wParam, LPARAM lPa
 STDAPI CSampleIME::OnKeyDown(ITfContext *pContext, WPARAM wParam, LPARAM lParam, BOOL *pIsEaten)
 {
     Global::UpdateModifiers(wParam, lParam);
+
+    // [MspyIME] Bare-Shift-tap detection: a Shift key-down arms the tap;
+    // any other key in between disarms it (so Shift+letter capitals in the
+    // English segment never toggle the mode).
+    if (wParam == VK_SHIFT || wParam == VK_LSHIFT || wParam == VK_RSHIFT)
+    {
+        _shiftTapArmed = TRUE;
+    }
+    else
+    {
+        _shiftTapArmed = FALSE;
+    }
 
     _KEYSTROKE_STATE KeystrokeState;
     WCHAR wch = '\0';
@@ -364,6 +387,14 @@ STDAPI CSampleIME::OnTestKeyUp(ITfContext *pContext, WPARAM wParam, LPARAM lPara
 
     Global::UpdateModifiers(wParam, lParam);
 
+    // [MspyIME] An armed Shift-up is about to be handled as a mode toggle.
+    if ((wParam == VK_SHIFT || wParam == VK_LSHIFT || wParam == VK_RSHIFT) &&
+        _shiftTapArmed)
+    {
+        *pIsEaten = TRUE;
+        return S_OK;
+    }
+
     WCHAR wch = '\0';
     UINT code = 0;
 
@@ -383,6 +414,29 @@ STDAPI CSampleIME::OnTestKeyUp(ITfContext *pContext, WPARAM wParam, LPARAM lPara
 STDAPI CSampleIME::OnKeyUp(ITfContext *pContext, WPARAM wParam, LPARAM lParam, BOOL *pIsEaten)
 {
     Global::UpdateModifiers(wParam, lParam);
+
+    // [MspyIME] A Shift key-up while armed is a bare Shift tap: toggle
+    // Chinese/English through the composer (which also inserts the space
+    // when a composition is open).
+    if ((wParam == VK_SHIFT || wParam == VK_LSHIFT || wParam == VK_RSHIFT) &&
+        _shiftTapArmed)
+    {
+        _shiftTapArmed = FALSE;
+
+        BOOL isOpen = FALSE;
+        CCompartment CompartmentKeyboardOpen(_pThreadMgr, _tfClientId, GUID_COMPARTMENT_KEYBOARD_OPENCLOSE);
+        CompartmentKeyboardOpen._GetCompartmentBOOL(isOpen);
+
+        if (isOpen && !_IsKeyboardDisabled())
+        {
+            _KEYSTROKE_STATE KeystrokeState;
+            KeystrokeState.Category = CATEGORY_COMPOSING;
+            KeystrokeState.Function = FUNCTION_SHIFT_TAP;
+            _InvokeKeyHandler(pContext, (UINT)wParam, L'\0', (DWORD)lParam, KeystrokeState);
+            *pIsEaten = TRUE;
+            return S_OK;
+        }
+    }
 
     WCHAR wch = '\0';
     UINT code = 0;

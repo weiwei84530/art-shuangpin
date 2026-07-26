@@ -1533,21 +1533,15 @@ void CCompositionProcessorEngine::HideAllLanguageBarIcons()
 
 void CCompositionProcessorEngine::SetInitialCandidateListRange()
 {
-    for (DWORD i = 1; i <= 10; i++)
+    // [MspyIME] Six candidates per page, selected with digits 1-6.
+    for (DWORD i = 1; i <= 6; i++)
     {
         DWORD* pNewIndexRange = nullptr;
 
         pNewIndexRange = _candidateListIndexRange.Append();
         if (pNewIndexRange != nullptr)
         {
-            if (i != 10)
-            {
-                *pNewIndexRange = i;
-            }
-            else
-            {
-                *pNewIndexRange = 0;
-            }
+            *pNewIndexRange = i;
         }
     }
 }
@@ -1627,6 +1621,8 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeedMspy(UINT uCode, _In_reads_(1)
         return TRUE;
     };
 
+    selecting;  // selection keys are all plain chars routed through feedChar
+
     switch (uCode)
     {
     case VK_BACK:
@@ -1634,54 +1630,32 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeedMspy(UINT uCode, _In_reads_(1)
     case VK_RETURN:
         return active ? eat(CATEGORY_COMPOSING, FUNCTION_FINALIZE_TEXTSTORE) : FALSE;
     case VK_ESCAPE:
-        if (selecting)
-        {
-            // Close the candidate window only (keep composing); routed to
-            // _HandleCandidateFinalize which we rewired to feedEsc+sync.
-            return eat(CATEGORY_CANDIDATE, FUNCTION_FINALIZE_CANDIDATELIST);
-        }
+        // Esc cancels the whole composition; feedEsc closes the menu too.
         return active ? eat(CATEGORY_COMPOSING, FUNCTION_CANCEL) : FALSE;
     case VK_DOWN:
-        if (state == mspy::Composer::State::kComposing)
-        {
-            return eat(CATEGORY_COMPOSING, FUNCTION_CONVERT);  // open candidates
-        }
-        if (selecting)
-        {
-            return eat(CATEGORY_CANDIDATE, FUNCTION_MOVE_DOWN);
-        }
-        return FALSE;
     case VK_UP:
-        // Same close-window-only semantics as Esc during selection.
-        return selecting ? eat(CATEGORY_CANDIDATE, FUNCTION_FINALIZE_CANDIDATELIST) : FALSE;
-    case VK_PRIOR:
-        return selecting ? eat(CATEGORY_CANDIDATE, FUNCTION_MOVE_PAGE_UP) : FALSE;
-    case VK_NEXT:
-        return selecting ? eat(CATEGORY_CANDIDATE, FUNCTION_MOVE_PAGE_DOWN) : FALSE;
     case VK_LEFT:
     case VK_RIGHT:
-        // v0.1: eaten and ignored while active so the caret cannot escape
-        // the composition.
-        return active ? eat(CATEGORY_COMPOSING,
-                            uCode == VK_LEFT ? FUNCTION_MOVE_LEFT : FUNCTION_MOVE_RIGHT)
-                      : FALSE;
+    case VK_PRIOR:
+    case VK_NEXT:
+        // Selection moved to the digit keys (8 opens, 9/0 move, 7/8 page).
+        // Arrows are eaten as no-ops while active so the caret cannot
+        // escape the composition.
+        return active ? eat(CATEGORY_NONE, FUNCTION_NONE) : FALSE;
     default:
         break;
     }
 
     WCHAR wch = pwch ? *pwch : L'\0';
-    if (wch >= L'A' && wch <= L'Z')
+    if (wch >= L'A' && wch <= L'Z' && !composer->englishMode())
     {
+        // Chinese mode normalizes to lowercase; the English inline segment
+        // keeps the case the user typed.
         wch = wch - L'A' + L'a';
     }
     if (wch == L'\0' || wch >= 0x80)
     {
         return FALSE;
-    }
-
-    if (selecting && wch >= L'1' && wch <= L'9')
-    {
-        return eat(CATEGORY_CANDIDATE, FUNCTION_SELECT_BY_NUMBER);
     }
 
     if (composer->wouldConsume(static_cast<char>(wch)))

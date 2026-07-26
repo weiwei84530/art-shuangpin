@@ -1,4 +1,4 @@
-# Wei雙音拚輸入法 — 專案說明
+# 阿特雙拼輸入法 — 專案說明
 
 ## 專案目標
 
@@ -24,9 +24,10 @@ cli\    REPL 測試臺（日常開發主力，不碰 TSF）
 
 - 每音節＝微軟雙拼 2 鍵（zh→v、ch→i、sh→u、ing→`;`）＋選擇性聲調數字。
 - **聲調語意（嚴格，已拍板勿反覆）**：不打數字＝只出一聲+輕聲；明打 `1`＝只出一聲；`5`＝只輕聲；2/3/4 精確。
-- 模態選字：組字中行內整句轉換、無候選窗；↓ 開窗後數字 1-9 選字；Esc/↑ 關窗。
-- 空白鍵＝輸出空白字元；`,`/`.` 直接上屏「，」「。」。
-- 顯示名稱「Wei雙音拚輸入法」，zh-TW（LANGID 0x0404），輸出繁體。
+- 模態選字（2026-07-27 大改版）：組字中行內整句轉換；**數字全為控制鍵**——`8` 開選單、`9`/`0` 移游標（兩端環繞、游標右字反白錨點）、選單內 `1`-`6` 選字（每頁 6）、`7`/`8` 翻頁不環繞、其他鍵關窗並執行原功能；方向鍵在組字中吃掉無作用。
+- **Shift 單獨輕按＝中英切換**：無組字時全域放行；組字中自動插半形空白（進出各一）、底線維持、英文段字面插入游標處、Enter commit。
+- 空白鍵＝與 Enter 同（整段 commit）；`,`/`.` 直接上屏「，」「。」。
+- 顯示名稱「阿特雙拼輸入法」，zh-TW（LANGID 0x0404），輸出繁體。
 
 ## Git 約定（覆寫全域規則）
 
@@ -55,4 +56,5 @@ cli\    REPL 測試臺（日常開發主力，不碰 TSF）
 - 2026-07-26：**M0d 完成**——SampleIME retarget v143（WPO off、C4463 bitfield 修正）雙架構建置；LANGID 已提前改 0x0404（掛在中文(台灣)下，免裝簡中）。已部署至 out\deploy 並以管理員註冊（HKCR/CTF TIP 已驗證）。
 - 2026-07-26：**M0e 完成（使用者實測通過）**。兩個 Win11 坑已修：(1) `ITfContextView::GetWnd` 回 NULL → 候選窗無主不顯示，`GetFocus()` 後備（CandidateListUIPresenter.cpp）；(2) `TEXTSERVICE_DIC` 是**DLL 同層**的檔名（無子資料夾），部署時勿放 Dictionary\。除錯基礎設施：`MSPY_DEBUG_LOG`（Private.h 開關）寫 `%TEMP%\MspyIME.debug.log`。
 - 2026-07-27：**M3 主體接線完成**，設計見 docs/m3-design.md。要點：MspyBridge（ime\）持有 LM+Composer；`IsVirtualKeyNeedMspy` 全面接管按鍵路由（原樣本邏輯 #if 0 保留）；KeyHandler 各 `_Handle*` 改為「餵 composer + `_SyncComposer`」單一模式；Esc/↑ 在選字時走 CANDIDATE/FINALIZE_CANDIDATELIST（只關窗）；數字選字以「頁內編號→字串→比對 composer 候選」解析；詞庫部署為 DLL 同層 `mspy-data.txt`。vcxproj：/utf-8 **/permissive**（樣本舊碼過不了 C++20 嚴格模式）、C++20、連 build\ 與 build32\ 的 mspy_core+mcb_engine。使用者實測迭代修正：候選窗（GetWnd 後備＋詞典路徑）、`_AddComposingAndChar` 以選取位置裁切組字範圍造成游標中移時右側文字重複（改 `_SetCompositionText` 直設整段）、**OnCompositionTerminated 改為保留文字（點他處＝自動上屏）並重置 composer**、標點全表（雾凇式，引號開閉交替）、雙色顯示（黑＝聲調已定、藍＝未定；**全段虛線底線直到 commit**）、←/→ 組字內移動游標、空白＝commit（與 Enter 同）。
+- 2026-07-27：**M5 完成（互動大改版＋正名「阿特雙拼輸入法」）**。(1) 選字改全數字操作：`9`/`0` 游標左右（環繞）、`8` 開選單（游標錨點反白＝新 TSF 顯示屬性淡藍底）、每頁 6 候選 `1`-`6` 選、`7`/`8` 翻頁不環繞、任何其他鍵關窗並執行原功能；←/→/↑/↓/Esc 選字功能全移除（組字中方向鍵吃掉、Esc=全取消）。(2) Shift 單獨輕按中英切換（KeyEventSink 按下/放開偵測，Shift+字母不誤觸）；組字中切換自動插空白、英文段以 literal 讀音（`\x01` 前綴哨兵、RelaxedToneLM 解析）進詞格、底線維持。(3) 候選窗美化：白底、DWM 圓角、細邊框、選中列淡藍、灰數字、右下頁碼、高度貼合內容、微軟正黑體、移除捲軸。(4) 正名只改顯示名稱（Register.cpp TEXTSERVICE_DESC），GUID 全部不動；**需以管理員重跑 register-dev.ps1 更新註冊表名稱**。138 tests 全綠。
 - 2026-07-27：**M4 完成，tag v0.1**。UOM 學習（容量 500、半衰期 90 分；手動選字 observe、每次插入後 suggest 回套）；多音節手選詞持久化 `%APPDATA%\MspyIME\user-phrases.txt`（附加＋去重＋重載；單字僅 UOM 工作階段學習，避免 score-0 永久壓排序）；**正名「Wei雙音拚輸入法」，13 組 GUID 全部重生成（新 CLSID 22DFB512-5772-4938-9FF1-EE24B3904B74），舊 CLSID 已反註冊**。127 tests 全綠。

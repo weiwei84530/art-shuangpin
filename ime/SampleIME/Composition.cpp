@@ -32,8 +32,7 @@ STDAPI CSampleIME::OnCompositionTerminated(TfEditCookie ecWrite, _In_ ITfComposi
         CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
         if (pBridge && pBridge->IsReady())
         {
-            pBridge->Composer()->feedEsc();
-            pBridge->Composer()->feedEsc();
+            pBridge->Composer()->cancel();
         }
     }
 

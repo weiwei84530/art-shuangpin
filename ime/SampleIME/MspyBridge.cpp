@@ -117,6 +117,7 @@ const CMspyBridge::Segments& CMspyBridge::GetSegments()
         mspy::Composer::DisplaySegments segments = _composer->displaySegments();
         _segments.before = ToWide(segments.before);
         _segments.unconfirmed = ToWide(segments.unconfirmed);
+        _segments.highlighted = ToWide(segments.highlighted);
         _segments.after = ToWide(segments.after);
     }
     else
@@ -131,7 +132,7 @@ const std::vector<std::wstring>& CMspyBridge::CandidateTexts()
     _candidateTexts.clear();
     if (_composer)
     {
-        for (const auto& c : _composer->candidates())
+        for (const auto& c : _composer->currentPageCandidates())
         {
             _candidateTexts.push_back(ToWide(c.value));
         }

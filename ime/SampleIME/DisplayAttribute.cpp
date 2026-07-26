@@ -83,7 +83,7 @@ BOOL CSampleIME::_SetCompositionDisplayAttributes(TfEditCookie ec, _In_ ITfConte
 //
 //----------------------------------------------------------------------------
 
-BOOL CSampleIME::_SetCompositionDisplayAttributesSplit(TfEditCookie ec, _In_ ITfContext *pContext, LONG inputStart, LONG inputLen)
+BOOL CSampleIME::_SetCompositionDisplayAttributesSplit(TfEditCookie ec, _In_ ITfContext *pContext, LONG inputStart, LONG inputLen, LONG anchorLen)
 {
     ITfRange* pRangeComposition = nullptr;
     if (FAILED(_pComposition->GetRange(&pRangeComposition)))
@@ -102,22 +102,32 @@ BOOL CSampleIME::_SetCompositionDisplayAttributesSplit(TfEditCookie ec, _In_ ITf
         var.lVal = _gaDisplayAttributeConverted;
         hr = pProperty->SetValue(ec, pRangeComposition, &var);
 
-        // Overlay the unconfirmed segment with the Input attribute.
-        if (inputLen > 0)
+        // Helper: overlay [start, start+len) with the given attribute atom.
+        auto overlay = [&](LONG start, LONG len, TfGuidAtom atom)
         {
+            if (len <= 0)
+            {
+                return;
+            }
             ITfRange* pSegment = nullptr;
             if (SUCCEEDED(pRangeComposition->Clone(&pSegment)))
             {
                 LONG shifted = 0;
                 pSegment->Collapse(ec, TF_ANCHOR_START);
-                pSegment->ShiftEnd(ec, inputStart + inputLen, &shifted, nullptr);
-                pSegment->ShiftStart(ec, inputStart, &shifted, nullptr);
+                pSegment->ShiftEnd(ec, start + len, &shifted, nullptr);
+                pSegment->ShiftStart(ec, start, &shifted, nullptr);
 
-                var.lVal = _gaDisplayAttributeInput;
+                var.lVal = atom;
                 hr = pProperty->SetValue(ec, pSegment, &var);
                 pSegment->Release();
             }
-        }
+        };
+
+        // Unconfirmed segment in blue; the selection anchor (right after
+        // the caret) with the highlight background.
+        overlay(inputStart, inputLen, _gaDisplayAttributeInput);
+        overlay(inputStart + inputLen, anchorLen, _gaDisplayAttributeAnchor);
+
         pProperty->Release();
     }
 
@@ -183,6 +193,12 @@ BOOL CSampleIME::_InitDisplayAttributeGuidAtom()
     }
     // register the display attribute for the converted text.
     hr = pCategoryMgr->RegisterGUID(Global::SampleIMEGuidDisplayAttributeConverted, &_gaDisplayAttributeConverted);
+	if (FAILED(hr))
+    {
+        goto Exit;
+    }
+    // [MspyIME] register the selection-anchor highlight attribute.
+    hr = pCategoryMgr->RegisterGUID(Global::SampleIMEGuidDisplayAttributeAnchor, &_gaDisplayAttributeAnchor);
 	if (FAILED(hr))
     {
         goto Exit;

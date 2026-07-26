@@ -142,6 +142,7 @@ extern const GUID SampleIMEGuidLangBarPunctuation;
 
 extern const GUID SampleIMEGuidDisplayAttributeInput;
 extern const GUID SampleIMEGuidDisplayAttributeConverted;
+extern const GUID SampleIMEGuidDisplayAttributeAnchor;  // [MspyIME]
 
 extern const GUID SampleIMEGuidCandUIElement;
 

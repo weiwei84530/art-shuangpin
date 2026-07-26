@@ -126,6 +126,9 @@ HRESULT CKeyStateCategory::KeyStateHandler(KEYSTROKE_FUNCTION function, KeyHandl
     case FUNCTION_SELECT_BY_NUMBER:
         return HandleKeySelectByNumber(dto);
 
+    case FUNCTION_SHIFT_TAP:
+        return HandleKeyShiftTap(dto);
+
     }
     return E_INVALIDARG;
 }
@@ -224,6 +227,13 @@ HRESULT CKeyStateCategory::HandleKeySelectByNumber(KeyHandlerEditSessionDTO dto)
     return E_NOTIMPL;
 }
 
+// [MspyIME] _HandleShiftTap
+HRESULT CKeyStateCategory::HandleKeyShiftTap(KeyHandlerEditSessionDTO dto)
+{
+	dto;
+    return E_NOTIMPL;
+}
+
 /*
 class CKeyStateComposing
 */
@@ -291,6 +301,12 @@ HRESULT CKeyStateComposing::HandleKeyDoubleSingleByte(KeyHandlerEditSessionDTO d
 HRESULT CKeyStateComposing::HandleKeyPunctuation(KeyHandlerEditSessionDTO dto)
 {
     return _pTextService->_HandleCompositionPunctuation(dto.ec, dto.pContext, dto.wch);
+}
+
+// [MspyIME]
+HRESULT CKeyStateComposing::HandleKeyShiftTap(KeyHandlerEditSessionDTO dto)
+{
+    return _pTextService->_HandleShiftTap(dto.ec, dto.pContext);
 }
 
 /*

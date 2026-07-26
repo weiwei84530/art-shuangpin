@@ -10,6 +10,10 @@
 #include "BaseWindow.h"
 #include "CandidateWindow.h"
 
+// [MspyIME] Rounded corners on Windows 11.
+#include <dwmapi.h>
+#pragma comment(lib, "dwmapi.lib")
+
 //+---------------------------------------------------------------------------
 //
 // ctor
@@ -20,8 +24,9 @@ CCandidateWindow::CCandidateWindow(_In_ CANDWNDCALLBACK pfnCallback, _In_ void *
 {
     _currentSelection = 0;
 
-    _SetTextColor(CANDWND_ITEM_COLOR, GetSysColor(COLOR_WINDOW));    // text color is black
-    _SetFillColor((HBRUSH)(COLOR_WINDOW+1));
+    // [MspyIME] Modern light theme defaults.
+    _SetTextColor(CANDWND_ITEM_COLOR, CANDWND_BK_COLOR);
+    _SetFillColor((HBRUSH)GetStockObject(WHITE_BRUSH));
 
     _pIndexRange = pIndexRange;
 
@@ -40,6 +45,22 @@ CCandidateWindow::CCandidateWindow(_In_ CANDWNDCALLBACK pfnCallback, _In_ void *
     _dontAdjustOnEmptyItemPage = FALSE;
 
     _isStoreAppMode = isStoreAppMode;
+
+    _pageStatusCur = 0;
+    _pageStatusTotal = 0;
+}
+
+// [MspyIME]
+void CCandidateWindow::_SetPageStatus(_In_ UINT current, _In_ UINT total)
+{
+    _pageStatusCur = current;
+    _pageStatusTotal = total;
+}
+
+// [MspyIME]
+void CCandidateWindow::_OnListUpdated()
+{
+    _ResizeWindow();
 }
 
 //+---------------------------------------------------------------------------
@@ -79,11 +100,8 @@ BOOL CCandidateWindow::_Create(ATOM atom, _In_ UINT wndWidth, _In_opt_ HWND pare
         goto Exit;
     }
 
-    ret = _CreateVScrollWindow();
-    if (FALSE == ret)
-    {
-        goto Exit;
-    }
+    // [MspyIME] No scrollbar: the composer pages with digits 7/8 and the
+    // window only ever shows the current page (at most 6 rows).
 
     _ResizeWindow();
 
@@ -97,10 +115,20 @@ BOOL CCandidateWindow::_CreateMainWindow(ATOM atom, _In_opt_ HWND parentWndHandl
 
     if (!CBaseWindow::_Create(atom,
         WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
-        WS_BORDER | WS_POPUP,
+        WS_POPUP,
         NULL, 0, 0, parentWndHandle))
     {
         return FALSE;
+    }
+
+    // [MspyIME] Ask DWM for small rounded corners (no-op before Win11).
+    HWND wndHandle = _GetWnd();
+    if (wndHandle != nullptr)
+    {
+        const DWORD DWMWA_WINDOW_CORNER_PREFERENCE_LOCAL = 33;  // DWMWA_WINDOW_CORNER_PREFERENCE
+        const DWORD DWMWCP_ROUNDSMALL_LOCAL = 3;                // DWMWCP_ROUNDSMALL
+        DWORD pref = DWMWCP_ROUNDSMALL_LOCAL;
+        DwmSetWindowAttribute(wndHandle, DWMWA_WINDOW_CORNER_PREFERENCE_LOCAL, &pref, sizeof(pref));
     }
 
     return TRUE;
@@ -161,18 +189,20 @@ void CCandidateWindow::_ResizeWindow()
 
     _cxTitle = max(_cxTitle, size.cx + 2 * GetSystemMetrics(SM_CXFRAME));
 
+    // [MspyIME] Size to the rows actually shown (the list holds only the
+    // current page) plus the page-indicator strip at the bottom.
+    int rows = (int)_candidateList.Count();
     int candidateListPageCnt = _pIndexRange->Count();
-    CBaseWindow::_Resize(0, 0, _cxTitle, _cyRow * candidateListPageCnt);
-
-    RECT rcCandRect = {0, 0, 0, 0};
-    _GetClientRect(&rcCandRect);
-
-    int letf = rcCandRect.right - GetSystemMetrics(SM_CXVSCROLL) * 2 - CANDWND_BORDER_WIDTH;
-    int top = rcCandRect.top + CANDWND_BORDER_WIDTH;
-    int width = GetSystemMetrics(SM_CXVSCROLL) * 2;
-    int height = rcCandRect.bottom - rcCandRect.top - CANDWND_BORDER_WIDTH * 2;
-
-    _pVScrollBarWnd->_Resize(letf, top, width, height);
+    if (rows < 1)
+    {
+        rows = 1;
+    }
+    if (rows > candidateListPageCnt)
+    {
+        rows = candidateListPageCnt;
+    }
+    CBaseWindow::_Resize(0, 0, _cxTitle,
+                         _cyRow * rows + CANDWND_PAGEBAR_HEIGHT);
 }
 
 //+---------------------------------------------------------------------------
@@ -329,7 +359,7 @@ LRESULT CALLBACK CCandidateWindow::_WindowProcCallback(_In_ HWND wndHandle, UINT
 
             dcHandle = BeginPaint(wndHandle, &ps);
             _OnPaint(dcHandle, &ps);
-            _DrawBorder(wndHandle, CANDWND_BORDER_WIDTH*2);
+            _DrawBorder(wndHandle, CANDWND_BORDER_WIDTH);
             EndPaint(wndHandle, &ps);
         }
         return 0;
@@ -469,7 +499,7 @@ void CCandidateWindow::_OnLButtonDown(POINT pt)
         RECT rc = {0, 0, 0, 0};
 
         rc.left = rcWindow.left;
-        rc.right = rcWindow.right - GetSystemMetrics(SM_CXVSCROLL) * 2;
+        rc.right = rcWindow.right;  // [MspyIME] full-width rows, no scrollbar
         rc.top = rcWindow.top + (pageCount * cyLine);
         rc.bottom = rcWindow.top + ((pageCount + 1) * cyLine);
 
@@ -606,16 +636,23 @@ void CCandidateWindow::_OnVScroll(DWORD dwSB, _In_ DWORD nPos)
 
 void CCandidateWindow::_DrawList(_In_ HDC dcHandle, _In_ UINT iIndex, _In_ RECT *prc)
 {
+    // [MspyIME] Modern light card: full-width rows, soft accent fill on
+    // the selected row, gray digits, page indicator strip at the bottom.
     int pageCount = 0;
     int candidateListPageCnt = _pIndexRange->Count();
 
     int cxLine = _TextMetric.tmAveCharWidth;
     int cyLine = max(_cyRow, _TextMetric.tmHeight);
-    int cyOffset = (cyLine == _cyRow ? (cyLine-_TextMetric.tmHeight)/2 : 0);
+    int cyOffset = (cyLine == _cyRow ? (cyLine - _TextMetric.tmHeight) / 2 : 0);
 
-    RECT rc;
+    RECT rcClient = {0, 0, 0, 0};
+    _GetClientRect(&rcClient);
 
-	const size_t lenOfPageCount = 16;
+    HBRUSH selectedBrush = CreateSolidBrush(CANDWND_SELECTED_BK_COLOR);
+
+    SetBkMode(dcHandle, TRANSPARENT);
+
+    const size_t lenOfPageCount = 16;
     for (;
         (iIndex < _candidateList.Count()) && (pageCount < candidateListPageCnt);
         iIndex++, pageCount++)
@@ -623,46 +660,51 @@ void CCandidateWindow::_DrawList(_In_ HDC dcHandle, _In_ UINT iIndex, _In_ RECT 
         WCHAR pageCountString[lenOfPageCount] = {'\0'};
         CCandidateListItem* pItemList = nullptr;
 
-        rc.top = prc->top + pageCount * cyLine;
-        rc.bottom = rc.top + cyLine;
+        RECT rcRow;
+        rcRow.top = prc->top + pageCount * cyLine;
+        rcRow.bottom = rcRow.top + cyLine;
+        rcRow.left = rcClient.left;
+        rcRow.right = rcClient.right;
 
-        rc.left = prc->left + PageCountPosition * cxLine;
-        rc.right = prc->left + StringPosition * cxLine;
+        if (_currentSelection == iIndex && selectedBrush != nullptr)
+        {
+            FillRect(dcHandle, &rcRow, selectedBrush);
+        }
 
-        // Number Font Color And BK
+        // Digit label in gray.
         SetTextColor(dcHandle, CANDWND_NUM_COLOR);
-        SetBkColor(dcHandle, GetSysColor(COLOR_3DHIGHLIGHT));
-
         StringCchPrintf(pageCountString, ARRAYSIZE(pageCountString), L"%d", (LONG)*_pIndexRange->GetAt(pageCount));
-        ExtTextOut(dcHandle, PageCountPosition * cxLine, pageCount * cyLine + cyOffset, ETO_OPAQUE, &rc, pageCountString, lenOfPageCount, NULL);
+        ExtTextOut(dcHandle, PageCountPosition * cxLine, pageCount * cyLine + cyOffset, 0, NULL, pageCountString, (UINT)wcslen(pageCountString), NULL);
 
-        rc.left = prc->left + StringPosition * cxLine;
-        rc.right = prc->right;
-
-        // Candidate Font Color And BK
-        if (_currentSelection != iIndex)
-        {
-            SetTextColor(dcHandle, _crTextColor);
-            SetBkColor(dcHandle, GetSysColor(COLOR_3DHIGHLIGHT));
-        }
-        else
-        {
-            SetTextColor(dcHandle, CANDWND_SELECTED_ITEM_COLOR);
-            SetBkColor(dcHandle, CANDWND_SELECTED_BK_COLOR);
-        }
-
+        // Candidate text.
+        SetTextColor(dcHandle, (_currentSelection == iIndex)
+                                   ? CANDWND_SELECTED_ITEM_COLOR
+                                   : _crTextColor);
         pItemList = _candidateList.GetAt(iIndex);
-        ExtTextOut(dcHandle, StringPosition * cxLine, pageCount * cyLine + cyOffset, ETO_OPAQUE, &rc, pItemList->_ItemString.Get(), (DWORD)pItemList->_ItemString.GetLength(), NULL);
+        ExtTextOut(dcHandle, StringPosition * cxLine, pageCount * cyLine + cyOffset, 0, NULL, pItemList->_ItemString.Get(), (DWORD)pItemList->_ItemString.GetLength(), NULL);
     }
-    for (; (pageCount < candidateListPageCnt); pageCount++)
+
+    if (selectedBrush != nullptr)
     {
-        rc.top    = prc->top + pageCount * cyLine;
-        rc.bottom = rc.top + cyLine;
+        DeleteObject(selectedBrush);
+    }
 
-        rc.left   = prc->left + PageCountPosition * cxLine;
-        rc.right  = prc->left + StringPosition * cxLine;
+    // Page indicator ("current/total"), bottom-right, only when paging.
+    if (_pageStatusTotal > 1)
+    {
+        WCHAR pageStatus[32] = {'\0'};
+        StringCchPrintf(pageStatus, ARRAYSIZE(pageStatus), L"%u/%u",
+                        _pageStatusCur, _pageStatusTotal);
 
-        FillRect(dcHandle, &rc, (HBRUSH)(COLOR_3DHIGHLIGHT+1));
+        RECT rcBar;
+        rcBar.left = rcClient.left;
+        rcBar.right = rcClient.right - cxLine;
+        rcBar.top = rcClient.bottom - CANDWND_PAGEBAR_HEIGHT;
+        rcBar.bottom = rcClient.bottom;
+
+        SetTextColor(dcHandle, CANDWND_PAGE_COLOR);
+        DrawText(dcHandle, pageStatus, -1, &rcBar,
+                 DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
     }
 }
 
@@ -681,7 +723,8 @@ void CCandidateWindow::_DrawBorder(_In_ HWND wndHandle, _In_ int cx)
     // zero based
     OffsetRect(&rcWnd, -rcWnd.left, -rcWnd.top); 
 
-    HPEN hPen = CreatePen(PS_DOT, cx, CANDWND_BORDER_COLOR);
+    // [MspyIME] Thin solid hairline instead of the sample's dotted frame.
+    HPEN hPen = CreatePen(PS_SOLID, cx, CANDWND_BORDER_COLOR);
     HPEN hPenOld = (HPEN)SelectObject(dcHandle, hPen);
     HBRUSH hBorderBrush = (HBRUSH)GetStockObject(NULL_BRUSH);
     HBRUSH hBorderBrushOld = (HBRUSH)SelectObject(dcHandle, hBorderBrush);

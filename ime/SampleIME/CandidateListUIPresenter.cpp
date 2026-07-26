@@ -32,14 +32,14 @@ const int MOVETO_BOTTOM = -1;
 
 HRESULT CSampleIME::_HandleCandidateFinalize(TfEditCookie ec, _In_ ITfContext *pContext)
 {
-    // [MspyIME] Esc/Up during selection: close the candidate window only
-    // and keep composing (spec §6).
+    // [MspyIME] Window-only teardown (e.g. mouse dismissal): close the
+    // candidate menu and keep composing.
     CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
     if (pBridge == nullptr || !pBridge->IsReady())
     {
         return S_OK;
     }
-    mspy::Composer::Result result = pBridge->Composer()->feedEsc();
+    mspy::Composer::Result result = pBridge->Composer()->closeCandidateMenu();
     return _SyncComposer(ec, pContext, result.commitText.c_str());
 }
 
@@ -831,6 +831,9 @@ void CCandidateListUIPresenter::_SetText(_In_ CSampleImeArray<CCandidateListItem
 
     SetPageIndexWithScrollInfo(pCandidateList);
 
+    // [MspyIME] Fit the window height to the rows of the current page.
+    _pCandidateWnd->_OnListUpdated();
+
     if (_isShowMode)
     {
         _pCandidateWnd->_InvalidateRect();
@@ -894,6 +897,19 @@ void CCandidateListUIPresenter::_ClearList()
 void CCandidateListUIPresenter::_SetTextColor(COLORREF crColor, COLORREF crBkColor)
 {
     _pCandidateWnd->_SetTextColor(crColor, crBkColor);
+}
+
+// [MspyIME]
+void CCandidateListUIPresenter::_SetPageStatus(UINT current, UINT total)
+{
+    if (_pCandidateWnd)
+    {
+        _pCandidateWnd->_SetPageStatus(current, total);
+        if (_isShowMode)
+        {
+            _pCandidateWnd->_InvalidateRect();
+        }
+    }
 }
 
 void CCandidateListUIPresenter::_SetFillColor(HBRUSH hBrush)
