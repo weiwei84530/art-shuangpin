@@ -177,6 +177,11 @@ HRESULT CSampleIME::_SyncComposer(TfEditCookie ec, _In_ ITfContext *pContext, co
         return hr;
     }
 
+    // Two-tone rendering: tone-settled head in plain black ("converted"),
+    // still-retrofittable tail in blue underline ("input").
+    const std::wstring& tail = pBridge->UnconfirmedTail();
+    _SetCompositionDisplayAttributesSplit(ec, pContext, (LONG)tail.length());
+
     if (state == mspy::Composer::State::kSelecting)
     {
         hr = _CreateAndStartCandidate(_pCompositionProcessorEngine, ec, pContext);

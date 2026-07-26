@@ -134,6 +134,52 @@ TEST_F(ComposerTest, DirectPunctuation) {
   EXPECT_EQ(r.commitText, "中。");
 }
 
+TEST_F(ComposerTest, FullPunctuationTable) {
+  EXPECT_EQ(composer_->feedChar('[').commitText, "「");
+  EXPECT_EQ(composer_->feedChar(']').commitText, "」");
+  EXPECT_EQ(composer_->feedChar('{').commitText, "『");
+  EXPECT_EQ(composer_->feedChar('}').commitText, "』");
+  EXPECT_EQ(composer_->feedChar('\\').commitText, "、");
+  EXPECT_EQ(composer_->feedChar('?').commitText, "？");
+  EXPECT_EQ(composer_->feedChar('!').commitText, "！");
+  EXPECT_EQ(composer_->feedChar('<').commitText, "《");
+  EXPECT_EQ(composer_->feedChar('^').commitText, "……");
+
+  // Quotes alternate between opening and closing forms.
+  EXPECT_EQ(composer_->feedChar('"').commitText, "“");
+  EXPECT_EQ(composer_->feedChar('"').commitText, "”");
+  EXPECT_EQ(composer_->feedChar('\'').commitText, "‘");
+  EXPECT_EQ(composer_->feedChar('\'').commitText, "’");
+
+  // ';' alone is punctuation, but still forms -ing inside a syllable.
+  EXPECT_EQ(composer_->feedChar(';').commitText, "；");
+  Type("x;");
+  EXPECT_EQ(composer_->composedText(), "星");
+}
+
+TEST_F(ComposerTest, UnconfirmedTailTracksToneSettlement) {
+  Type("wo");  // eager bare insert: still retrofittable -> unconfirmed
+  EXPECT_EQ(composer_->composedText(), "窝");
+  EXPECT_EQ(composer_->unconfirmedTail(), "窝");
+
+  Type("3");  // tone settled -> everything confirmed
+  EXPECT_EQ(composer_->composedText(), "我");
+  EXPECT_EQ(composer_->unconfirmedTail(), "");
+  composer_->feedEsc();
+
+  // Starting the next syllable confirms the previous bare one (the 窩愛你
+  // scenario): typing the next first key turns 窩 black.
+  Type("wo");
+  Type("o");
+  EXPECT_EQ(composer_->composedText(), "窝o");
+  EXPECT_EQ(composer_->unconfirmedTail(), "o");
+  composer_->feedEsc();
+
+  // A half syllable alone is entirely unconfirmed.
+  Type("u");
+  EXPECT_EQ(composer_->unconfirmedTail(), "ㄕ");
+}
+
 TEST_F(ComposerTest, EnterCommits) {
   Type("vs3");
   auto r = composer_->feedEnter();

@@ -34,6 +34,9 @@ public:
 
     // Refreshes and returns the inline composition text.
     const std::wstring& ComposedText();
+    // Refreshes and returns the tone-unsettled tail of the composition
+    // (rendered with the blue-underline "input" attribute).
+    const std::wstring& UnconfirmedTail();
     // Refreshes and returns the candidate strings (Selecting state).
     const std::vector<std::wstring>& CandidateTexts();
 
@@ -42,6 +45,7 @@ private:
     std::shared_ptr<mspy::RelaxedToneLM> _relaxed;
     std::unique_ptr<mspy::Composer> _composer;
     std::wstring _composedText;
+    std::wstring _unconfirmedTail;
     std::vector<std::wstring> _candidateTexts;
     BOOL _ready = FALSE;
 };

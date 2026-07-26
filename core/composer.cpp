@@ -6,13 +6,40 @@ namespace mspy {
 
 namespace {
 
-// Punctuation committed directly (docs/spec.md §6).
+// Punctuation committed directly as full-width symbols, following the
+// user's Rime (rime-ice default) habits. Quotes are handled separately
+// because they alternate between opening and closing forms.
 const char* DirectPunctuation(char c) {
   switch (c) {
     case ',': return "，";
     case '.': return "。";
+    case '?': return "？";
+    case '!': return "！";
+    case ':': return "：";
+    case ';': return "；";  // only reachable when not part of a syllable
+    case '\\': return "、";
+    case '[': return "「";
+    case ']': return "」";
+    case '{': return "『";
+    case '}': return "』";
+    case '(': return "（";
+    case ')': return "）";
+    case '<': return "《";
+    case '>': return "》";
+    case '^': return "……";
+    case '_': return "——";
+    case '~': return "～";
     default: return nullptr;
   }
+}
+
+// Returns the number of bytes of the last UTF-8 code point in `s`
+// (0 if empty).
+size_t LastUtf8CharBytes(const std::string& s) {
+  if (s.empty()) return 0;
+  size_t i = s.size();
+  while (i > 0 && (static_cast<unsigned char>(s[i - 1]) & 0xC0) == 0x80) --i;
+  return s.size() - (i > 0 ? i - 1 : 0);
 }
 
 const char* ToneMark(char digit) {
@@ -38,6 +65,20 @@ std::string Composer::composedText() const {
   for (const auto& v : walk_.valuesAsStrings()) text += v;
   text += pending_.displayText();
   return text;
+}
+
+std::string Composer::unconfirmedTail() const {
+  std::string tail;
+  if (lastWasBare_) {
+    // The last reading maps to (in practice) one character at the end of
+    // the walked text; it is still tone-retrofittable.
+    std::string walked;
+    for (const auto& v : walk_.valuesAsStrings()) walked += v;
+    size_t n = LastUtf8CharBytes(walked);
+    tail = walked.substr(walked.size() - n);
+  }
+  tail += pending_.displayText();
+  return tail;
 }
 
 bool Composer::insertReading(const std::string& reading) {
@@ -120,13 +161,13 @@ bool Composer::wouldConsume(char c) const {
   if (state_ == State::kSelecting) return true;
   const bool composing = state_ == State::kComposing;
   if (c >= 'a' && c <= 'z') return true;
-  if (c == ',' || c == '.') return true;
+  if (DirectPunctuation(c) != nullptr || c == '"' || c == '\'') return true;
   if (c >= '1' && c <= '5') {
     if (pending_.complete()) return true;
     if (pending_.empty() && lastWasBare_) return true;
     return composing;
   }
-  // ';', space, other digits, everything else printable.
+  // Space, other digits, everything else printable.
   return composing;
 }
 
@@ -156,39 +197,53 @@ Composer::Result Composer::feedChar(char c) {
     // Not a tone position: fall through to the literal-key handling below.
   }
 
-  // Direct punctuation commits the buffer plus the full-width symbol.
-  if (const char* punct = DirectPunctuation(c)) {
-    std::string commit = composing ? takeCommitText() : "";
-    commit += punct;
-    reset();
-    return {true, commit};
-  }
-
-  // Letters and ';' build syllables.
+  // Letters and ';' build syllables. (';' doubles as the ing final key;
+  // when it cannot extend a syllable it falls through to punctuation.)
   if ((c >= 'a' && c <= 'z') || c == ';') {
     if (pending_.complete()) {
       // The syllable has no tone-1/neutral entry (eager finalize failed
       // earlier); a tone digit or backspace is required first.
       return {true, ""};
     }
-    const bool wasEmpty = pending_.empty();
-    if (!pending_.feed(c)) {
-      // Invalid first key (';') or structurally impossible pair.
+    if (pending_.feed(c)) {
+      lastWasBare_ = false;
+      if (pending_.complete()) {
+        // Eager finalize: show the converted character the moment the
+        // syllable completes; a following tone digit retrofits the tone.
+        if (finalizePendingBare()) {
+          lastWasBare_ = true;
+        }
+        // else: keep the pending syllable on screen awaiting its tone.
+      }
+      state_ = State::kComposing;
+      return {true, ""};
+    }
+    if (c != ';') {
+      // Structurally impossible pair: reject the key while composing.
       if (composing) return {true, ""};
       return {false, ""};
     }
-    lastWasBare_ = false;
-    if (pending_.complete()) {
-      // Eager finalize: show the converted character the moment the
-      // syllable completes; a following tone digit retrofits the tone.
-      if (finalizePendingBare()) {
-        lastWasBare_ = true;
-      }
-      // else: keep the pending syllable on screen awaiting its tone.
-    }
-    (void)wasEmpty;
-    state_ = State::kComposing;
-    return {true, ""};
+    // fall through: lone ';' becomes full-width punctuation
+  }
+
+  // Quotes alternate between opening and closing forms.
+  if (c == '"' || c == '\'') {
+    bool& open = (c == '"') ? doubleQuoteOpen_ : singleQuoteOpen_;
+    const char* symbol =
+        (c == '"') ? (open ? "”" : "“") : (open ? "’" : "‘");
+    open = !open;
+    std::string commit = composing ? takeCommitText() : "";
+    commit += symbol;
+    reset();
+    return {true, commit};
+  }
+
+  // Direct punctuation commits the buffer plus the full-width symbol.
+  if (const char* punct = DirectPunctuation(c)) {
+    std::string commit = composing ? takeCommitText() : "";
+    commit += punct;
+    reset();
+    return {true, commit};
   }
 
   // Everything else (space, non-tone digits, unhandled punctuation):

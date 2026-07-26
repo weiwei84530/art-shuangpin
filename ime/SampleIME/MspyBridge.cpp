@@ -70,6 +70,12 @@ const std::wstring& CMspyBridge::ComposedText()
     return _composedText;
 }
 
+const std::wstring& CMspyBridge::UnconfirmedTail()
+{
+    _unconfirmedTail = _composer ? ToWide(_composer->unconfirmedTail()) : L"";
+    return _unconfirmedTail;
+}
+
 const std::vector<std::wstring>& CMspyBridge::CandidateTexts()
 {
     _candidateTexts.clear();

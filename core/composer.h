@@ -37,6 +37,13 @@ class Composer {
   // syllable's display (e.g. 我喜歡ㄋ while typing ㄋㄧˇ).
   std::string composedText() const;
 
+  // The tail of composedText() whose tone is not settled yet: the pending
+  // syllable display plus, if the last syllable was eagerly inserted as
+  // tone-less and can still be retrofitted by a tone digit, its character.
+  // The shell renders this tail with the "input" display attribute (blue
+  // underline) and the rest as "converted" (plain black).
+  std::string unconfirmedTail() const;
+
   // Candidates of the span being selected (valid in kSelecting).
   const std::vector<Formosa::Gramambular2::ReadingGrid::Candidate>&
   candidates() const {
@@ -88,6 +95,10 @@ class Composer {
   // a tone digit may still retrofit it.
   bool lastWasBare_ = false;
   std::vector<std::string> lastBareSyllables_;
+
+  // Paired-quote alternation (Rime-style): next " types “ or ”.
+  bool doubleQuoteOpen_ = false;
+  bool singleQuoteOpen_ = false;
 
   // Selection state.
   size_t selectionLocation_ = 0;

@@ -169,6 +169,9 @@ private:
     // function for the display attribute
     void _ClearCompositionDisplayAttributes(TfEditCookie ec, _In_ ITfContext *pContext);
     BOOL _SetCompositionDisplayAttributes(TfEditCookie ec, _In_ ITfContext *pContext, TfGuidAtom gaDisplayAttribute);
+    // [MspyIME] Head of the composition renders "converted" (plain black),
+    // the last tailChars UTF-16 units render "input" (blue underline).
+    BOOL _SetCompositionDisplayAttributesSplit(TfEditCookie ec, _In_ ITfContext *pContext, LONG tailChars);
     BOOL _InitDisplayAttributeGuidAtom();
 
     BOOL _InitThreadMgrEventSink();

@@ -40,10 +40,13 @@ const TF_DISPLAYATTRIBUTE CDisplayAttributeInfoInput::_s_DisplayAttribute =
     TF_ATTR_INPUT                           // attribute info
 };
 
+// [MspyIME] Tone-settled text renders as plain default text (black),
+// no highlight: "確定" per the user's spec; the blue underlined Input
+// attribute above marks the still-unconfirmed tail.
 const TF_DISPLAYATTRIBUTE CDisplayAttributeInfoConverted::_s_DisplayAttribute =
 {
-    { TF_CT_COLORREF, RGB(255, 255, 255) }, // text color
-    { TF_CT_COLORREF, RGB( 0, 255, 255) },  // background color (TF_CT_NONE => app default)
+    { TF_CT_NONE, 0 },                      // text color (app default)
+    { TF_CT_NONE, 0 },                      // background color (app default)
     TF_LS_NONE,                             // underline style
     FALSE,                                  // underline boldness
     { TF_CT_NONE, 0 },                      // underline color
