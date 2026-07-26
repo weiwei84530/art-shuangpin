@@ -43,14 +43,16 @@ function Deploy-One([string]$srcDir, [string]$arch) {
 Deploy-One $X64Build "x64"
 Deploy-One $X86Build "x86"
 
-# SampleIME (M0 stock build) loads its demo dictionary from a Dictionary\
-# folder next to the DLL.
-$dictSrc = Join-Path $root "ime\SampleIME\Dictionary"
+# SampleIME (M0 stock build) resolves TEXTSERVICE_DIC directly NEXT TO the
+# DLL (verified via debug log), so the dictionary goes into the arch root.
+$dictSrc = Join-Path $root "ime\SampleIME\Dictionary\SampleIMESimplifiedQuanPin.txt"
 if (Test-Path $dictSrc) {
     foreach ($arch in "x64", "x86") {
         $dstDir = Join-Path $deployDir $arch
         if (Test-Path $dstDir) {
-            Copy-Item -Recurse -Force $dictSrc (Join-Path $dstDir "Dictionary")
+            Copy-Item -Force $dictSrc $dstDir
+            $legacy = Join-Path $dstDir "Dictionary"
+            if (Test-Path $legacy) { Remove-Item -Recurse -Force $legacy }
         }
     }
 }
