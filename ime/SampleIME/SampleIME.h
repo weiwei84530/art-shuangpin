@@ -108,6 +108,9 @@ public:
     HRESULT _SyncComposer(TfEditCookie ec, _In_ ITfContext *pContext, const char* commitUtf8);
     // [MspyIME] Ends and deletes the candidate list presenter, if any.
     void _DestroyCandidatePresenter();
+    // [MspyIME] Sets the composition range's text directly (independent of
+    // the current selection, unlike _AddComposingAndChar).
+    HRESULT _SetCompositionText(TfEditCookie ec, _In_ ITfContext *pContext, const WCHAR* pText, LONG cchText);
 
     // key event handlers for composition object.
     HRESULT _HandleCompositionInput(TfEditCookie ec, _In_ ITfContext *pContext, WCHAR wch);

@@ -125,6 +125,28 @@ void CSampleIME::_DestroyCandidatePresenter()
     }
 }
 
+// [MspyIME] Sets the composition range's text as a whole. The sample's
+// _AddComposingAndChar resolves the target range from the current
+// selection, which clips the range once the caret moves inside the
+// composition (it duplicated the text right of the caret).
+HRESULT CSampleIME::_SetCompositionText(TfEditCookie ec, _In_ ITfContext *pContext, const WCHAR* pText, LONG cchText)
+{
+    if (_pComposition == nullptr)
+    {
+        return E_FAIL;
+    }
+    ITfRange* pRange = nullptr;
+    HRESULT hr = _pComposition->GetRange(&pRange);
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+    hr = pRange->SetText(ec, 0, pText, cchText);
+    pRange->Release();
+    _SetCompositionLanguage(ec, pContext);
+    return hr;
+}
+
 // [MspyIME] Single place where the composer's state is reflected into TSF.
 HRESULT CSampleIME::_SyncComposer(TfEditCookie ec, _In_ ITfContext *pContext, const char* commitUtf8)
 {
@@ -142,9 +164,8 @@ HRESULT CSampleIME::_SyncComposer(TfEditCookie ec, _In_ ITfContext *pContext, co
         {
             _StartComposition(pContext);
         }
-        CStringRange commitRange;
-        commitRange.Set(commitText.c_str(), commitText.length());
-        _AddComposingAndChar(ec, pContext, &commitRange);
+        _SetCompositionText(ec, pContext, commitText.c_str(), (LONG)commitText.length());
+        _SetCaretInComposition(ec, pContext, (LONG)commitText.length());
         _DestroyCandidatePresenter();
         _TerminateComposition(ec, pContext);
         // The composer is Empty after producing commit text.
@@ -170,9 +191,8 @@ HRESULT CSampleIME::_SyncComposer(TfEditCookie ec, _In_ ITfContext *pContext, co
     }
     const CMspyBridge::Segments& segments = pBridge->GetSegments();
     const std::wstring composedText = segments.FullText();
-    CStringRange composedRange;
-    composedRange.Set(composedText.c_str(), composedText.length());
-    HRESULT hr = _AddComposingAndChar(ec, pContext, &composedRange);
+    HRESULT hr = _SetCompositionText(ec, pContext, composedText.c_str(),
+                                     (LONG)composedText.length());
     if (FAILED(hr))
     {
         return hr;

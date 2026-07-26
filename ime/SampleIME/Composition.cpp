@@ -9,6 +9,7 @@
 #include "Globals.h"
 #include "SampleIME.h"
 #include "CompositionProcessorEngine.h"
+#include "MspyBridge.h"  // [MspyIME]
 
 //+---------------------------------------------------------------------------
 //
@@ -20,8 +21,21 @@
 
 STDAPI CSampleIME::OnCompositionTerminated(TfEditCookie ecWrite, _In_ ITfComposition *pComposition)
 {
-    // Clear dummy composition
-    _RemoveDummyCompositionForComposing(ecWrite, pComposition);
+    ecWrite; pComposition;
+
+    // [MspyIME] The app ended our composition (e.g. the user clicked
+    // elsewhere). Match Windows Bopomofo: LEAVE the composed text in the
+    // document (auto-commit) instead of deleting it, and reset the
+    // composer so stale state cannot resurface on the next Down key.
+    if (_pCompositionProcessorEngine)
+    {
+        CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
+        if (pBridge && pBridge->IsReady())
+        {
+            pBridge->Composer()->feedEsc();
+            pBridge->Composer()->feedEsc();
+        }
+    }
 
     // Clear display attribute and end composition, _EndComposition will release composition for us
     ITfContext* pContext = _pContext;
