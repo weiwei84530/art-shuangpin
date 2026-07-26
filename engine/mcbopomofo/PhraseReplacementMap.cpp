@@ -23,10 +23,8 @@
 
 #include "PhraseReplacementMap.h"
 
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <unistd.h>
+// [MspyIME] Removed unused POSIX includes; file access goes through
+// MemoryMappedFile.
 
 #include <fstream>
 #include <string>

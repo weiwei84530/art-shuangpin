@@ -23,10 +23,8 @@
 
 #include "ParselessLM.h"
 
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <unistd.h>
+// [MspyIME] Removed unused POSIX includes (fcntl.h, sys/mman.h, sys/stat.h,
+// unistd.h); file access goes through MemoryMappedFile.
 
 #include <memory>
 #include <string>
@@ -72,38 +70,42 @@ ParselessLM::getUnigrams(const std::string& key) {
     std::string value;
     double score = 0;
 
+    // [MspyIME] Use raw pointers: string_view iterators are not pointers on
+    // MSVC.
+    const char* it = row.data();
+    const char* end = row.data() + row.size();
+
     // Move ahead until we encounter the first space. This is the key.
-    const auto* it = row.begin();
-    while (it != row.end() && *it != ' ') {
+    while (it != end && *it != ' ') {
       ++it;
     }
 
     // The key is std::string(row.begin(), it), which we don't need.
 
     // Read past the space.
-    if (it != row.end()) {
+    if (it != end) {
       ++it;
     }
 
-    if (it != row.end()) {
+    if (it != end) {
       // Now it is the start of the value portion.
-      const auto* value_begin = it;
+      const char* value_begin = it;
 
       // Move ahead until we encounter the second space. This is the
       // value.
-      while (it != row.end() && *it != ' ') {
+      while (it != end && *it != ' ') {
         ++it;
       }
       value = std::string(value_begin, it);
     }
 
     // Read past the space. The remainder, if it exists, is the score.
-    if (it != row.end()) {
+    if (it != end) {
       ++it;
     }
 
-    if (it != row.end()) {
-      score = std::stod(std::string(it, row.end()));
+    if (it != end) {
+      score = std::stod(std::string(it, end));
     }
     results.emplace_back(std::move(value), score);
   }

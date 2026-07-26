@@ -43,4 +43,11 @@ finally {
     Pop-Location
 }
 
-Write-Output "OK: $(Join-Path $outDir 'data.txt')"
+# Normalize to LF: ParselessPhraseDB requires exact "\n" line endings, but
+# Python on Windows writes CRLF in text mode.
+$dataTxt = Join-Path $outDir "data.txt"
+$text = [System.IO.File]::ReadAllText($dataTxt)
+[System.IO.File]::WriteAllText($dataTxt, $text.Replace("`r`n", "`n"),
+    (New-Object System.Text.UTF8Encoding $false))
+
+Write-Output "OK: $dataTxt"

@@ -25,9 +25,19 @@ add_library(mcb_engine STATIC
 )
 target_include_directories(mcb_engine PUBLIC engine engine/mcbopomofo)
 
+# --- Input core (our code, TSF-free) ---
+add_library(mspy_core STATIC
+  core/double_pinyin.cpp
+  core/syllable_input.cpp
+  core/relaxed_tone_lm.cpp
+  core/composer.cpp
+)
+target_include_directories(mspy_core PUBLIC core)
+target_link_libraries(mspy_core PUBLIC mcb_engine)
+
 # --- CLI harness (probe/REPL) ---
 add_executable(repl cli/repl.cpp)
-target_link_libraries(repl PRIVATE mcb_engine)
+target_link_libraries(repl PRIVATE mspy_core)
 
 # --- Unit tests (vendored upstream tests + ours) ---
 include(FetchContent)
@@ -47,7 +57,9 @@ add_executable(engine_tests
   engine/mcbopomofo/AssociatedPhrasesV2Test.cpp
   engine/mcbopomofo/ByteBlockBackedDictionaryTest.cpp
   engine/mcbopomofo/McBopomofoLMTest.cpp
-  engine/mcbopomofo/MemoryMappedFileTest.cpp
+  # MemoryMappedFileTest.cpp is POSIX-only (mkstemp/mkdtemp); the Win32 port
+  # is covered by MemoryMappedFileTestWin.cpp instead.
+  engine/mcbopomofo/MemoryMappedFileTestWin.cpp
   engine/mcbopomofo/ParselessLMTest.cpp
   engine/mcbopomofo/ParselessPhraseDBTest.cpp
   engine/mcbopomofo/PhraseReplacementMapTest.cpp
@@ -57,3 +69,11 @@ add_executable(engine_tests
 )
 target_link_libraries(engine_tests PRIVATE mcb_engine GTest::gtest_main)
 gtest_discover_tests(engine_tests)
+
+add_executable(core_tests
+  core/double_pinyin_test.cpp
+  core/relaxed_tone_lm_test.cpp
+  core/composer_test.cpp
+)
+target_link_libraries(core_tests PRIVATE mspy_core GTest::gtest_main)
+gtest_discover_tests(core_tests)

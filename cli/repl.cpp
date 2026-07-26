@@ -1,12 +1,14 @@
-// CLI harness for the conversion engine (no TSF involved).
+// CLI harness for the conversion engine and input core (no TSF involved).
 //
-// One-shot mode:  repl.exe [--data <path>] [--candidates] <reading> <reading>...
+// Reading mode:   repl.exe [--data <path>] [--candidates] <reading>...
 //                 e.g. repl.exe ㄒㄧㄣ ㄎㄨˋ ㄧㄣ ㄕㄨ ㄖㄨˋ ㄈㄚˇ
-// Piped mode:     each stdin line = whitespace-separated bopomofo readings
-//                 (UTF-8); prints the walked sentence per line.
-//
-// This is the M1 probe; the M2 interactive REPL (raw key input through the
-// double-pinyin input core) will grow on top of this file.
+// Key mode:       repl.exe --keys "ni3hk3."
+//                 feeds raw double-pinyin keys through the Composer and
+//                 prints every state transition. Control tokens:
+//                   {  Down (open candidates)   }  Up (close)
+//                   <  Backspace                !  Esc
+//                   \n (in piped key mode)      Enter
+// Piped mode:     each stdin line = whitespace-separated bopomofo readings.
 
 #include <windows.h>
 
@@ -17,7 +19,9 @@
 #include <vector>
 
 #include "McBopomofoLM.h"
+#include "composer.h"
 #include "gramambular2/reading_grid.h"
+#include "relaxed_tone_lm.h"
 
 namespace {
 
@@ -67,12 +71,62 @@ void WalkAndPrint(std::shared_ptr<McBopomofo::McBopomofoLM> lm,
   }
 }
 
+const char* StateName(mspy::Composer::State s) {
+  switch (s) {
+    case mspy::Composer::State::kEmpty: return "Empty";
+    case mspy::Composer::State::kComposing: return "Composing";
+    case mspy::Composer::State::kSelecting: return "Selecting";
+  }
+  return "?";
+}
+
+void PrintComposerState(const mspy::Composer& composer,
+                        const mspy::Composer::Result& result, char key) {
+  std::cout << "  '" << key << "' -> [" << StateName(composer.state()) << "] \""
+            << composer.composedText() << "\"";
+  if (!result.consumed) std::cout << " (pass-through)";
+  if (!result.commitText.empty())
+    std::cout << " COMMIT:\"" << result.commitText << "\"";
+  if (composer.state() == mspy::Composer::State::kSelecting) {
+    std::cout << " candidates:";
+    size_t shown = 0;
+    for (const auto& c : composer.candidates()) {
+      std::cout << " " << (shown + 1) << "." << c.value;
+      if (++shown >= 9) break;
+    }
+  }
+  std::cout << "\n";
+}
+
+void RunKeyMode(std::shared_ptr<McBopomofo::McBopomofoLM> lm,
+                const std::string& keys) {
+  auto relaxed = std::make_shared<mspy::RelaxedToneLM>(lm);
+  mspy::Composer composer(relaxed);
+  for (char c : keys) {
+    mspy::Composer::Result r;
+    switch (c) {
+      case '{': r = composer.feedDown(); break;
+      case '}': r = composer.feedUp(); break;
+      case '<': r = composer.feedBackspace(); break;
+      case '!': r = composer.feedEsc(); break;
+      case '\n': r = composer.feedEnter(); break;
+      default: r = composer.feedChar(c); break;
+    }
+    PrintComposerState(composer, r, c);
+  }
+  auto final = composer.feedEnter();
+  if (!final.commitText.empty())
+    std::cout << "  FINAL COMMIT: \"" << final.commitText << "\"\n";
+}
+
 }  // namespace
 
 int wmain(int argc, wchar_t** argv) {
   SetConsoleOutputCP(CP_UTF8);
 
   std::string dataPath = "out/data.txt";
+  std::string keySequence;
+  bool keyMode = false;
   bool showCandidates = false;
   std::vector<std::string> readings;
 
@@ -80,6 +134,9 @@ int wmain(int argc, wchar_t** argv) {
     std::string arg = Narrow(argv[i]);
     if (arg == "--data" && i + 1 < argc) {
       dataPath = Narrow(argv[++i]);
+    } else if (arg == "--keys" && i + 1 < argc) {
+      keyMode = true;
+      keySequence = Narrow(argv[++i]);
     } else if (arg == "--candidates") {
       showCandidates = true;
     } else {
@@ -92,6 +149,11 @@ int wmain(int argc, wchar_t** argv) {
   if (!lm->isDataModelLoaded()) {
     std::cerr << "failed to load language model: " << dataPath << "\n";
     return 1;
+  }
+
+  if (keyMode) {
+    RunKeyMode(lm, keySequence);
+    return 0;
   }
 
   if (!readings.empty()) {

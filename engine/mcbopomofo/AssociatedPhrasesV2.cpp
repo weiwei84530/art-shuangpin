@@ -46,8 +46,9 @@ enum class RowParseState { kParsingValue, kParsingReading };
 
 // Find the score in a string of the form /^(.+?)\s((-?)\d+(\.?)\d+)$/.
 static double GetScoreInRow(const std::string_view& v) {
-  const auto* it = v.cbegin();
-  const auto* end = v.cend();
+  // [MspyIME] string_view iterators are not raw pointers on MSVC.
+  const char* it = v.data();
+  const char* end = v.data() + v.size();
 
   while (it != end) {
     if (*it == ' ') {
@@ -66,8 +67,9 @@ static double GetScoreInRow(const std::string_view& v) {
 
 // Parse an associated phrases entry to the Phrase struct.
 static AssociatedPhrasesV2::Phrase PhraseFromRow(const std::string_view& v) {
-  const auto* it = v.cbegin();
-  const auto* end = v.cend();
+  // [MspyIME] string_view iterators are not raw pointers on MSVC.
+  const char* it = v.data();
+  const char* end = v.data() + v.size();
 
   std::stringstream sst;
   std::vector<std::string> readings;
