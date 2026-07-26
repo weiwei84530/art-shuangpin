@@ -6,10 +6,12 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "UserOverrideModel.h"
 #include "gramambular2/reading_grid.h"
 #include "relaxed_tone_lm.h"
 #include "syllable_input.h"
@@ -81,6 +83,12 @@ class Composer {
   // Selects a candidate by index into candidates() (kSelecting only).
   Result selectCandidate(size_t index);
 
+  // Called on every manual candidate selection with (reading key, value);
+  // the shell persists these as user phrases. The reading key is free of
+  // internal sentinels.
+  std::function<void(const std::string&, const std::string&)>
+      onManualSelection;
+
  private:
   // Finalizes the pending complete syllable as tone-less (tone 1/neutral).
   // This happens EAGERLY the moment the second key completes a syllable, so
@@ -105,6 +113,10 @@ class Composer {
   Formosa::Gramambular2::ReadingGrid::WalkResult walk_;
   SyllableInput pending_;
   State state_ = State::kEmpty;
+
+  // Session re-ranking learned from manual selections (LRU with time
+  // decay, McBopomofo's UserOverrideModel).
+  McBopomofo::UserOverrideModel uom_;
 
   // True when the most recent grid mutation was an eager bare insert, i.e.
   // a tone digit may still retrofit it.

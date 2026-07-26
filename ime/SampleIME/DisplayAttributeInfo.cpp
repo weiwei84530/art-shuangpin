@@ -47,9 +47,10 @@ const TF_DISPLAYATTRIBUTE CDisplayAttributeInfoConverted::_s_DisplayAttribute =
 {
     { TF_CT_NONE, 0 },                      // text color (app default)
     { TF_CT_NONE, 0 },                      // background color (app default)
-    TF_LS_SOLID,                            // underline style
-    TRUE,                                   // bold underline: some hosts
-                                            // render SOLID and DOT alike
+    TF_LS_DOT,                              // dotted, same as Input: the
+                                            // whole composition is dotted,
+                                            // only the COLOR differs
+    FALSE,                                  // underline boldness
     { TF_CT_NONE, 0 },                      // underline color (app default)
     TF_ATTR_TARGET_CONVERTED                // attribute info
 };

@@ -1,10 +1,20 @@
 #include "composer.h"
 
+#include <chrono>
 #include <utility>
 
 namespace mspy {
 
 namespace {
+
+// UserOverrideModel parameters, same as McBopomofo's.
+constexpr size_t kUserOverrideModelCapacity = 500;
+constexpr double kObservedOverrideHalfLife = 5400.0;  // 90 minutes
+
+double NowSeconds() {
+  using namespace std::chrono;
+  return duration<double>(system_clock::now().time_since_epoch()).count();
+}
 
 // Punctuation committed directly as full-width symbols, following the
 // user's Rime (rime-ice default) habits. Quotes are handled separately
@@ -69,7 +79,9 @@ const char* ToneMark(char digit) {
 }  // namespace
 
 Composer::Composer(std::shared_ptr<RelaxedToneLM> lm)
-    : lm_(lm), grid_(std::move(lm)) {
+    : lm_(lm),
+      grid_(std::move(lm)),
+      uom_(kUserOverrideModelCapacity, kObservedOverrideHalfLife) {
   grid_.setReadingSeparator("-");
 }
 
@@ -128,6 +140,26 @@ bool Composer::insertReading(const std::string& reading) {
   if (!lm_->hasUnigrams(reading)) return false;
   if (!grid_.insertReading(reading)) return false;
   walk_ = grid_.walk();
+
+  // Re-apply learned preferences around the just-inserted reading
+  // (mirrors McBopomofo's KeyHandler pattern).
+  const double now = NowSeconds();
+  auto suggestion = uom_.suggest(walk_, grid_.cursor(), now);
+  if (!suggestion.empty()) {
+    for (const auto& candidate : grid_.candidatesAt(grid_.cursor())) {
+      if (candidate.value == suggestion.candidate) {
+        grid_.overrideCandidate(
+            grid_.cursor(), candidate,
+            suggestion.forceHighScoreOverride
+                ? Formosa::Gramambular2::ReadingGrid::Node::OverrideType::
+                      kOverrideValueWithHighScore
+                : Formosa::Gramambular2::ReadingGrid::Node::OverrideType::
+                      kOverrideValueWithScoreFromTopUnigram);
+        walk_ = grid_.walk();
+        break;
+      }
+    }
+  }
   return true;
 }
 
@@ -378,8 +410,23 @@ Composer::Result Composer::selectCandidate(size_t index) {
   if (state_ != State::kSelecting || index >= candidates_.size()) {
     return {true, ""};
   }
-  grid_.overrideCandidate(selectionLocation_, candidates_[index]);
+  const auto& chosen = candidates_[index];
+  const auto walkBefore = walk_;
+  grid_.overrideCandidate(selectionLocation_, chosen);
   walk_ = grid_.walk();
+  uom_.observe(walkBefore, walk_, selectionLocation_, NowSeconds());
+
+  if (onManualSelection) {
+    // Strip the internal explicit-tone-1 sentinel before handing the
+    // reading key to the shell for persistence.
+    std::string reading = chosen.reading;
+    size_t pos;
+    while ((pos = reading.find(kToneSentinel1)) != std::string::npos) {
+      reading.erase(pos, sizeof(kToneSentinel1) - 1);
+    }
+    onManualSelection(reading, chosen.value);
+  }
+
   candidates_.clear();
   state_ = State::kComposing;
   return {true, ""};

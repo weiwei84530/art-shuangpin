@@ -4,6 +4,8 @@
 #include "Globals.h"
 #include "MspyBridge.h"
 
+#include <fstream>
+
 #include "McBopomofoLM.h"
 
 CMspyBridge::CMspyBridge() = default;
@@ -59,9 +61,53 @@ BOOL CMspyBridge::Initialize()
 
     _relaxed = std::make_shared<mspy::RelaxedToneLM>(_lm);
     _composer = std::make_unique<mspy::Composer>(_relaxed);
+
+    // User phrases live under %APPDATA%\MspyIME\user-phrases.txt.
+    WCHAR appData[MAX_PATH] = {L'\0'};
+    if (ExpandEnvironmentStringsW(L"%APPDATA%", appData, ARRAYSIZE(appData)) > 1)
+    {
+        std::wstring dir = std::wstring(appData) + L"\\MspyIME";
+        CreateDirectoryW(dir.c_str(), nullptr);
+        _userPhrasesPath = dir + L"\\user-phrases.txt";
+
+        std::ifstream in(_userPhrasesPath.c_str(), std::ios::binary);
+        if (in.is_open())
+        {
+            std::string line;
+            while (std::getline(in, line))
+            {
+                if (!line.empty() && line.back() == '\r') line.pop_back();
+                if (!line.empty()) _userPhraseLines.insert(line);
+            }
+            in.close();
+            _lm->loadUserPhrases(ToUtf8(_userPhrasesPath).c_str(), nullptr);
+        }
+    }
+
+    _composer->onManualSelection =
+        [this](const std::string& reading, const std::string& value)
+    {
+        PersistUserPhrase(reading, value);
+    };
+
     _ready = TRUE;
     Global::DebugLog(L"MspyBridge: loaded %s", path.c_str());
     return TRUE;
+}
+
+void CMspyBridge::PersistUserPhrase(const std::string& reading, const std::string& value)
+{
+    if (_userPhrasesPath.empty()) return;
+    // Only multi-syllable phrases; UserPhrasesLM lines are "value key".
+    if (reading.find('-') == std::string::npos) return;
+    std::string line = value + " " + reading;
+    if (!_userPhraseLines.insert(line).second) return;  // already stored
+
+    std::ofstream out(_userPhrasesPath.c_str(), std::ios::binary | std::ios::app);
+    if (!out.is_open()) return;
+    out << line << "\n";
+    out.close();
+    _lm->loadUserPhrases(ToUtf8(_userPhrasesPath).c_str(), nullptr);
 }
 
 const CMspyBridge::Segments& CMspyBridge::GetSegments()

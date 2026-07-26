@@ -8,6 +8,7 @@
 #pragma once
 
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -47,9 +48,17 @@ public:
     const std::vector<std::wstring>& CandidateTexts();
 
 private:
+    // Persists a manually selected multi-syllable phrase and reloads the
+    // user-phrase LM. Single characters rely on the in-session
+    // UserOverrideModel instead (a permanent score-0 entry would
+    // steamroll the dictionary ranking).
+    void PersistUserPhrase(const std::string& reading, const std::string& value);
+
     std::shared_ptr<McBopomofo::McBopomofoLM> _lm;
     std::shared_ptr<mspy::RelaxedToneLM> _relaxed;
     std::unique_ptr<mspy::Composer> _composer;
+    std::wstring _userPhrasesPath;
+    std::set<std::string> _userPhraseLines;
     Segments _segments;
     std::vector<std::wstring> _candidateTexts;
     BOOL _ready = FALSE;
