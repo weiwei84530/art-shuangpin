@@ -168,7 +168,8 @@ HRESULT CSampleIME::_SyncComposer(TfEditCookie ec, _In_ ITfContext *pContext, co
     {
         _StartComposition(pContext);
     }
-    const std::wstring& composedText = pBridge->ComposedText();
+    const CMspyBridge::Segments& segments = pBridge->GetSegments();
+    const std::wstring composedText = segments.FullText();
     CStringRange composedRange;
     composedRange.Set(composedText.c_str(), composedText.length());
     HRESULT hr = _AddComposingAndChar(ec, pContext, &composedRange);
@@ -177,10 +178,16 @@ HRESULT CSampleIME::_SyncComposer(TfEditCookie ec, _In_ ITfContext *pContext, co
         return hr;
     }
 
-    // Two-tone rendering: tone-settled head in plain black ("converted"),
-    // still-retrofittable tail in blue underline ("input").
-    const std::wstring& tail = pBridge->UnconfirmedTail();
-    _SetCompositionDisplayAttributesSplit(ec, pContext, (LONG)tail.length());
+    // Two-tone rendering: tone-settled text in black (still underlined
+    // until commit), the unconfirmed segment in blue.
+    _SetCompositionDisplayAttributesSplit(ec, pContext,
+                                          (LONG)segments.before.length(),
+                                          (LONG)segments.unconfirmed.length());
+
+    // The app caret follows the composer cursor (after the unconfirmed
+    // segment) so mid-buffer editing is visible.
+    _SetCaretInComposition(ec, pContext,
+                           (LONG)(segments.before.length() + segments.unconfirmed.length()));
 
     if (state == mspy::Composer::State::kSelecting)
     {
@@ -418,11 +425,17 @@ HRESULT CSampleIME::_HandleCompositionBackspace(TfEditCookie ec, _In_ ITfContext
 
 HRESULT CSampleIME::_HandleCompositionArrowKey(TfEditCookie ec, _In_ ITfContext *pContext, KEYSTROKE_FUNCTION keyFunction)
 {
-    // [MspyIME] v0.1: Left/Right are eaten and ignored while composing so
-    // the caret cannot escape the composition. (Cursor movement inside the
-    // buffer is a later feature.)
-    ec; pContext; keyFunction;
-    return S_OK;
+    // [MspyIME] Left/Right move the composer cursor inside the composition
+    // (MS-Bopomofo style: move, then Down opens candidates at that spot).
+    CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
+    if (pBridge == nullptr || !pBridge->IsReady())
+    {
+        return S_OK;
+    }
+    mspy::Composer::Result result =
+        (keyFunction == FUNCTION_MOVE_LEFT) ? pBridge->Composer()->feedLeft()
+                                            : pBridge->Composer()->feedRight();
+    return _SyncComposer(ec, pContext, result.commitText.c_str());
 }
 
 //+---------------------------------------------------------------------------

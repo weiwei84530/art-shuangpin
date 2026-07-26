@@ -50,7 +50,10 @@ if (Test-Path $mspyData) {
     foreach ($arch in "x64", "x86") {
         $dstDir = Join-Path $deployDir $arch
         if (Test-Path $dstDir) {
-            Copy-Item -Force $mspyData (Join-Path $dstDir "mspy-data.txt")
+            # A running TSF host keeps the data file memory-mapped; skip
+            # with a warning then (retry after closing the app).
+            try { Copy-Item -Force $mspyData (Join-Path $dstDir "mspy-data.txt") -ErrorAction Stop }
+            catch { Write-Output "WARN ${arch}: mspy-data.txt is mapped by a running app; not updated" }
         }
     }
 }

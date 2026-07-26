@@ -42,6 +42,19 @@ size_t LastUtf8CharBytes(const std::string& s) {
   return s.size() - (i > 0 ? i - 1 : 0);
 }
 
+// Splits `s` after `n` code points.
+void SplitAtCodePoints(const std::string& s, size_t n, std::string* left,
+                       std::string* right) {
+  size_t i = 0, count = 0;
+  while (i < s.size() && count < n) {
+    ++i;
+    while (i < s.size() && (static_cast<unsigned char>(s[i]) & 0xC0) == 0x80) ++i;
+    ++count;
+  }
+  *left = s.substr(0, i);
+  *right = s.substr(i);
+}
+
 const char* ToneMark(char digit) {
   switch (digit) {
     case '1': return kToneSentinel1;
@@ -60,25 +73,55 @@ Composer::Composer(std::shared_ptr<RelaxedToneLM> lm)
   grid_.setReadingSeparator("-");
 }
 
+Composer::DisplaySegments Composer::displaySegments() const {
+  std::string walked;
+  for (const auto& v : walk_.valuesAsStrings()) walked += v;
+
+  // Split the walked text at the cursor. Readings map 1:1 to characters
+  // for Chinese, so the reading cursor doubles as a code-point offset.
+  DisplaySegments segments;
+  std::string left;
+  SplitAtCodePoints(walked, grid_.cursor(), &left, &segments.after);
+
+  if (lastWasBare_ && !left.empty()) {
+    // The just-inserted bare syllable (left of the cursor) is still
+    // tone-retrofittable.
+    size_t n = LastUtf8CharBytes(left);
+    segments.unconfirmed = left.substr(left.size() - n);
+    left.resize(left.size() - n);
+  }
+  segments.before = std::move(left);
+  segments.unconfirmed += pending_.displayText();
+  return segments;
+}
+
 std::string Composer::composedText() const {
-  std::string text;
-  for (const auto& v : walk_.valuesAsStrings()) text += v;
-  text += pending_.displayText();
-  return text;
+  DisplaySegments segments = displaySegments();
+  return segments.before + segments.unconfirmed + segments.after;
 }
 
 std::string Composer::unconfirmedTail() const {
-  std::string tail;
-  if (lastWasBare_) {
-    // The last reading maps to (in practice) one character at the end of
-    // the walked text; it is still tone-retrofittable.
-    std::string walked;
-    for (const auto& v : walk_.valuesAsStrings()) walked += v;
-    size_t n = LastUtf8CharBytes(walked);
-    tail = walked.substr(walked.size() - n);
-  }
-  tail += pending_.displayText();
-  return tail;
+  return displaySegments().unconfirmed;
+}
+
+Composer::Result Composer::feedLeft() {
+  if (state_ == State::kSelecting) return {true, ""};
+  if (state_ != State::kComposing) return {false, ""};
+  if (!pending_.empty()) return {true, ""};  // settle the syllable first
+  lastWasBare_ = false;  // moving away ends the tone-retrofit window
+  size_t cursor = grid_.cursor();
+  if (cursor > 0) grid_.setCursor(cursor - 1);
+  return {true, ""};
+}
+
+Composer::Result Composer::feedRight() {
+  if (state_ == State::kSelecting) return {true, ""};
+  if (state_ != State::kComposing) return {false, ""};
+  if (!pending_.empty()) return {true, ""};
+  lastWasBare_ = false;
+  size_t cursor = grid_.cursor();
+  if (cursor < grid_.length()) grid_.setCursor(cursor + 1);
+  return {true, ""};
 }
 
 bool Composer::insertReading(const std::string& reading) {
@@ -246,8 +289,15 @@ Composer::Result Composer::feedChar(char c) {
     return {true, commit};
   }
 
-  // Everything else (space, non-tone digits, unhandled punctuation):
-  // pass through when idle; commit-then-emit while composing.
+  // Space commits the composition as-is (like Enter); a plain space when
+  // idle passes through to the application.
+  if (c == ' ') {
+    if (!composing) return {false, ""};
+    return {true, takeCommitText()};
+  }
+
+  // Everything else (non-tone digits, unhandled printable): pass through
+  // when idle; commit-then-emit while composing.
   if (!composing) return {false, ""};
   std::string commit = takeCommitText();
   commit.push_back(c);

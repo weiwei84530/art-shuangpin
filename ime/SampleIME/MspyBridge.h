@@ -32,11 +32,17 @@ public:
     static std::wstring ToWide(const std::string& utf8);
     static std::string ToUtf8(const std::wstring& wide);
 
-    // Refreshes and returns the inline composition text.
-    const std::wstring& ComposedText();
-    // Refreshes and returns the tone-unsettled tail of the composition
-    // (rendered with the blue-underline "input" attribute).
-    const std::wstring& UnconfirmedTail();
+    // UTF-16 mirror of mspy::Composer::DisplaySegments; the caret sits
+    // after `unconfirmed`.
+    struct Segments
+    {
+        std::wstring before;
+        std::wstring unconfirmed;
+        std::wstring after;
+        std::wstring FullText() const { return before + unconfirmed + after; }
+    };
+    // Refreshes and returns the current display segments.
+    const Segments& GetSegments();
     // Refreshes and returns the candidate strings (Selecting state).
     const std::vector<std::wstring>& CandidateTexts();
 
@@ -44,8 +50,7 @@ private:
     std::shared_ptr<McBopomofo::McBopomofoLM> _lm;
     std::shared_ptr<mspy::RelaxedToneLM> _relaxed;
     std::unique_ptr<mspy::Composer> _composer;
-    std::wstring _composedText;
-    std::wstring _unconfirmedTail;
+    Segments _segments;
     std::vector<std::wstring> _candidateTexts;
     BOOL _ready = FALSE;
 };

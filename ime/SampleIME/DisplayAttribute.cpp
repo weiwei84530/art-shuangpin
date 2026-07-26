@@ -83,7 +83,7 @@ BOOL CSampleIME::_SetCompositionDisplayAttributes(TfEditCookie ec, _In_ ITfConte
 //
 //----------------------------------------------------------------------------
 
-BOOL CSampleIME::_SetCompositionDisplayAttributesSplit(TfEditCookie ec, _In_ ITfContext *pContext, LONG tailChars)
+BOOL CSampleIME::_SetCompositionDisplayAttributesSplit(TfEditCookie ec, _In_ ITfContext *pContext, LONG inputStart, LONG inputLen)
 {
     ITfRange* pRangeComposition = nullptr;
     if (FAILED(_pComposition->GetRange(&pRangeComposition)))
@@ -98,43 +98,63 @@ BOOL CSampleIME::_SetCompositionDisplayAttributesSplit(TfEditCookie ec, _In_ ITf
         VARIANT var;
         var.vt = VT_I4;
 
-        if (tailChars <= 0)
+        // Whole range: Converted (black, underlined) as the base coat.
+        var.lVal = _gaDisplayAttributeConverted;
+        hr = pProperty->SetValue(ec, pRangeComposition, &var);
+
+        // Overlay the unconfirmed segment with the Input attribute.
+        if (inputLen > 0)
         {
-            var.lVal = _gaDisplayAttributeConverted;
-            hr = pProperty->SetValue(ec, pRangeComposition, &var);
-        }
-        else
-        {
-            ITfRange* pHead = nullptr;
-            ITfRange* pTail = nullptr;
-            if (SUCCEEDED(pRangeComposition->Clone(&pHead)) &&
-                SUCCEEDED(pRangeComposition->Clone(&pTail)))
+            ITfRange* pSegment = nullptr;
+            if (SUCCEEDED(pRangeComposition->Clone(&pSegment)))
             {
                 LONG shifted = 0;
-                pHead->ShiftEnd(ec, -tailChars, &shifted, nullptr);
-
-                pTail->Collapse(ec, TF_ANCHOR_END);
-                pTail->ShiftStart(ec, -tailChars, &shifted, nullptr);
-
-                BOOL headEmpty = TRUE;
-                pHead->IsEmpty(ec, &headEmpty);
-                if (!headEmpty)
-                {
-                    var.lVal = _gaDisplayAttributeConverted;
-                    pProperty->SetValue(ec, pHead, &var);
-                }
+                pSegment->Collapse(ec, TF_ANCHOR_START);
+                pSegment->ShiftEnd(ec, inputStart + inputLen, &shifted, nullptr);
+                pSegment->ShiftStart(ec, inputStart, &shifted, nullptr);
 
                 var.lVal = _gaDisplayAttributeInput;
-                hr = pProperty->SetValue(ec, pTail, &var);
+                hr = pProperty->SetValue(ec, pSegment, &var);
+                pSegment->Release();
             }
-            if (pHead) pHead->Release();
-            if (pTail) pTail->Release();
         }
         pProperty->Release();
     }
 
     pRangeComposition->Release();
     return (hr == S_OK);
+}
+
+//+---------------------------------------------------------------------------
+//
+// _SetCaretInComposition    [MspyIME]
+//
+//----------------------------------------------------------------------------
+
+void CSampleIME::_SetCaretInComposition(TfEditCookie ec, _In_ ITfContext *pContext, LONG caretOffset)
+{
+    ITfRange* pRangeComposition = nullptr;
+    if (FAILED(_pComposition->GetRange(&pRangeComposition)))
+    {
+        return;
+    }
+
+    ITfRange* pCaret = nullptr;
+    if (SUCCEEDED(pRangeComposition->Clone(&pCaret)))
+    {
+        LONG shifted = 0;
+        pCaret->Collapse(ec, TF_ANCHOR_START);
+        pCaret->ShiftEnd(ec, caretOffset, &shifted, nullptr);
+        pCaret->Collapse(ec, TF_ANCHOR_END);
+
+        TF_SELECTION sel;
+        sel.range = pCaret;
+        sel.style.ase = TF_AE_NONE;
+        sel.style.fInterimChar = FALSE;
+        pContext->SetSelection(ec, 1, &sel);
+        pCaret->Release();
+    }
+    pRangeComposition->Release();
 }
 
 //+---------------------------------------------------------------------------

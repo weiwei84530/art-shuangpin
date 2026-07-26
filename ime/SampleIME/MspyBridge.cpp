@@ -64,16 +64,20 @@ BOOL CMspyBridge::Initialize()
     return TRUE;
 }
 
-const std::wstring& CMspyBridge::ComposedText()
+const CMspyBridge::Segments& CMspyBridge::GetSegments()
 {
-    _composedText = _composer ? ToWide(_composer->composedText()) : L"";
-    return _composedText;
-}
-
-const std::wstring& CMspyBridge::UnconfirmedTail()
-{
-    _unconfirmedTail = _composer ? ToWide(_composer->unconfirmedTail()) : L"";
-    return _unconfirmedTail;
+    if (_composer)
+    {
+        mspy::Composer::DisplaySegments segments = _composer->displaySegments();
+        _segments.before = ToWide(segments.before);
+        _segments.unconfirmed = ToWide(segments.unconfirmed);
+        _segments.after = ToWide(segments.after);
+    }
+    else
+    {
+        _segments = {};
+    }
+    return _segments;
 }
 
 const std::vector<std::wstring>& CMspyBridge::CandidateTexts()

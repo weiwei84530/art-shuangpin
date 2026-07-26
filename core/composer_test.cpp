@@ -117,11 +117,43 @@ TEST_F(ComposerTest, SpacePassesThroughWhenIdleCommitsWhileComposing) {
   auto idle = composer_->feedChar(' ');
   EXPECT_FALSE(idle.consumed);
 
+  // Space acts like Enter: commits the buffer (no extra space character).
   Type("vs");
   auto r = composer_->feedChar(' ');
   EXPECT_TRUE(r.consumed);
-  EXPECT_EQ(r.commitText, "中 ");
+  EXPECT_EQ(r.commitText, "中");
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
+}
+
+TEST_F(ComposerTest, CursorMovementAndMidBufferEditing) {
+  Type("ni3hk3");  // 你好
+  EXPECT_EQ(composer_->composedText(), "你好");
+
+  // Move between 你 and 好; candidates there must include 好.
+  composer_->feedLeft();
+  composer_->feedDown();
+  ASSERT_EQ(composer_->state(), Composer::State::kSelecting);
+  bool found = false;
+  for (const auto& c : composer_->candidates()) {
+    if (c.value == "好") found = true;
+  }
+  EXPECT_TRUE(found);
+  composer_->feedEsc();
+
+  // Move to the very front and insert 我 there.
+  composer_->feedLeft();
+  Type("wo3");
+  EXPECT_EQ(composer_->composedText(), "我你好");
+
+  // Segments: caret after 我, tone settled everywhere.
+  auto segments = composer_->displaySegments();
+  EXPECT_EQ(segments.before, "我");
+  EXPECT_EQ(segments.unconfirmed, "");
+  EXPECT_EQ(segments.after, "你好");
+
+  // Enter commits the whole buffer regardless of cursor position.
+  auto r = composer_->feedEnter();
+  EXPECT_EQ(r.commitText, "我你好");
 }
 
 TEST_F(ComposerTest, DirectPunctuation) {

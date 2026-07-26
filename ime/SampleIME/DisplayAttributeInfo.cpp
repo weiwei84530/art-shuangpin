@@ -40,16 +40,16 @@ const TF_DISPLAYATTRIBUTE CDisplayAttributeInfoInput::_s_DisplayAttribute =
     TF_ATTR_INPUT                           // attribute info
 };
 
-// [MspyIME] Tone-settled text renders as plain default text (black),
-// no highlight: "確定" per the user's spec; the blue underlined Input
-// attribute above marks the still-unconfirmed tail.
+// [MspyIME] Tone-settled text renders as default (black) text but KEEPS a
+// solid underline: black means "tone visually settled", the underline
+// means "still uncommitted" until Enter/Space commits the buffer.
 const TF_DISPLAYATTRIBUTE CDisplayAttributeInfoConverted::_s_DisplayAttribute =
 {
     { TF_CT_NONE, 0 },                      // text color (app default)
     { TF_CT_NONE, 0 },                      // background color (app default)
-    TF_LS_NONE,                             // underline style
+    TF_LS_SOLID,                            // underline style
     FALSE,                                  // underline boldness
-    { TF_CT_NONE, 0 },                      // underline color
+    { TF_CT_NONE, 0 },                      // underline color (app default)
     TF_ATTR_TARGET_CONVERTED                // attribute info
 };
 

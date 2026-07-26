@@ -37,12 +37,27 @@ class Composer {
   // syllable's display (e.g. 我喜歡ㄋ while typing ㄋㄧˇ).
   std::string composedText() const;
 
-  // The tail of composedText() whose tone is not settled yet: the pending
-  // syllable display plus, if the last syllable was eagerly inserted as
-  // tone-less and can still be retrofitted by a tone digit, its character.
-  // The shell renders this tail with the "input" display attribute (blue
-  // underline) and the rest as "converted" (plain black).
+  // Display decomposition of composedText():
+  //   before      tone-settled text left of the active area
+  //   unconfirmed the pending syllable display plus, if the syllable just
+  //               inserted is still tone-retrofittable, its character
+  //   after       tone-settled text right of the caret (cursor movement)
+  // The caret sits between `unconfirmed` and `after`. The shell renders
+  // `unconfirmed` with the "input" attribute (blue) and the rest as
+  // "converted" (black); the whole string stays underlined until commit.
+  struct DisplaySegments {
+    std::string before;
+    std::string unconfirmed;
+    std::string after;
+  };
+  DisplaySegments displaySegments() const;
+
+  // Convenience for tests: displaySegments().unconfirmed.
   std::string unconfirmedTail() const;
+
+  // Cursor movement inside the composition (MS-Bopomofo style).
+  Result feedLeft();
+  Result feedRight();
 
   // Candidates of the span being selected (valid in kSelecting).
   const std::vector<Formosa::Gramambular2::ReadingGrid::Candidate>&
