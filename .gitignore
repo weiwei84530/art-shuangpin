@@ -1,0 +1,19 @@
+# Build outputs and generated artifacts
+out/
+build/
+.vs/
+x64/
+Win32/
+Debug/
+Release/
+*.user
+*.aps
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.mypy_cache/
+
+# Generated inside data\ by frequency_builder
+data/PhraseFreq.txt
