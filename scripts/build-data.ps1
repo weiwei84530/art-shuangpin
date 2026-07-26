@@ -3,6 +3,10 @@
 #   frequency_builder -> main_compiler (data-raw.txt) -> postprocess (data.txt)
 $ErrorActionPreference = "Stop"
 
+# The curation scripts open files without an explicit encoding; force UTF-8
+# so they don't fall back to the system ANSI codepage (cp950 on zh-TW).
+$env:PYTHONUTF8 = "1"
+
 $root = Split-Path $PSScriptRoot -Parent
 $dataDir = Join-Path $root "data"
 $outDir = Join-Path $root "out"

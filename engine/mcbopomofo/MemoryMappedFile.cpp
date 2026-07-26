@@ -23,6 +23,103 @@
 
 #include "MemoryMappedFile.h"
 
+#ifdef _WIN32
+// [MspyIME] Win32 port of the POSIX mmap implementation below.
+
+// clang-format off
+#include <windows.h>
+// clang-format on
+
+#include <cstdint>
+#include <string>
+#include <utility>
+
+namespace McBopomofo {
+
+MemoryMappedFile::MemoryMappedFile(MemoryMappedFile&& other) noexcept
+    : file_(std::exchange(other.file_, nullptr)),
+      mapping_(std::exchange(other.mapping_, nullptr)),
+      data_(std::exchange(other.data_, nullptr)),
+      length_(std::exchange(other.length_, 0)) {}
+
+MemoryMappedFile& MemoryMappedFile::operator=(
+    MemoryMappedFile&& other) noexcept {
+  close();
+  file_ = std::exchange(other.file_, nullptr);
+  mapping_ = std::exchange(other.mapping_, nullptr);
+  data_ = std::exchange(other.data_, nullptr);
+  length_ = std::exchange(other.length_, 0);
+  return *this;
+}
+
+MemoryMappedFile::~MemoryMappedFile() { close(); }
+
+bool MemoryMappedFile::open(const char* path) {
+  if (file_ != nullptr) {
+    return false;
+  }
+
+  // Paths are UTF-8 throughout the engine; widen for the W-series API.
+  int wlen = MultiByteToWideChar(CP_UTF8, 0, path, -1, nullptr, 0);
+  if (wlen <= 0) {
+    return false;
+  }
+  std::wstring wpath(static_cast<size_t>(wlen), L'\0');
+  MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath.data(), wlen);
+
+  HANDLE file =
+      CreateFileW(wpath.c_str(), GENERIC_READ,
+                  FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                  nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (file == INVALID_HANDLE_VALUE) {
+    return false;
+  }
+
+  // CreateFileMappingW fails on empty files, matching the mmap behavior.
+  LARGE_INTEGER size;
+  if (!GetFileSizeEx(file, &size) || size.QuadPart <= 0 ||
+      static_cast<std::uint64_t>(size.QuadPart) > SIZE_MAX) {
+    CloseHandle(file);
+    return false;
+  }
+
+  HANDLE mapping = CreateFileMappingW(file, nullptr, PAGE_READONLY, 0, 0, nullptr);
+  if (mapping == nullptr) {
+    CloseHandle(file);
+    return false;
+  }
+
+  void* data = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
+  if (data == nullptr) {
+    CloseHandle(mapping);
+    CloseHandle(file);
+    return false;
+  }
+
+  file_ = file;
+  mapping_ = mapping;
+  data_ = data;
+  length_ = static_cast<size_t>(size.QuadPart);
+  return true;
+}
+
+void MemoryMappedFile::close() {
+  if (file_ == nullptr) {
+    return;
+  }
+  UnmapViewOfFile(data_);
+  CloseHandle(mapping_);
+  CloseHandle(file_);
+  file_ = nullptr;
+  mapping_ = nullptr;
+  data_ = nullptr;
+  length_ = 0;
+}
+
+}  // namespace McBopomofo
+
+#else  // !_WIN32
+
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -92,3 +189,5 @@ void MemoryMappedFile::close() {
 }
 
 }  // namespace McBopomofo
+
+#endif  // _WIN32
