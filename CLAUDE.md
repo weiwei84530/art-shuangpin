@@ -51,6 +51,8 @@ cli\    REPL 測試臺（日常開發主力，不碰 TSF）
 
 ## 狀態記錄
 
+- 2026-07-27：**互動教學網站（web\）**。純 CSS 3D transforms＋vanilla JS 零依賴：左側欄選教學主題、上方仿記事本畫面（組字雙色/虛線底線/錨點反白/候選窗含下方放不下自動翻上）、下方 3D 鍵盤（滑鼠拖曳轉動、角度夾住翻不到背面、鍵帽標註聲母橘/韻母青/控制鍵灰、按鍵有按下動畫）。七組腳本化教學（總覽/基礎/聲調/選字/Shift/標點/注音），步驟資料在 tutorials.js（screen 狀態採前態合併）。本機預覽：`python -m http.server -d web`。已以 Chrome 實測驗證。
+
 - 2026-07-27：**GitHub 公開準備**。(1) 英文名定案 `art-shuangpin`（阿特＝art）。(2) 全部 commit 歷史作者改寫為 GitHub noreply（`weiwei84530 <150053178+weiwei84530@users.noreply.github.com>`），全域 git config 同步更新。(3) 新增根目錄 LICENSE（MIT, Weiwei）與精簡 README.md。(4) 新增 `scripts\make-package.ps1`（打包 x64/x86 DLL→改名 ArtShuangpin.dll＋mspy-data.txt＋install.ps1 成 zip）與 `scripts\install.ps1`（目標機免建置工具：裝到 Program Files、icacls AppContainer、regsvr32 註冊；`-Uninstall` 反向）——供另一台 Win10 安裝。已公開於 https://github.com/weiwei84530/art-shuangpin（remote：origin），主分支改名 `main`，全域 `init.defaultBranch` 同步設為 main。**本專案自此有 remote：commit 後照舊自動，push 仍等使用者指示。**同日打 `v0.2` 標籤並發佈 GitHub Release（附 `art-shuangpin-v0.2.zip` 安裝包）。
 - 2026-07-27：**M5 回饋第七輪**。(1) Shift 分隔空白：數字歸英文類（切中文時左邊是 0-9 也補空白）。(2) **中文模式數字排整個禁用**（無組字時數字吃掉無作用；組字中維持控制鍵）——要打數字＝先 Shift 切英文，空白自動處理，養成習慣。138 tests 全綠。
 - 2026-07-27：**M5 回饋第六輪**。Shift 分隔空白改「無狀態」判定：切換當下用 TSF 讀游標左邊字元（組字中則看 commit 尾字）——切英文左邊是中文字才補空白、切中文左邊是英文字母才補，其他（空白/數字/標點/讀不到）不補；typed-since-boundary 追蹤機制整組移除。

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>阿特雙拼輸入法 — 互動教學</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <aside class="sidebar">
+    <header class="brand">
+      <div class="brand-badge">特</div>
+      <div>
+        <h1>阿特雙拼輸入法</h1>
+        <p>互動教學</p>
+      </div>
+    </header>
+    <nav id="nav" class="nav"></nav>
+    <footer class="side-foot">
+      <div class="legend">
+        <span><i class="lg lg-init"></i>聲母注音</span>
+        <span><i class="lg lg-final"></i>韻母注音</span>
+        <span><i class="lg lg-ctrl"></i>控制鍵</span>
+      </div>
+      <a href="https://github.com/weiwei84530/art-shuangpin" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/weiwei84530/art-shuangpin/blob/main/docs/spec.md" target="_blank" rel="noopener">完整規格</a>
+    </footer>
+  </aside>
+
+  <main class="main">
+
+    <section class="screen-wrap">
+      <div class="notepad">
+        <div class="np-title">
+          <span class="np-doc">未命名 - 記事本</span>
+          <span class="np-btns"><i>─</i><i>□</i><i>✕</i></span>
+        </div>
+        <div class="np-body" id="npBody">
+          <span id="committed"></span><span id="composition"></span><span class="caret" id="caret"></span>
+          <div id="candCard" class="cand-card" hidden></div>
+        </div>
+        <div class="np-status">
+          <span id="modeBadge" class="mode-badge zh">中</span>
+          <span id="modeHint">中文模式</span>
+          <span class="np-right">UTF-8　第 1 行</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="caption-bar">
+      <div class="controls">
+        <button id="btnPrev" title="上一步">⏮</button>
+        <button id="btnPlay" title="播放 / 暫停">▶</button>
+        <button id="btnNext" title="下一步">⏭</button>
+        <button id="btnRestart" title="重新播放">↻</button>
+      </div>
+      <div class="caption">
+        <div class="cap-step" id="capStep"></div>
+        <div class="cap-text" id="capText">選擇左側的教學開始。</div>
+      </div>
+    </section>
+
+    <section class="kb-stage" id="kbStage">
+      <div class="kb-tilt" id="kbTilt">
+        <div class="kb-body" id="kbBody"></div>
+      </div>
+      <div class="kb-hint">按住滑鼠拖曳可轉動鍵盤</div>
+    </section>
+
+  </main>
+</div>
+<script src="tutorials.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
