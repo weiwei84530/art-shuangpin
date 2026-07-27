@@ -607,11 +607,12 @@ HRESULT CSampleIME::_HandleShiftTap(TfEditCookie ec, _In_ ITfContext *pContext)
     }
     else
     {
-        // English -> Chinese.
+        // English -> Chinese. Digits belong to the English class.
         WCHAR before[2] = {L'\0', L'\0'};
         ULONG cch = GetTextBeforeCaret(ec, pContext, before);
         UINT32 cp = LastCodePoint(before, cch);
-        addSpace = (cp >= L'A' && cp <= L'Z') || (cp >= L'a' && cp <= L'z');
+        addSpace = (cp >= L'A' && cp <= L'Z') || (cp >= L'a' && cp <= L'z') ||
+                   (cp >= L'0' && cp <= L'9');
     }
 
     if (addSpace)

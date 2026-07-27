@@ -292,12 +292,12 @@ bool Composer::wouldConsume(char c) const {
   const bool composing = state_ == State::kComposing;
   if (c >= 'a' && c <= 'z') return true;
   if (DirectPunctuation(c) != nullptr || c == '"' || c == '\'') return true;
-  if (c >= '1' && c <= '5') {
-    if (pending_.complete()) return true;
-    if (pending_.empty() && lastWasBare_) return true;
-    return composing;
+  if (c >= '0' && c <= '9') {
+    // Digits are tone/control keys while composing and DISABLED when
+    // idle: typing literal digits requires English mode (Shift).
+    return true;
   }
-  // Space, control digits (6-0), everything else printable.
+  // Space and everything else printable.
   return composing;
 }
 
@@ -384,11 +384,11 @@ Composer::Result Composer::feedChar(char c) {
     // fall through: lone ';' becomes full-width punctuation
   }
 
-  // Digits while composing are controls, never literal text:
-  //   8 opens the menu, 9/0 move the cursor (wrapping), the rest no-op.
-  // When idle they pass through to the application.
+  // Digits are controls while composing (8 opens the menu, 9/0 move the
+  // cursor, the rest no-op) and DISABLED when idle: literal digits are
+  // typed in English mode, where the Shift separator spaces them off.
   if (c >= '0' && c <= '9') {
-    if (!composing) return {false, ""};
+    if (!composing) return {true, ""};
     switch (c) {
       case '8':
         return openCandidateMenu();

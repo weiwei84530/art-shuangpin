@@ -118,11 +118,17 @@ TEST_F(ComposerTest, HalfSyllableDisplaysInitial) {
   EXPECT_EQ(composer_->composedText(), "曬");
 }
 
-TEST_F(ComposerTest, DigitsPassThroughWhenIdle) {
+TEST_F(ComposerTest, DigitsDisabledWhenIdle) {
+  // Literal digits require English mode; in Chinese mode idle digits are
+  // eaten silently so nothing leaks into the document.
   auto r = composer_->feedChar('2');
-  EXPECT_FALSE(r.consumed);
+  EXPECT_TRUE(r.consumed);
+  EXPECT_EQ(r.commitText, "");
+  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
   r = composer_->feedChar('0');
-  EXPECT_FALSE(r.consumed);
+  EXPECT_TRUE(r.consumed);
+  EXPECT_EQ(r.commitText, "");
+  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
 }
 
 TEST_F(ComposerTest, SpacePassesThroughWhenIdleCommitsWhileComposing) {
@@ -473,11 +479,15 @@ TEST_F(ComposerTest, HollowFinalBackspaceAndEsc) {
   composer_->feedBackspace();
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
 
-  // Esc cancels outright; keys behave normally afterwards.
+  // Esc cancels outright; the hollow sub-state is gone afterwards (an
+  // idle digit is eaten with no output, not routed as a final).
   Type("`k");
   composer_->feedEsc();
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
-  EXPECT_FALSE(composer_->feedChar('7').consumed);
+  auto r = composer_->feedChar('7');
+  EXPECT_TRUE(r.consumed);
+  EXPECT_EQ(r.commitText, "");
+  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
 }
 
 TEST_F(ComposerTest, EscCancelsSelectionAndComposition) {
