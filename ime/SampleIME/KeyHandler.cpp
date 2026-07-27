@@ -169,11 +169,6 @@ HRESULT CSampleIME::_SyncComposer(TfEditCookie ec, _In_ ITfContext *pContext, co
         _DestroyCandidatePresenter();
         _TerminateComposition(ec, pContext);
         // The composer is Empty after producing commit text.
-
-        // Track document text for the Shift-tap separator logic.
-        _typedSinceBoundary = TRUE;
-        const char last = commitUtf8[strlen(commitUtf8) - 1];
-        _lastCharWasSeparator = (last == ' ' || last == '\n');
     }
 
     const mspy::Composer::State state = pComposer->state();
@@ -510,13 +505,77 @@ HRESULT CSampleIME::_HandleCompositionPunctuation(TfEditCookie ec, _In_ ITfConte
 //
 //----------------------------------------------------------------------------
 
+namespace
+{
+
+// True if the code point reads as Chinese for separator purposes: Han
+// ideographs (incl. extensions/compat) and bopomofo symbols.
+bool IsCjkCodePoint(UINT32 cp)
+{
+    return (cp >= 0x4E00 && cp <= 0x9FFF) ||    // CJK Unified
+           (cp >= 0x3400 && cp <= 0x4DBF) ||    // Ext A
+           (cp >= 0xF900 && cp <= 0xFAFF) ||    // compat ideographs
+           (cp >= 0x3105 && cp <= 0x312F) ||    // bopomofo
+           (cp >= 0x20000 && cp <= 0x3FFFF);    // Ext B..F
+}
+
+// Decodes the LAST code point of a UTF-16 tail (cch valid units in buf).
+UINT32 LastCodePoint(const WCHAR* buf, ULONG cch)
+{
+    if (cch == 0)
+    {
+        return 0;
+    }
+    WCHAR last = buf[cch - 1];
+    if (last >= 0xDC00 && last <= 0xDFFF && cch >= 2 &&
+        buf[cch - 2] >= 0xD800 && buf[cch - 2] <= 0xDBFF)
+    {
+        return 0x10000 + (((UINT32)(buf[cch - 2] - 0xD800)) << 10) +
+               (last - 0xDC00);
+    }
+    return last;
+}
+
+// Reads up to two UTF-16 units immediately left of the caret. Returns the
+// fetched count (0 when the document is empty or refuses read access).
+ULONG GetTextBeforeCaret(TfEditCookie ec, _In_ ITfContext *pContext,
+                         _Out_writes_(2) WCHAR *buf)
+{
+    ULONG fetched = 0;
+    TF_SELECTION tfSelection;
+    if (pContext->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &tfSelection, &fetched) != S_OK || fetched == 0)
+    {
+        return 0;
+    }
+
+    ULONG cch = 0;
+    ITfRange* pRange = nullptr;
+    if (SUCCEEDED(tfSelection.range->Clone(&pRange)))
+    {
+        LONG shifted = 0;
+        pRange->Collapse(ec, TF_ANCHOR_START);
+        pRange->ShiftStart(ec, -2, &shifted, nullptr);
+        if (FAILED(pRange->GetText(ec, 0, buf, 2, &cch)))
+        {
+            cch = 0;
+        }
+        pRange->Release();
+    }
+    tfSelection.range->Release();
+    return cch;
+}
+
+}  // namespace
+
 HRESULT CSampleIME::_HandleShiftTap(TfEditCookie ec, _In_ ITfContext *pContext)
 {
-    // Chinese -> English: commit the live composition and append one
-    // half-width separator space, then close the keyboard (taskbar shows
-    // 英). English -> Chinese: emit a separator space if text was typed
-    // since the last boundary, then reopen the keyboard. No text since the
-    // boundary (or already ending in a space/newline) means no space.
+    // The separator space is decided purely from the character left of the
+    // caret at the moment of the switch (no typing-history state):
+    //   switching to English: left char is Chinese      -> insert one space
+    //   switching to Chinese: left char is an A-Z letter -> insert one space
+    //   anything else (space, digits, punctuation, empty, unreadable): none.
+    // A live composition commits first; its last character then plays the
+    // "left of caret" role.
     CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
     if (pBridge == nullptr || !pBridge->IsReady())
     {
@@ -528,23 +587,40 @@ HRESULT CSampleIME::_HandleShiftTap(TfEditCookie ec, _In_ ITfContext *pContext)
     CompartmentKeyboardOpen._GetCompartmentBOOL(isOpen);
 
     std::string commit;
+    bool addSpace = false;
     if (isOpen)
     {
-        // feedEnter also closes the candidate menu if it is open.
+        // Chinese -> English. feedEnter also closes the candidate menu.
         mspy::Composer::Result result = pBridge->Composer()->feedEnter();
         commit = result.commitText;
+        if (!commit.empty())
+        {
+            std::wstring wide = CMspyBridge::ToWide(commit);
+            addSpace = IsCjkCodePoint(LastCodePoint(wide.c_str(), (ULONG)wide.length()));
+        }
+        else
+        {
+            WCHAR before[2] = {L'\0', L'\0'};
+            ULONG cch = GetTextBeforeCaret(ec, pContext, before);
+            addSpace = IsCjkCodePoint(LastCodePoint(before, cch));
+        }
     }
-    if (!commit.empty() || (_typedSinceBoundary && !_lastCharWasSeparator))
+    else
+    {
+        // English -> Chinese.
+        WCHAR before[2] = {L'\0', L'\0'};
+        ULONG cch = GetTextBeforeCaret(ec, pContext, before);
+        UINT32 cp = LastCodePoint(before, cch);
+        addSpace = (cp >= L'A' && cp <= L'Z') || (cp >= L'a' && cp <= L'z');
+    }
+
+    if (addSpace)
     {
         commit += " ";
     }
     _SyncComposer(ec, pContext, commit.c_str());
 
     CompartmentKeyboardOpen._SetCompartmentBOOL(isOpen ? FALSE : TRUE);
-
-    // The mode switch itself is a boundary.
-    _typedSinceBoundary = FALSE;
-    _lastCharWasSeparator = TRUE;
     return S_OK;
 }
 

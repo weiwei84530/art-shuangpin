@@ -266,11 +266,6 @@ STDAPI CSampleIME::OnSetFocus(BOOL fForeground)
 {
 	fForeground;
 
-    // [MspyIME] Focus boundary: text typed before the switch no longer
-    // warrants a separator space on the next Shift tap.
-    _typedSinceBoundary = FALSE;
-    _lastCharWasSeparator = TRUE;
-
     return S_OK;
 }
 
@@ -320,27 +315,6 @@ STDAPI CSampleIME::OnKeyDown(ITfContext *pContext, WPARAM wParam, LPARAM lParam,
     UINT code = 0;
 
     *pIsEaten = _IsKeyEaten(pContext, (UINT)wParam, &code, &wch, &KeystrokeState);
-
-    // [MspyIME] Keys the IME does not eat land in the document as-is
-    // (English mode / idle passthrough); track them for the Shift-tap
-    // separator-space logic.
-    if (!*pIsEaten)
-    {
-        UINT vk = (UINT)wParam;
-        if (vk == VK_SPACE || vk == VK_RETURN || vk == VK_TAB)
-        {
-            _typedSinceBoundary = TRUE;
-            _lastCharWasSeparator = TRUE;
-        }
-        else if ((vk >= '0' && vk <= '9') || (vk >= 'A' && vk <= 'Z') ||
-                 (vk >= VK_NUMPAD0 && vk <= VK_DIVIDE) ||
-                 (vk >= 0xBA && vk <= 0xC0) ||   // VK_OEM_1..VK_OEM_3
-                 (vk >= 0xDB && vk <= 0xDF))     // VK_OEM_4..VK_OEM_8
-        {
-            _typedSinceBoundary = TRUE;
-            _lastCharWasSeparator = FALSE;
-        }
-    }
 
     if (*pIsEaten)
     {

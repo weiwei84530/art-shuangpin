@@ -51,6 +51,7 @@ cli\    REPL 測試臺（日常開發主力，不碰 TSF）
 
 ## 狀態記錄
 
+- 2026-07-27：**M5 回饋第六輪**。Shift 分隔空白改「無狀態」判定：切換當下用 TSF 讀游標左邊字元（組字中則看 commit 尾字）——切英文左邊是中文字才補空白、切中文左邊是英文字母才補，其他（空白/數字/標點/讀不到）不補；typed-since-boundary 追蹤機制整組移除。
 - 2026-07-27：**M5 回饋第五輪**。選字窗貼近螢幕底部會超出去→修正：`_MoveWindowToTextExt` 改走樣本既有的 `CalcFitPointAroundTextExtent`（工作區內下方放不下自動翻到錨點字上方），且每次候選列表更新（高度改變）後重新定位。
 - 2026-07-27：**M5 回饋第四輪**。(1) 詞放寬確認為使用者誤解，**拍板不採用**、清乾淨（alias 腳本刪除、build-data 還原，spec 留一行決策記錄防反覆）。(2) 注音 v3：`` ` `` 改為「定案」語意——待定注音按 `` ` `` 轉黑融入組字串（literal 讀音 `\x01`+符號，每碼位一節點）、`` ` ``+韻母鍵直接定案（ㄋㄧㄠ＝``n`y``k`` 一次組）；Space 上屏藍殘鍵的 v2 通則保留。(3) 選單過濾無效候選（值＝該跨距現顯示文字者隱藏；Candidate 加 location/spanningLength，見 reading_grid [mspy] 註記）；過濾後空選單不開。138 tests 全綠。
 - 2026-07-27：**M5 回饋第三輪**。(1) 含輕聲詞放寬**暫時停用**（使用者改測 er2zi 實調工作流；build-data 第 4 步註解保留，`add_neutral_phrase_aliases.py` 留檔待決）。(2) 注音輸入改版：Space 上屏可見注音殘鍵（`n`+Space→ㄋ、Enter 仍丟棄）；`` ` ``＝挖空聲母、下一鍵讀為韻母（`` \`k ``→ㄠ，`HollowFinalDisplay` 全鍵表）；舊的 ` 前導模式移除。(3) 圖示換紅底白字「特」（`scripts\make_icon.py` 產生 SampleIme.ico 全尺寸；免重註冊，圖示快取可能需重開 explorer/登出才更新）。136 tests 全綠。
