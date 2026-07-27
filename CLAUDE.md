@@ -51,6 +51,7 @@ cli\    REPL 測試臺（日常開發主力，不碰 TSF）
 
 ## 狀態記錄
 
+- 2026-07-27：**M5 回饋第二輪**。(1) 含輕聲的詞放寬（方案 2）：build-data 第 4 步 `add_neutral_phrase_aliases.py` 為含 `˙` 的詞鍵加「其他音節去調」alias（+3649 列）——`erzi`→兒子、`ufme`→什麼；不含輕聲的詞維持嚴格。(2) 選字窗改開在游標錨點字正下方（layout 追蹤錨點子範圍）。(3) 新增 `` ` `` 前導注音字面模式（`` `b ``→ㄅ、`` `ok ``→ㄠ、`` `ul3 ``→ㄕㄞˇ；Space/Enter 上屏、Esc 取消；組字中按 `` ` `` 先 commit 前段）。136 tests 全綠。
 - 2026-07-27：**M5 實測回饋修正（v2）**。(1) Shift 切換失效根因＝樣本把「Shift 單獨放開」註冊為 TSF preserved key（IME-mode），TSF 在 KeyEventSink 前攔截並關掉輸入法；改為在 OnPreservedKey 接管執行新流程，KeyEventSink 偵測法移除。(2) Shift 語意改 commit 式（見規格摘要）；底線內英文段機制（literal 讀音）整個移除，composer 回歸純中文。(3) 選字窗跑到左上角＝_ResizeWindow 重設座標為 (0,0) 的回歸，改為保留現位置。(4) 首鍵顯示對齊：y→ㄧ、w→ㄨ、a→ㄚ、e→ㄜ、o→ㄛ。133 tests 全綠。已知：Sublime Text 不渲染 TSF display attribute（無底線/反白/顏色），屬應用程式限制、無解於輸入法端。
 - 2026-07-26：專案啟動。計劃核准（架構歷經三輪收斂：fork 新酷音 → 自建本體+chewing 函式庫 → 因 GPL-3 紅線改為 SampleIME 外殼 + 小麥引擎全 MIT 棧）。
 - 2026-07-26：**M1 完成**——引擎+詞庫函式庫化驗證通過（CLI：ㄒㄧㄣㄎㄨˋㄧㄣ…→新酷音輸入法；data.txt 需 LF，build-data.ps1 已處理）。**M2 完成**——core\ 四模組 + 124 tests 全綠；REPL `--keys` 實測：`ni3hk3`→你好（含整句自動修正 你蒿→你好）、`de`→的、`wo`→窩/`wo3`→我、`{`開窗數字選字、`,`→「，」。設計要點：**音節第二鍵落下即以無聲調 eager 進詞格（見字即所得），聲調數字對剛進格音節回填**。

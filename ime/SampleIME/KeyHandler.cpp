@@ -381,7 +381,41 @@ HRESULT CSampleIME::_CreateAndStartCandidate(_In_ CCompositionProcessorEngine *p
             ITfRange* pRange = nullptr;
             if (SUCCEEDED(_pComposition->GetRange(&pRange)))
             {
-                hr = _pCandidateListUIPresenter->_StartCandidateList(_tfClientId, pDocumentMgr, pContext, ec, pRange, pCompositionProcessorEngine->GetCandidateWindowWidth());
+                // [MspyIME] Track the selection-anchor character instead of
+                // the whole composition, so the window opens under the char
+                // being converted (MS-Bopomofo style), not under the start
+                // of the sentence.
+                ITfRange* pTrackRange = pRange;
+                ITfRange* pAnchorRange = nullptr;
+                CMspyBridge* pBridge = pCompositionProcessorEngine->GetBridge();
+                if (pBridge != nullptr && pBridge->IsReady())
+                {
+                    const CMspyBridge::Segments& segments = pBridge->GetSegments();
+                    LONG total = (LONG)segments.FullText().length();
+                    LONG start = (LONG)(segments.before.length() + segments.unconfirmed.length());
+                    LONG len = (LONG)segments.highlighted.length();
+                    if (len == 0 && total > 0)
+                    {
+                        // Cursor at the right end: the menu targets the
+                        // last character.
+                        start = total - 1;
+                        len = 1;
+                    }
+                    if (len > 0 && SUCCEEDED(pRange->Clone(&pAnchorRange)))
+                    {
+                        LONG shifted = 0;
+                        pAnchorRange->Collapse(ec, TF_ANCHOR_START);
+                        pAnchorRange->ShiftEnd(ec, start + len, &shifted, nullptr);
+                        pAnchorRange->ShiftStart(ec, start, &shifted, nullptr);
+                        pTrackRange = pAnchorRange;
+                    }
+                }
+
+                hr = _pCandidateListUIPresenter->_StartCandidateList(_tfClientId, pDocumentMgr, pContext, ec, pTrackRange, pCompositionProcessorEngine->GetCandidateWindowWidth());
+                if (pAnchorRange)
+                {
+                    pAnchorRange->Release();
+                }
                 pRange->Release();
             }
             pDocumentMgr->Release();

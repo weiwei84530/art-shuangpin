@@ -374,6 +374,62 @@ TEST_F(ComposerTest, Digits67EatenWhileComposing) {
   EXPECT_EQ(composer_->composedText(), "中");
 }
 
+TEST_F(ComposerTest, BopomofoLiteralModeCommitsSymbols) {
+  // ` + first key + Space = lone initial symbol.
+  Type("`u");
+  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
+  EXPECT_EQ(composer_->composedText(), "ㄕ");
+  auto r = composer_->feedChar(' ');
+  EXPECT_TRUE(r.consumed);
+  EXPECT_EQ(r.commitText, "ㄕ");
+  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
+
+  // Zero-initial spelling reaches lone finals: `ok -> ㄠ.
+  Type("`ok");
+  EXPECT_EQ(composer_->composedText(), "ㄠ");
+  r = composer_->feedEnter();
+  EXPECT_EQ(r.commitText, "ㄠ");
+
+  // Tone digits append tone marks; no dictionary involved.
+  Type("`ul3");
+  r = composer_->feedChar(' ');
+  EXPECT_EQ(r.commitText, "ㄕㄞˇ");
+
+  // Multiple syllables per session; a new key flushes the previous bare.
+  Type("`bkde2");
+  r = composer_->feedChar(' ');
+  EXPECT_EQ(r.commitText, "ㄅㄠㄉㄜˊ");
+}
+
+TEST_F(ComposerTest, BacktickCommitsBufferThenEntersLiteralMode) {
+  Type("vs3");
+  auto r = composer_->feedChar('`');
+  EXPECT_TRUE(r.consumed);
+  EXPECT_EQ(r.commitText, "種");
+  Type("b");
+  r = composer_->feedChar(' ');
+  EXPECT_EQ(r.commitText, "ㄅ");
+}
+
+TEST_F(ComposerTest, BopomofoLiteralBackspaceAndEsc) {
+  Type("`ul");
+  composer_->feedBackspace();
+  EXPECT_EQ(composer_->composedText(), "ㄕ");
+  composer_->feedBackspace();
+  EXPECT_EQ(composer_->composedText(), "");
+  // Still in the mode with an empty buffer; Esc leaves it.
+  auto r = composer_->feedEsc();
+  EXPECT_TRUE(r.consumed);
+  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
+
+  // Esc also cancels a non-empty literal session outright.
+  Type("`ok");
+  composer_->feedEsc();
+  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
+  // Digits pass through again once the mode is gone.
+  EXPECT_FALSE(composer_->feedChar('7').consumed);
+}
+
 TEST_F(ComposerTest, EscCancelsSelectionAndComposition) {
   Type("de8");
   ASSERT_EQ(composer_->state(), Composer::State::kSelecting);

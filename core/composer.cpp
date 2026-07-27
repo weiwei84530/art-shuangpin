@@ -84,6 +84,26 @@ const char* ToneMark(char digit) {
   }
 }
 
+// Display tone mark for bopomofo-literal mode: tone 1 is unmarked.
+const char* DisplayToneMark(char digit) {
+  switch (digit) {
+    case '2': return kTone2;
+    case '3': return kTone3;
+    case '4': return kTone4;
+    case '5': return kTone5;
+    default: return "";
+  }
+}
+
+// Removes the last UTF-8 code point of `s`.
+void PopUtf8Char(std::string* s) {
+  while (!s->empty() &&
+         (static_cast<unsigned char>(s->back()) & 0xC0) == 0x80) {
+    s->pop_back();
+  }
+  if (!s->empty()) s->pop_back();
+}
+
 }  // namespace
 
 Composer::Composer(std::shared_ptr<RelaxedToneLM> lm)
@@ -94,6 +114,13 @@ Composer::Composer(std::shared_ptr<RelaxedToneLM> lm)
 }
 
 Composer::DisplaySegments Composer::displaySegments() const {
+  if (bopomofoMode_) {
+    // Literal mode: everything is one unconfirmed (blue) run.
+    DisplaySegments segments;
+    segments.unconfirmed = bopomofoBuffer_ + pending_.displayText();
+    return segments;
+  }
+
   std::string walked;
   for (const auto& v : walk_.valuesAsStrings()) walked += v;
 
@@ -249,6 +276,8 @@ void Composer::reset() {
   lastWasBare_ = false;
   selectionLocation_ = 0;
   pageIndex_ = 0;
+  bopomofoMode_ = false;
+  bopomofoBuffer_.clear();
   state_ = State::kEmpty;
 }
 
@@ -262,6 +291,8 @@ void Composer::updateStateAfterMutation() {
 
 bool Composer::wouldConsume(char c) const {
   if (state_ == State::kSelecting) return true;
+  if (bopomofoMode_) return true;
+  if (c == '`') return true;  // enters bopomofo-literal mode
   const bool composing = state_ == State::kComposing;
   if (c >= 'a' && c <= 'z') return true;
   if (DirectPunctuation(c) != nullptr || c == '"' || c == '\'') return true;
@@ -291,7 +322,19 @@ Composer::Result Composer::feedChar(char c) {
     dismissMenu();
   }
 
+  if (bopomofoMode_) {
+    return feedBopomofoLiteral(c);
+  }
+
   const bool composing = state_ == State::kComposing;
+
+  // Backtick: commit any live buffer, then enter bopomofo-literal mode.
+  if (c == '`') {
+    std::string commit = composing ? takeCommitText() : "";
+    bopomofoMode_ = true;
+    state_ = State::kComposing;
+    return {true, commit};
+  }
 
   // Tone digits: first choice is a pending syllable awaiting its tone;
   // otherwise retrofit the tone onto the just-inserted bare syllable.
@@ -395,6 +438,17 @@ Composer::Result Composer::feedBackspace() {
     // Close the menu, then delete as usual.
     dismissMenu();
   }
+  if (bopomofoMode_) {
+    if (!pending_.empty()) {
+      pending_.backspace();
+    } else if (!bopomofoBuffer_.empty()) {
+      PopUtf8Char(&bopomofoBuffer_);
+    } else {
+      // Nothing left to delete: leave the mode.
+      reset();
+    }
+    return {true, ""};
+  }
   if (state_ == State::kEmpty) return {false, ""};
 
   if (!pending_.empty()) {
@@ -413,6 +467,7 @@ Composer::Result Composer::feedEnter() {
     // Close the menu, then commit as usual.
     dismissMenu();
   }
+  if (bopomofoMode_) return commitBopomofo();
   if (state_ == State::kEmpty) return {false, ""};
   return {true, takeCommitText()};
 }
@@ -458,6 +513,36 @@ Composer::Result Composer::selectOnCurrentPage(size_t indexInPage) {
     return {true, ""};  // number without a candidate on this page: no-op
   }
   return selectCandidate(index);
+}
+
+Composer::Result Composer::feedBopomofoLiteral(char c) {
+  if (c >= '1' && c <= '5') {
+    if (pending_.complete()) flushPendingBopomofo(c);
+    return {true, ""};  // a digit with nothing to tone-mark is a no-op
+  }
+  if ((c >= 'a' && c <= 'z') || c == ';') {
+    // A new syllable key after a complete (toneless) one flushes it bare.
+    if (pending_.complete()) flushPendingBopomofo(0);
+    pending_.feed(c);  // invalid pairs are simply eaten
+    return {true, ""};
+  }
+  if (c == ' ') {
+    return commitBopomofo();
+  }
+  // '`' again and any other printable: eaten while the mode is active.
+  return {true, ""};
+}
+
+void Composer::flushPendingBopomofo(char toneDigit) {
+  bopomofoBuffer_ += pending_.displayText();
+  bopomofoBuffer_ += DisplayToneMark(toneDigit);
+  pending_.clear();
+}
+
+Composer::Result Composer::commitBopomofo() {
+  std::string text = bopomofoBuffer_ + pending_.displayText();
+  reset();  // also clears the mode
+  return {true, text};
 }
 
 Composer::Result Composer::selectCandidate(size_t index) {
