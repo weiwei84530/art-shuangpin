@@ -51,7 +51,7 @@ cli\    REPL 測試臺（日常開發主力，不碰 TSF）
 
 ## 狀態記錄
 
-- 2026-07-27：**GitHub 公開準備**。(1) 英文名定案 `art-shuangpin`（阿特＝art）。(2) 全部 commit 歷史作者改寫為 GitHub noreply（`weiwei84530 <150053178+weiwei84530@users.noreply.github.com>`），全域 git config 同步更新。(3) 新增根目錄 LICENSE（MIT, Weiwei）與精簡 README.md。(4) 新增 `scripts\make-package.ps1`（打包 x64/x86 DLL→改名 ArtShuangpin.dll＋mspy-data.txt＋install.ps1 成 zip）與 `scripts\install.ps1`（目標機免建置工具：裝到 Program Files、icacls AppContainer、regsvr32 註冊；`-Uninstall` 反向）——供另一台 Win10 安裝。已公開於 https://github.com/weiwei84530/art-shuangpin（remote：origin），主分支改名 `main`，全域 `init.defaultBranch` 同步設為 main。**本專案自此有 remote：commit 後照舊自動，push 仍等使用者指示。**
+- 2026-07-27：**GitHub 公開準備**。(1) 英文名定案 `art-shuangpin`（阿特＝art）。(2) 全部 commit 歷史作者改寫為 GitHub noreply（`weiwei84530 <150053178+weiwei84530@users.noreply.github.com>`），全域 git config 同步更新。(3) 新增根目錄 LICENSE（MIT, Weiwei）與精簡 README.md。(4) 新增 `scripts\make-package.ps1`（打包 x64/x86 DLL→改名 ArtShuangpin.dll＋mspy-data.txt＋install.ps1 成 zip）與 `scripts\install.ps1`（目標機免建置工具：裝到 Program Files、icacls AppContainer、regsvr32 註冊；`-Uninstall` 反向）——供另一台 Win10 安裝。已公開於 https://github.com/weiwei84530/art-shuangpin（remote：origin），主分支改名 `main`，全域 `init.defaultBranch` 同步設為 main。**本專案自此有 remote：commit 後照舊自動，push 仍等使用者指示。**同日打 `v0.2` 標籤並發佈 GitHub Release（附 `art-shuangpin-v0.2.zip` 安裝包）。
 - 2026-07-27：**M5 回饋第七輪**。(1) Shift 分隔空白：數字歸英文類（切中文時左邊是 0-9 也補空白）。(2) **中文模式數字排整個禁用**（無組字時數字吃掉無作用；組字中維持控制鍵）——要打數字＝先 Shift 切英文，空白自動處理，養成習慣。138 tests 全綠。
 - 2026-07-27：**M5 回饋第六輪**。Shift 分隔空白改「無狀態」判定：切換當下用 TSF 讀游標左邊字元（組字中則看 commit 尾字）——切英文左邊是中文字才補空白、切中文左邊是英文字母才補，其他（空白/數字/標點/讀不到）不補；typed-since-boundary 追蹤機制整組移除。
 - 2026-07-27：**M5 回饋第五輪**。選字窗貼近螢幕底部會超出去→修正：`_MoveWindowToTextExt` 改走樣本既有的 `CalcFitPointAroundTextExtent`（工作區內下方放不下自動翻到錨點字上方），且每次候選列表更新（高度改變）後重新定位。
