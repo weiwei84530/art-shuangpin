@@ -9,7 +9,7 @@ Windows 原生 TSF 中文輸入法：**注音式輸入節奏＋微軟雙拼鍵�
 - 組字中數字鍵全為控制鍵：`8` 開選單、`9`/`0` 移游標、`1`–`6` 選字、`7`/`8` 翻頁。
 - Shift 單獨輕按＝中英切換（自動 commit＋按語境補空白）。
 
-完整輸入方案規格見 [docs/spec.md](docs/spec.md)。
+完整輸入方案規格見 [docs/spec.md](docs/spec.md)；**[互動教學網站](https://weiwei84530.github.io/art-shuangpin/)**（3D 鍵盤動畫示範各項操作）。
 
 ## 安裝（Windows 10 / 11，x64）
 

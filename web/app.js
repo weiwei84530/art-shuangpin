@@ -42,7 +42,7 @@ function buildKeyboard() {
   }
 }
 
-function pressKey(id, dur = 170) {
+function pressKey(id, dur = 255) {
   const el = keyEls[id];
   if (!el) return;
   el.classList.add('pressed');
@@ -165,7 +165,7 @@ const player = {
       for (const key of step.keys) {
         if (gen !== this.gen) return;
         pressKey(key);
-        await sleep(300);
+        await sleep(450);
       }
     }
     if (gen !== undefined && gen !== this.gen) return;
