@@ -196,6 +196,42 @@ std::string FirstKeyDisplay(char c) {
 
 bool IsSecondKey(char c) { return (c >= 'a' && c <= 'z') || c == ';'; }
 
+std::string HollowFinalDisplay(char c) {
+  // One representative bopomofo per second key (primary final first per
+  // FinalKeyMap ordering); standalone forms follow the zero-initial
+  // conventions (en=ㄣ, eng=ㄥ, ...).
+  switch (c) {
+    case 'a': return "ㄚ";
+    case 'o': return "ㄛ";
+    case 'e': return "ㄜ";
+    case 'i': return "ㄧ";
+    case 'u': return "ㄨ";
+    case 'y': return "ㄩ";
+    case 'q': return "ㄧㄡ";
+    case 'w': return "ㄧㄚ";
+    case 'r': return "ㄦ";
+    case 't': return "ㄩㄝ";
+    case 'p': return "ㄨㄣ";
+    case 's': return "ㄨㄥ";
+    case 'd': return "ㄧㄤ";
+    case 'f': return "ㄣ";
+    case 'g': return "ㄥ";
+    case 'h': return "ㄤ";
+    case 'j': return "ㄢ";
+    case 'k': return "ㄠ";
+    case 'l': return "ㄞ";
+    case 'z': return "ㄟ";
+    case 'x': return "ㄧㄝ";
+    case 'c': return "ㄧㄠ";
+    case 'v': return "ㄨㄟ";
+    case 'b': return "ㄡ";
+    case 'n': return "ㄧㄣ";
+    case 'm': return "ㄧㄢ";
+    case ';': return "ㄧㄥ";
+    default: return "";
+  }
+}
+
 std::vector<std::string> DecodeKeyPair(char first, char second) {
   std::vector<std::string> results;
   if (!IsFirstKey(first) || !IsSecondKey(second)) return results;

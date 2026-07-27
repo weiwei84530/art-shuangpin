@@ -39,11 +39,13 @@ try {
         --output (Join-Path $outDir "data.txt")
     if ($LASTEXITCODE -ne 0) { throw "postprocess failed" }
 
-    # Step 4: relaxed-tone alias keys for neutral-tone phrases (兒子/什麼
-    # reachable without tone digits; see docs/spec.md).
-    python (Join-Path $PSScriptRoot "add_neutral_phrase_aliases.py") `
-        (Join-Path $outDir "data.txt")
-    if ($LASTEXITCODE -ne 0) { throw "add_neutral_phrase_aliases failed" }
+    # Step 4 (DISABLED 2026-07-27, kept for possible reinstatement):
+    # relaxed-tone alias keys for neutral-tone phrases (erzi -> 兒子 without
+    # tone digits). The user is re-evaluating whether typing the real tone
+    # (er2zi) is the intended workflow; uncomment to re-enable.
+    # python (Join-Path $PSScriptRoot "add_neutral_phrase_aliases.py") `
+    #     (Join-Path $outDir "data.txt")
+    # if ($LASTEXITCODE -ne 0) { throw "add_neutral_phrase_aliases failed" }
 }
 finally {
     Pop-Location

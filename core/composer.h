@@ -17,11 +17,12 @@
 // commits the buffer and toggles the system keyboard-open state); the
 // composer itself is Chinese-only.
 //
-// Backtick '`' enters bopomofo-literal mode (committing any live buffer
-// first): double-pinyin keys build syllables shown as raw bopomofo, tone
-// digits append tone marks (1 = unmarked), and Space/Enter commits the
-// SYMBOLS as text instead of converting them (`b -> ㄅ, `ok -> ㄠ,
-// `ul3 -> ㄕㄞˇ). Esc cancels.
+// Raw bopomofo symbols (勿轉換): Space commits any VISIBLE bopomofo residue
+// as literal symbols (a lone first key: n + Space -> ㄋ; a tone-awaiting
+// syllable: ul + Space -> …ㄕㄞ), while Enter still drops the residue.
+// '`' hollows out the initial slot: the next key is read as a FINAL and
+// shows its bopomofo (`k -> ㄠ), committed with Space. ㄋㄧㄠ is typed as
+// "n␠y␠`k␠".
 
 #pragma once
 
@@ -147,13 +148,12 @@ class Composer {
   void dismissMenu();
   // Selects by page-relative index ('1'..'6'); out of range is a no-op.
   Result selectOnCurrentPage(size_t indexInPage);
-  // Key dispatch while in bopomofo-literal mode.
-  Result feedBopomofoLiteral(char c);
-  // Moves the complete pending syllable's bopomofo (plus the tone mark for
-  // digit '2'..'5'; '1'/0 = unmarked) into the literal buffer.
-  void flushPendingBopomofo(char toneDigit);
-  // Commits the literal buffer + pending display and leaves the mode.
-  Result commitBopomofo();
+  // Key dispatch while the hollow-final sub-state is active ('`' pressed
+  // and/or a final symbol chosen).
+  Result feedHollowFinal(char c);
+  // Commits the buffer PLUS the visible bopomofo residue (pending display
+  // and/or hollow-final symbol) as literal symbols.
+  Result commitWithResidue();
   // Commits the current buffer (dropping a half-typed syllable) and resets.
   std::string takeCommitText();
   void reset();
@@ -178,10 +178,11 @@ class Composer {
   bool doubleQuoteOpen_ = false;
   bool singleQuoteOpen_ = false;
 
-  // Bopomofo-literal mode ('`' leader): flushed symbols accumulate in the
-  // buffer while pending_ holds the syllable being typed.
-  bool bopomofoMode_ = false;
-  std::string bopomofoBuffer_;
+  // Hollow-final sub-state ('`'): hollowFinal_ is set between the backtick
+  // and the final key; pendingSymbol_ then holds that final's bopomofo
+  // until Space commits it (or Backspace/Esc discards it).
+  bool hollowFinal_ = false;
+  std::string pendingSymbol_;
 
   // Selection state.
   size_t selectionLocation_ = 0;

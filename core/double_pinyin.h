@@ -24,8 +24,13 @@ bool IsFirstKey(char c);
 // True if the character can be the second key of a syllable (a-z or ';').
 bool IsSecondKey(char c);
 
-// Bopomofo display for a lone first key (e.g. 'u' -> "ㄕ"); returns the raw
-// character for keys without an unambiguous bopomofo (a/e/o/y/w).
+// Bopomofo display for a lone first key (e.g. 'u' -> "ㄕ"); every key shows
+// a representative symbol (y=ㄧ w=ㄨ a=ㄚ e=ㄜ o=ㄛ), never a raw letter.
 std::string FirstKeyDisplay(char c);
+
+// Bopomofo for a key read AS A FINAL (the '`'-hollowed-initial path, e.g.
+// 'k' -> "ㄠ", 'x' -> "ㄧㄝ"). Ambiguous keys show their primary final.
+// Returns empty for keys that are not second keys.
+std::string HollowFinalDisplay(char c);
 
 }  // namespace mspy

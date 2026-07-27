@@ -374,60 +374,77 @@ TEST_F(ComposerTest, Digits67EatenWhileComposing) {
   EXPECT_EQ(composer_->composedText(), "中");
 }
 
-TEST_F(ComposerTest, BopomofoLiteralModeCommitsSymbols) {
-  // ` + first key + Space = lone initial symbol.
-  Type("`u");
-  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
-  EXPECT_EQ(composer_->composedText(), "ㄕ");
+TEST_F(ComposerTest, SpaceCommitsVisibleBopomofoResidue) {
+  // A lone first key + Space outputs its bopomofo symbol.
+  Type("n");
+  EXPECT_EQ(composer_->composedText(), "ㄋ");
   auto r = composer_->feedChar(' ');
   EXPECT_TRUE(r.consumed);
-  EXPECT_EQ(r.commitText, "ㄕ");
+  EXPECT_EQ(r.commitText, "ㄋ");
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
 
-  // Zero-initial spelling reaches lone finals: `ok -> ㄠ.
-  Type("`ok");
+  // A tone-awaiting syllable (no bare entry) commits its bopomofo too.
+  Type("ul");
+  EXPECT_EQ(composer_->feedChar(' ').commitText, "ㄕㄞ");
+
+  // Converted text plus residue commit together.
+  Type("vs3n");
+  EXPECT_EQ(composer_->feedChar(' ').commitText, "種ㄋ");
+
+  // Enter still drops the residue (converted output only).
+  Type("vs3n");
+  EXPECT_EQ(composer_->feedEnter().commitText, "種");
+}
+
+TEST_F(ComposerTest, HollowFinalBacktick) {
+  // ` reads the next key as a final: `k -> ㄠ.
+  Type("`k");
+  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
   EXPECT_EQ(composer_->composedText(), "ㄠ");
-  r = composer_->feedEnter();
+  auto r = composer_->feedChar(' ');
   EXPECT_EQ(r.commitText, "ㄠ");
-
-  // Tone digits append tone marks; no dictionary involved.
-  Type("`ul3");
-  r = composer_->feedChar(' ');
-  EXPECT_EQ(r.commitText, "ㄕㄞˇ");
-
-  // Multiple syllables per session; a new key flushes the previous bare.
-  Type("`bkde2");
-  r = composer_->feedChar(' ');
-  EXPECT_EQ(r.commitText, "ㄅㄠㄉㄜˊ");
-}
-
-TEST_F(ComposerTest, BacktickCommitsBufferThenEntersLiteralMode) {
-  Type("vs3");
-  auto r = composer_->feedChar('`');
-  EXPECT_TRUE(r.consumed);
-  EXPECT_EQ(r.commitText, "種");
-  Type("b");
-  r = composer_->feedChar(' ');
-  EXPECT_EQ(r.commitText, "ㄅ");
-}
-
-TEST_F(ComposerTest, BopomofoLiteralBackspaceAndEsc) {
-  Type("`ul");
-  composer_->feedBackspace();
-  EXPECT_EQ(composer_->composedText(), "ㄕ");
-  composer_->feedBackspace();
-  EXPECT_EQ(composer_->composedText(), "");
-  // Still in the mode with an empty buffer; Esc leaves it.
-  auto r = composer_->feedEsc();
-  EXPECT_TRUE(r.consumed);
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
 
-  // Esc also cancels a non-empty literal session outright.
-  Type("`ok");
+  // ㄋㄧㄠ = n␠ y␠ `k␠.
+  EXPECT_EQ((Type("n"), composer_->feedChar(' ').commitText), "ㄋ");
+  EXPECT_EQ((Type("y"), composer_->feedChar(' ').commitText), "ㄧ");
+  EXPECT_EQ((Type("`k"), composer_->feedChar(' ').commitText), "ㄠ");
+
+  // Compound and single finals map per key: `x -> ㄧㄝ, `f -> ㄣ.
+  EXPECT_EQ((Type("`x"), composer_->feedChar(' ').commitText), "ㄧㄝ");
+  EXPECT_EQ((Type("`f"), composer_->feedChar(' ').commitText), "ㄣ");
+
+  // Mid-composition: the symbol joins the buffer at commit.
+  Type("vs3`k");
+  EXPECT_EQ(composer_->composedText(), "種ㄠ");
+  EXPECT_EQ(composer_->feedChar(' ').commitText, "種ㄠ");
+
+  // While a half-typed syllable is pending, ` is a no-op.
+  Type("n`");
+  EXPECT_EQ(composer_->composedText(), "ㄋ");
+  composer_->feedEsc();
+}
+
+TEST_F(ComposerTest, HollowFinalBackspaceAndEsc) {
+  // Backspace undoes the symbol, then the composition is empty again.
+  Type("`k");
+  composer_->feedBackspace();
+  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
+
+  // Backspace between ` and the final key just cancels the hollow state.
+  Type("`");
+  composer_->feedBackspace();
+  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
+
+  // Esc cancels outright; keys behave normally afterwards.
+  Type("`k");
   composer_->feedEsc();
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
-  // Digits pass through again once the mode is gone.
   EXPECT_FALSE(composer_->feedChar('7').consumed);
+
+  // Enter drops the hollow symbol like any other residue.
+  Type("vs3`k");
+  EXPECT_EQ(composer_->feedEnter().commitText, "種");
 }
 
 TEST_F(ComposerTest, EscCancelsSelectionAndComposition) {

@@ -3,6 +3,8 @@
 #include <chrono>
 #include <utility>
 
+#include "double_pinyin.h"
+
 namespace mspy {
 
 namespace {
@@ -84,26 +86,6 @@ const char* ToneMark(char digit) {
   }
 }
 
-// Display tone mark for bopomofo-literal mode: tone 1 is unmarked.
-const char* DisplayToneMark(char digit) {
-  switch (digit) {
-    case '2': return kTone2;
-    case '3': return kTone3;
-    case '4': return kTone4;
-    case '5': return kTone5;
-    default: return "";
-  }
-}
-
-// Removes the last UTF-8 code point of `s`.
-void PopUtf8Char(std::string* s) {
-  while (!s->empty() &&
-         (static_cast<unsigned char>(s->back()) & 0xC0) == 0x80) {
-    s->pop_back();
-  }
-  if (!s->empty()) s->pop_back();
-}
-
 }  // namespace
 
 Composer::Composer(std::shared_ptr<RelaxedToneLM> lm)
@@ -114,13 +96,6 @@ Composer::Composer(std::shared_ptr<RelaxedToneLM> lm)
 }
 
 Composer::DisplaySegments Composer::displaySegments() const {
-  if (bopomofoMode_) {
-    // Literal mode: everything is one unconfirmed (blue) run.
-    DisplaySegments segments;
-    segments.unconfirmed = bopomofoBuffer_ + pending_.displayText();
-    return segments;
-  }
-
   std::string walked;
   for (const auto& v : walk_.valuesAsStrings()) walked += v;
 
@@ -141,6 +116,7 @@ Composer::DisplaySegments Composer::displaySegments() const {
   }
   segments.before = std::move(left);
   segments.unconfirmed += pending_.displayText();
+  segments.unconfirmed += pendingSymbol_;
 
   // The character right of the cursor is the selection anchor; emphasize
   // it so the user can see where digit-8 selection would start.
@@ -276,8 +252,8 @@ void Composer::reset() {
   lastWasBare_ = false;
   selectionLocation_ = 0;
   pageIndex_ = 0;
-  bopomofoMode_ = false;
-  bopomofoBuffer_.clear();
+  hollowFinal_ = false;
+  pendingSymbol_.clear();
   state_ = State::kEmpty;
 }
 
@@ -291,8 +267,8 @@ void Composer::updateStateAfterMutation() {
 
 bool Composer::wouldConsume(char c) const {
   if (state_ == State::kSelecting) return true;
-  if (bopomofoMode_) return true;
-  if (c == '`') return true;  // enters bopomofo-literal mode
+  if (hollowFinal_ || !pendingSymbol_.empty()) return true;
+  if (c == '`') return true;  // hollows the initial slot
   const bool composing = state_ == State::kComposing;
   if (c >= 'a' && c <= 'z') return true;
   if (DirectPunctuation(c) != nullptr || c == '"' || c == '\'') return true;
@@ -322,18 +298,20 @@ Composer::Result Composer::feedChar(char c) {
     dismissMenu();
   }
 
-  if (bopomofoMode_) {
-    return feedBopomofoLiteral(c);
+  if (hollowFinal_ || !pendingSymbol_.empty()) {
+    return feedHollowFinal(c);
   }
 
   const bool composing = state_ == State::kComposing;
 
-  // Backtick: commit any live buffer, then enter bopomofo-literal mode.
+  // Backtick hollows out the initial slot: the NEXT key is read as a final
+  // and shows its bopomofo. Only meaningful with no half-typed syllable.
   if (c == '`') {
-    std::string commit = composing ? takeCommitText() : "";
-    bopomofoMode_ = true;
-    state_ = State::kComposing;
-    return {true, commit};
+    if (pending_.empty()) {
+      hollowFinal_ = true;
+      state_ = State::kComposing;
+    }
+    return {true, ""};
   }
 
   // Tone digits: first choice is a pending syllable awaiting its tone;
@@ -420,11 +398,13 @@ Composer::Result Composer::feedChar(char c) {
     return {true, commit};
   }
 
-  // Space commits the composition as-is (like Enter); a plain space when
+  // Space commits the composition; unlike Enter, any VISIBLE bopomofo
+  // residue (a half-typed or tone-awaiting syllable) commits as literal
+  // symbols instead of being dropped (n + Space -> ㄋ). A plain space when
   // idle passes through to the application.
   if (c == ' ') {
     if (!composing) return {false, ""};
-    return {true, takeCommitText()};
+    return commitWithResidue();
   }
 
   // Everything else printable: pass through when idle; eaten while
@@ -438,15 +418,11 @@ Composer::Result Composer::feedBackspace() {
     // Close the menu, then delete as usual.
     dismissMenu();
   }
-  if (bopomofoMode_) {
-    if (!pending_.empty()) {
-      pending_.backspace();
-    } else if (!bopomofoBuffer_.empty()) {
-      PopUtf8Char(&bopomofoBuffer_);
-    } else {
-      // Nothing left to delete: leave the mode.
-      reset();
-    }
+  if (hollowFinal_ || !pendingSymbol_.empty()) {
+    // Undo the hollow-final entry (symbol first, then the backtick state).
+    hollowFinal_ = false;
+    pendingSymbol_.clear();
+    updateStateAfterMutation();
     return {true, ""};
   }
   if (state_ == State::kEmpty) return {false, ""};
@@ -467,7 +443,6 @@ Composer::Result Composer::feedEnter() {
     // Close the menu, then commit as usual.
     dismissMenu();
   }
-  if (bopomofoMode_) return commitBopomofo();
   if (state_ == State::kEmpty) return {false, ""};
   return {true, takeCommitText()};
 }
@@ -515,33 +490,40 @@ Composer::Result Composer::selectOnCurrentPage(size_t indexInPage) {
   return selectCandidate(index);
 }
 
-Composer::Result Composer::feedBopomofoLiteral(char c) {
-  if (c >= '1' && c <= '5') {
-    if (pending_.complete()) flushPendingBopomofo(c);
-    return {true, ""};  // a digit with nothing to tone-mark is a no-op
-  }
-  if ((c >= 'a' && c <= 'z') || c == ';') {
-    // A new syllable key after a complete (toneless) one flushes it bare.
-    if (pending_.complete()) flushPendingBopomofo(0);
-    pending_.feed(c);  // invalid pairs are simply eaten
+Composer::Result Composer::feedHollowFinal(char c) {
+  if (hollowFinal_ && ((c >= 'a' && c <= 'z') || c == ';')) {
+    // The hollowed key is read as a final; show its bopomofo.
+    std::string symbol = HollowFinalDisplay(c);
+    if (!symbol.empty()) {
+      pendingSymbol_ = std::move(symbol);
+      hollowFinal_ = false;
+    }
     return {true, ""};
   }
   if (c == ' ') {
-    return commitBopomofo();
+    hollowFinal_ = false;
+    return commitWithResidue();
   }
-  // '`' again and any other printable: eaten while the mode is active.
+  // Anything else while the sub-state is active: eaten (Backspace, Enter
+  // and Esc are handled by their dedicated feeds).
   return {true, ""};
 }
 
-void Composer::flushPendingBopomofo(char toneDigit) {
-  bopomofoBuffer_ += pending_.displayText();
-  bopomofoBuffer_ += DisplayToneMark(toneDigit);
-  pending_.clear();
-}
-
-Composer::Result Composer::commitBopomofo() {
-  std::string text = bopomofoBuffer_ + pending_.displayText();
-  reset();  // also clears the mode
+Composer::Result Composer::commitWithResidue() {
+  std::string residue = pending_.displayText() + pendingSymbol_;
+  if (residue.empty()) {
+    std::string commit = takeCommitText();
+    if (commit.empty()) {
+      // Nothing at all (e.g. a bare '`'): consumed, back to idle.
+      updateStateAfterMutation();
+      return {true, ""};
+    }
+    return {true, commit};
+  }
+  std::string text;
+  for (const auto& v : walk_.valuesAsStrings()) text += v;
+  text += residue;
+  reset();
   return {true, text};
 }
 
