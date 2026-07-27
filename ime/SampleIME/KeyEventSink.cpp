@@ -266,6 +266,11 @@ STDAPI CSampleIME::OnSetFocus(BOOL fForeground)
 {
 	fForeground;
 
+    // [MspyIME] Focus boundary: text typed before the switch no longer
+    // warrants a separator space on the next Shift tap.
+    _typedSinceBoundary = FALSE;
+    _lastCharWasSeparator = TRUE;
+
     return S_OK;
 }
 
@@ -279,17 +284,6 @@ STDAPI CSampleIME::OnSetFocus(BOOL fForeground)
 STDAPI CSampleIME::OnTestKeyDown(ITfContext *pContext, WPARAM wParam, LPARAM lParam, BOOL *pIsEaten)
 {
     Global::UpdateModifiers(wParam, lParam);
-
-    // [MspyIME] Mirror the arm/disarm in OnKeyDown: some hosts only issue
-    // the Test variant for keys the IME does not eat.
-    if (wParam == VK_SHIFT || wParam == VK_LSHIFT || wParam == VK_RSHIFT)
-    {
-        _shiftTapArmed = TRUE;
-    }
-    else
-    {
-        _shiftTapArmed = FALSE;
-    }
 
     _KEYSTROKE_STATE KeystrokeState;
     WCHAR wch = '\0';
@@ -321,23 +315,32 @@ STDAPI CSampleIME::OnKeyDown(ITfContext *pContext, WPARAM wParam, LPARAM lParam,
 {
     Global::UpdateModifiers(wParam, lParam);
 
-    // [MspyIME] Bare-Shift-tap detection: a Shift key-down arms the tap;
-    // any other key in between disarms it (so Shift+letter capitals in the
-    // English segment never toggle the mode).
-    if (wParam == VK_SHIFT || wParam == VK_LSHIFT || wParam == VK_RSHIFT)
-    {
-        _shiftTapArmed = TRUE;
-    }
-    else
-    {
-        _shiftTapArmed = FALSE;
-    }
-
     _KEYSTROKE_STATE KeystrokeState;
     WCHAR wch = '\0';
     UINT code = 0;
 
     *pIsEaten = _IsKeyEaten(pContext, (UINT)wParam, &code, &wch, &KeystrokeState);
+
+    // [MspyIME] Keys the IME does not eat land in the document as-is
+    // (English mode / idle passthrough); track them for the Shift-tap
+    // separator-space logic.
+    if (!*pIsEaten)
+    {
+        UINT vk = (UINT)wParam;
+        if (vk == VK_SPACE || vk == VK_RETURN || vk == VK_TAB)
+        {
+            _typedSinceBoundary = TRUE;
+            _lastCharWasSeparator = TRUE;
+        }
+        else if ((vk >= '0' && vk <= '9') || (vk >= 'A' && vk <= 'Z') ||
+                 (vk >= VK_NUMPAD0 && vk <= VK_DIVIDE) ||
+                 (vk >= 0xBA && vk <= 0xC0) ||   // VK_OEM_1..VK_OEM_3
+                 (vk >= 0xDB && vk <= 0xDF))     // VK_OEM_4..VK_OEM_8
+        {
+            _typedSinceBoundary = TRUE;
+            _lastCharWasSeparator = FALSE;
+        }
+    }
 
     if (*pIsEaten)
     {
@@ -387,14 +390,6 @@ STDAPI CSampleIME::OnTestKeyUp(ITfContext *pContext, WPARAM wParam, LPARAM lPara
 
     Global::UpdateModifiers(wParam, lParam);
 
-    // [MspyIME] An armed Shift-up is about to be handled as a mode toggle.
-    if ((wParam == VK_SHIFT || wParam == VK_LSHIFT || wParam == VK_RSHIFT) &&
-        _shiftTapArmed)
-    {
-        *pIsEaten = TRUE;
-        return S_OK;
-    }
-
     WCHAR wch = '\0';
     UINT code = 0;
 
@@ -415,29 +410,6 @@ STDAPI CSampleIME::OnKeyUp(ITfContext *pContext, WPARAM wParam, LPARAM lParam, B
 {
     Global::UpdateModifiers(wParam, lParam);
 
-    // [MspyIME] A Shift key-up while armed is a bare Shift tap: toggle
-    // Chinese/English through the composer (which also inserts the space
-    // when a composition is open).
-    if ((wParam == VK_SHIFT || wParam == VK_LSHIFT || wParam == VK_RSHIFT) &&
-        _shiftTapArmed)
-    {
-        _shiftTapArmed = FALSE;
-
-        BOOL isOpen = FALSE;
-        CCompartment CompartmentKeyboardOpen(_pThreadMgr, _tfClientId, GUID_COMPARTMENT_KEYBOARD_OPENCLOSE);
-        CompartmentKeyboardOpen._GetCompartmentBOOL(isOpen);
-
-        if (isOpen && !_IsKeyboardDisabled())
-        {
-            _KEYSTROKE_STATE KeystrokeState;
-            KeystrokeState.Category = CATEGORY_COMPOSING;
-            KeystrokeState.Function = FUNCTION_SHIFT_TAP;
-            _InvokeKeyHandler(pContext, (UINT)wParam, L'\0', (DWORD)lParam, KeystrokeState);
-            *pIsEaten = TRUE;
-            return S_OK;
-        }
-    }
-
     WCHAR wch = '\0';
     UINT code = 0;
 
@@ -455,7 +427,25 @@ STDAPI CSampleIME::OnKeyUp(ITfContext *pContext, WPARAM wParam, LPARAM lParam, B
 
 STDAPI CSampleIME::OnPreservedKey(ITfContext *pContext, REFGUID rguid, BOOL *pIsEaten)
 {
-	pContext;
+    // [MspyIME] The sample registers "bare Shift, fired on key-up" as the
+    // IME-mode preserved key; TSF intercepts it BEFORE the key event sink.
+    // Take it over: instead of the sample's raw open/close toggle, run the
+    // Shift-tap flow (commit + separator space + keyboard-open toggle) so
+    // the taskbar 中/英 indicator follows along.
+    if (IsEqualGUID(rguid, Global::SampleIMEGuidImeModePreserveKey))
+    {
+        if (!Global::IsShiftKeyDownOnly)
+        {
+            *pIsEaten = FALSE;
+            return S_OK;
+        }
+        _KEYSTROKE_STATE KeystrokeState;
+        KeystrokeState.Category = CATEGORY_COMPOSING;
+        KeystrokeState.Function = FUNCTION_SHIFT_TAP;
+        _InvokeKeyHandler(pContext, 0, L'\0', 0, KeystrokeState);
+        *pIsEaten = TRUE;
+        return S_OK;
+    }
 
     CCompositionProcessorEngine *pCompositionProcessorEngine;
     pCompositionProcessorEngine = _pCompositionProcessorEngine;

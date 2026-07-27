@@ -8,7 +8,6 @@
 //                 (8 opens the menu, 9/0 move the cursor, 1-6 select,
 //                 7/8 page). Control tokens:
 //                   <  Backspace                !  Esc
-//                   @  Shift tap (Chinese/English toggle)
 //                   \n (in piped key mode)      Enter
 // Piped mode:     each stdin line = whitespace-separated bopomofo readings.
 
@@ -85,8 +84,7 @@ const char* StateName(mspy::Composer::State s) {
 void PrintComposerState(const mspy::Composer& composer,
                         const mspy::Composer::Result& result, char key) {
   std::cout << "  '" << key << "' -> [" << StateName(composer.state())
-            << (composer.englishMode() ? "|EN" : "") << "] \""
-            << composer.composedText() << "\"";
+            << "] \"" << composer.composedText() << "\"";
   auto segments = composer.displaySegments();
   if (!segments.highlighted.empty())
     std::cout << " anchor:[" << segments.highlighted << "]";
@@ -114,7 +112,6 @@ void RunKeyMode(std::shared_ptr<McBopomofo::McBopomofoLM> lm,
     switch (c) {
       case '<': r = composer.feedBackspace(); break;
       case '!': r = composer.feedEsc(); break;
-      case '@': r = composer.feedShiftTap(); break;
       case '\n': r = composer.feedEnter(); break;
       default: r = composer.feedChar(c); break;
     }

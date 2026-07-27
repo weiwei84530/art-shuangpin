@@ -1647,10 +1647,8 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeedMspy(UINT uCode, _In_reads_(1)
     }
 
     WCHAR wch = pwch ? *pwch : L'\0';
-    if (wch >= L'A' && wch <= L'Z' && !composer->englishMode())
+    if (wch >= L'A' && wch <= L'Z')
     {
-        // Chinese mode normalizes to lowercase; the English inline segment
-        // keeps the case the user typed.
         wch = wch - L'A' + L'a';
     }
     if (wch == L'\0' || wch >= 0x80)

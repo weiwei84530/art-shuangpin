@@ -11,6 +11,7 @@
 #include "SampleIME.h"
 #include "CandidateListUIPresenter.h"
 #include "CompositionProcessorEngine.h"
+#include "Compartment.h" // [MspyIME]
 #include "MspyBridge.h"  // [MspyIME]
 #include <string>        // [MspyIME]
 
@@ -168,6 +169,11 @@ HRESULT CSampleIME::_SyncComposer(TfEditCookie ec, _In_ ITfContext *pContext, co
         _DestroyCandidatePresenter();
         _TerminateComposition(ec, pContext);
         // The composer is Empty after producing commit text.
+
+        // Track document text for the Shift-tap separator logic.
+        _typedSinceBoundary = TRUE;
+        const char last = commitUtf8[strlen(commitUtf8) - 1];
+        _lastCharWasSeparator = (last == ' ' || last == '\n');
     }
 
     const mspy::Composer::State state = pComposer->state();
@@ -472,13 +478,40 @@ HRESULT CSampleIME::_HandleCompositionPunctuation(TfEditCookie ec, _In_ ITfConte
 
 HRESULT CSampleIME::_HandleShiftTap(TfEditCookie ec, _In_ ITfContext *pContext)
 {
+    // Chinese -> English: commit the live composition and append one
+    // half-width separator space, then close the keyboard (taskbar shows
+    // 英). English -> Chinese: emit a separator space if text was typed
+    // since the last boundary, then reopen the keyboard. No text since the
+    // boundary (or already ending in a space/newline) means no space.
     CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
     if (pBridge == nullptr || !pBridge->IsReady())
     {
         return S_OK;
     }
-    mspy::Composer::Result result = pBridge->Composer()->feedShiftTap();
-    return _SyncComposer(ec, pContext, result.commitText.c_str());
+
+    BOOL isOpen = FALSE;
+    CCompartment CompartmentKeyboardOpen(_pThreadMgr, _tfClientId, GUID_COMPARTMENT_KEYBOARD_OPENCLOSE);
+    CompartmentKeyboardOpen._GetCompartmentBOOL(isOpen);
+
+    std::string commit;
+    if (isOpen)
+    {
+        // feedEnter also closes the candidate menu if it is open.
+        mspy::Composer::Result result = pBridge->Composer()->feedEnter();
+        commit = result.commitText;
+    }
+    if (!commit.empty() || (_typedSinceBoundary && !_lastCharWasSeparator))
+    {
+        commit += " ";
+    }
+    _SyncComposer(ec, pContext, commit.c_str());
+
+    CompartmentKeyboardOpen._SetCompartmentBOOL(isOpen ? FALSE : TRUE);
+
+    // The mode switch itself is a boundary.
+    _typedSinceBoundary = FALSE;
+    _lastCharWasSeparator = TRUE;
+    return S_OK;
 }
 
 //+---------------------------------------------------------------------------

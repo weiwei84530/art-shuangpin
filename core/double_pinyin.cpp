@@ -177,6 +177,18 @@ std::optional<std::string> ConsonantFinalZhuyin(std::string_view final,
 bool IsFirstKey(char c) { return c >= 'a' && c <= 'z'; }
 
 std::string FirstKeyDisplay(char c) {
+  // Keys without a dedicated bopomofo initial still show a representative
+  // symbol so every first key reads as bopomofo, never as a raw letter
+  // (the second key corrects the actual syllable): y/w show the medial
+  // they usually start, a/e/o show their standalone vowel.
+  switch (c) {
+    case 'y': return "ㄧ";
+    case 'w': return "ㄨ";
+    case 'a': return "ㄚ";
+    case 'e': return "ㄜ";
+    case 'o': return "ㄛ";
+    default: break;
+  }
   auto initial = LookupInitial(c);
   if (initial && !initial->zhuyin.empty()) return std::string(initial->zhuyin);
   return std::string(1, c);

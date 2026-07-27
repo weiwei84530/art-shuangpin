@@ -28,19 +28,11 @@ inline constexpr char kTone3[] = "ˇ";          // U+02C7
 inline constexpr char kTone4[] = "ˋ";          // U+02CB
 inline constexpr char kTone5[] = "˙";          // U+02D9
 
-// Prefix for literal readings ("\x01" + one ASCII char). A literal reading
-// resolves to exactly one fixed candidate whose value is that char; it is
-// how English-mode text and the mode-switch spaces live inside the grid.
-// 0x01 never appears in dictionary keys, so it is safe as a marker.
-inline constexpr char kLiteralPrefix = '\x01';
-
 class RelaxedToneLM : public Formosa::Gramambular2::LanguageModel {
  public:
   explicit RelaxedToneLM(
       std::shared_ptr<Formosa::Gramambular2::LanguageModel> inner);
 
-  // Literal keys (kLiteralPrefix + char, no separator) yield a single
-  // score-0 unigram; multi-reading keys containing a literal never match.
   std::vector<Unigram> getUnigrams(const std::string& key) override;
   bool hasUnigrams(const std::string& key) override;
 

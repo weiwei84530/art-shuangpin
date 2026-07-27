@@ -13,8 +13,9 @@
 //   1-6  pick the numbered candidate on the current page
 //   7/8  previous/next page (no wrap; out-of-range is a no-op)
 //   any other key closes the menu AND performs its normal function.
-// A bare Shift tap toggles English mode; mid-composition it also inserts a
-// half-width space at the cursor (both on entering and leaving English).
+// Chinese/English switching lives entirely in the shell (a bare Shift tap
+// commits the buffer and toggles the system keyboard-open state); the
+// composer itself is Chinese-only.
 
 #pragma once
 
@@ -49,11 +50,6 @@ class Composer {
   explicit Composer(std::shared_ptr<RelaxedToneLM> lm);
 
   State state() const { return state_; }
-
-  // English mode (toggled by a bare Shift tap). While kEmpty, every key
-  // passes through to the application; while composing, printable keys are
-  // inserted literally at the cursor.
-  bool englishMode() const { return englishMode_; }
 
   // Inline composition text: walked sentence followed by the pending
   // syllable's display (e.g. 我喜歡ㄋ while typing ㄋㄧˇ).
@@ -107,8 +103,6 @@ class Composer {
   Result feedEnter();
   // Esc cancels the whole composition (closing the menu first if open).
   Result feedEsc();
-  // A bare Shift tap (no other key between down and up).
-  Result feedShiftTap();
 
   // Closes the candidate menu without touching the composition (used by the
   // shell for window-only teardown, e.g. mouse dismissal).
@@ -139,9 +133,6 @@ class Composer {
   bool retrofitToneToLastSyllable(char digit);
   // Inserts a reading into the grid and re-walks.
   bool insertReading(const std::string& reading);
-  // Inserts a literal character (English-mode text, auto space) at the
-  // cursor as a single-candidate grid node.
-  bool insertLiteral(char c);
   // Moves the cursor by delta with wrap-around at both ends.
   void moveCursor(int delta);
   // Opens the candidate menu at the cursor span (digit 8).
@@ -173,9 +164,6 @@ class Composer {
   // Paired-quote alternation (Rime-style): next " types “ or ”.
   bool doubleQuoteOpen_ = false;
   bool singleQuoteOpen_ = false;
-
-  // English mode survives commits/resets; it is a device-level toggle.
-  bool englishMode_ = false;
 
   // Selection state.
   size_t selectionLocation_ = 0;

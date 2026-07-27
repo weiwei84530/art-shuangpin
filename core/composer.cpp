@@ -84,10 +84,6 @@ const char* ToneMark(char digit) {
   }
 }
 
-bool IsPrintableAscii(char c) {
-  return c >= 0x20 && c < 0x7f;
-}
-
 }  // namespace
 
 Composer::Composer(std::shared_ptr<RelaxedToneLM> lm)
@@ -182,19 +178,6 @@ bool Composer::insertReading(const std::string& reading) {
   return true;
 }
 
-bool Composer::insertLiteral(char c) {
-  // Literal grid nodes use a sentinel-prefixed reading that RelaxedToneLM
-  // resolves to a single fixed candidate; no UOM/suggestion pass needed.
-  std::string reading;
-  reading.push_back(kLiteralPrefix);
-  reading.push_back(c);
-  if (!grid_.insertReading(reading)) return false;
-  walk_ = grid_.walk();
-  lastWasBare_ = false;
-  state_ = State::kComposing;
-  return true;
-}
-
 void Composer::moveCursor(int delta) {
   lastWasBare_ = false;  // moving away ends the tone-retrofit window
   const size_t cursor = grid_.cursor();
@@ -267,7 +250,6 @@ void Composer::reset() {
   selectionLocation_ = 0;
   pageIndex_ = 0;
   state_ = State::kEmpty;
-  // englishMode_ deliberately survives: it is a device-level toggle.
 }
 
 void Composer::updateStateAfterMutation() {
@@ -281,11 +263,6 @@ void Composer::updateStateAfterMutation() {
 bool Composer::wouldConsume(char c) const {
   if (state_ == State::kSelecting) return true;
   const bool composing = state_ == State::kComposing;
-  if (englishMode_) {
-    // Idle English mode passes everything to the application; while a
-    // composition is open, printable keys become literal insertions.
-    return composing && IsPrintableAscii(c);
-  }
   if (c >= 'a' && c <= 'z') return true;
   if (DirectPunctuation(c) != nullptr || c == '"' || c == '\'') return true;
   if (c >= '1' && c <= '5') {
@@ -315,16 +292,6 @@ Composer::Result Composer::feedChar(char c) {
   }
 
   const bool composing = state_ == State::kComposing;
-
-  // English mode: literal insertion while composing, pass-through when idle.
-  if (englishMode_) {
-    if (!composing) return {false, ""};
-    if (IsPrintableAscii(c)) {
-      insertLiteral(c);
-      return {true, ""};
-    }
-    return {true, ""};
-  }
 
   // Tone digits: first choice is a pending syllable awaiting its tone;
   // otherwise retrofit the tone onto the just-inserted bare syllable.
@@ -455,28 +422,6 @@ Composer::Result Composer::feedEsc() {
   // Selecting or Composing: cancel the whole composition (the menu, if
   // open, closes as part of the reset).
   reset();
-  return {true, ""};
-}
-
-Composer::Result Composer::feedShiftTap() {
-  if (state_ == State::kSelecting) {
-    dismissMenu();
-  }
-  if (state_ == State::kComposing) {
-    // Settle the pending syllable the way commit would: a complete
-    // toneless syllable is finalized, a half-typed one is dropped.
-    if (pending_.complete()) finalizePendingBare();
-    pending_.clear();
-    lastWasBare_ = false;
-    // The mode switch inserts a half-width space at the cursor, both when
-    // entering and when leaving English; the underline stays.
-    insertLiteral(' ');
-    englishMode_ = !englishMode_;
-    updateStateAfterMutation();
-    return {true, ""};
-  }
-  // Idle: plain device-level toggle, no space.
-  englishMode_ = !englishMode_;
   return {true, ""};
 }
 

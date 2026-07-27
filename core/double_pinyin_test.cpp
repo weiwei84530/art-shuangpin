@@ -91,8 +91,12 @@ TEST(DoublePinyinTest, FirstKeyDisplay) {
   EXPECT_EQ(FirstKeyDisplay('u'), "ㄕ");
   EXPECT_EQ(FirstKeyDisplay('v'), "ㄓ");
   EXPECT_EQ(FirstKeyDisplay('b'), "ㄅ");
-  EXPECT_EQ(FirstKeyDisplay('y'), "y");
-  EXPECT_EQ(FirstKeyDisplay('o'), "o");
+  // Every first key displays as bopomofo, never as a raw letter.
+  EXPECT_EQ(FirstKeyDisplay('y'), "ㄧ");
+  EXPECT_EQ(FirstKeyDisplay('w'), "ㄨ");
+  EXPECT_EQ(FirstKeyDisplay('a'), "ㄚ");
+  EXPECT_EQ(FirstKeyDisplay('e'), "ㄜ");
+  EXPECT_EQ(FirstKeyDisplay('o'), "ㄛ");
 }
 
 }  // namespace

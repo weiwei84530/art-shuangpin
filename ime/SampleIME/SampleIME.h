@@ -248,9 +248,11 @@ private:
     // composer cursor).
     TfGuidAtom _gaDisplayAttributeAnchor;
 
-    // [MspyIME] TRUE between a Shift key-down and key-up with no other key
-    // in between; a Shift key-up while armed is a "bare Shift tap".
-    BOOL _shiftTapArmed;
+    // [MspyIME] Shift-tap separator bookkeeping: whether any text reached
+    // the document since the last boundary (focus change / mode switch),
+    // and whether the last such character was already a space/newline.
+    BOOL _typedSinceBoundary;
+    BOOL _lastCharWasSeparator;
 
     CANDIDATE_MODE _candidateMode;
     CCandidateListUIPresenter *_pCandidateListUIPresenter;

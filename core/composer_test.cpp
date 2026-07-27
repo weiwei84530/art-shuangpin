@@ -237,8 +237,8 @@ TEST_F(ComposerTest, UnconfirmedTailTracksToneSettlement) {
   // scenario): typing the next first key turns 窩 black.
   Type("wo");
   Type("o");
-  EXPECT_EQ(composer_->composedText(), "窝o");
-  EXPECT_EQ(composer_->unconfirmedTail(), "o");
+  EXPECT_EQ(composer_->composedText(), "窝ㄛ");
+  EXPECT_EQ(composer_->unconfirmedTail(), "ㄛ");
   composer_->feedEsc();
 
   // A half syllable alone is entirely unconfirmed.
@@ -382,85 +382,6 @@ TEST_F(ComposerTest, EscCancelsSelectionAndComposition) {
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
 }
 
-TEST_F(ComposerTest, ShiftTapTogglesEnglishWhenIdle) {
-  EXPECT_FALSE(composer_->englishMode());
-  composer_->feedShiftTap();
-  EXPECT_TRUE(composer_->englishMode());
-  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
-
-  // Idle English mode: everything passes through untouched.
-  EXPECT_FALSE(composer_->wouldConsume('a'));
-  auto r = composer_->feedChar('a');
-  EXPECT_FALSE(r.consumed);
-
-  composer_->feedShiftTap();
-  EXPECT_FALSE(composer_->englishMode());
-  EXPECT_TRUE(composer_->wouldConsume('a'));
-}
-
-TEST_F(ComposerTest, ShiftTapMidCompositionInsertsSpaces) {
-  Type("ni3hk3");  // 你好
-  composer_->feedShiftTap();
-  EXPECT_TRUE(composer_->englishMode());
-  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
-  EXPECT_EQ(composer_->composedText(), "你好 ");
-
-  // English segment: literals, including digits and space, at the cursor.
-  Type("ok");
-  Type(" ");
-  Type("77");
-  EXPECT_EQ(composer_->composedText(), "你好 ok 77");
-  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
-
-  // Uppercase reaches the composer unlowered in English mode.
-  EXPECT_TRUE(composer_->wouldConsume('K'));
-  composer_->feedChar('K');
-  EXPECT_EQ(composer_->composedText(), "你好 ok 77K");
-
-  // Tap back to Chinese: another space, still uncommitted.
-  composer_->feedShiftTap();
-  EXPECT_FALSE(composer_->englishMode());
-  EXPECT_EQ(composer_->composedText(), "你好 ok 77K ");
-  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
-
-  Type("wo3");
-  EXPECT_EQ(composer_->composedText(), "你好 ok 77K 我");
-
-  auto r = composer_->feedEnter();
-  EXPECT_EQ(r.commitText, "你好 ok 77K 我");
-  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
-  // The mode itself is untouched by the commit.
-  EXPECT_FALSE(composer_->englishMode());
-}
-
-TEST_F(ComposerTest, EnglishSegmentInsertsAtCursor) {
-  Type("ni3hk3");  // 你好
-  Type("9");       // cursor between 你 and 好
-  composer_->feedShiftTap();
-  Type("x");
-  EXPECT_EQ(composer_->composedText(), "你 x好");
-  composer_->feedShiftTap();
-  EXPECT_EQ(composer_->composedText(), "你 x 好");
-}
-
-TEST_F(ComposerTest, ShiftTapDropsHalfTypedSyllable) {
-  Type("vs3n");  // 種 + pending ㄋ
-  EXPECT_EQ(composer_->composedText(), "種ㄋ");
-  composer_->feedShiftTap();
-  EXPECT_EQ(composer_->composedText(), "種 ");
-  EXPECT_TRUE(composer_->englishMode());
-}
-
-TEST_F(ComposerTest, EnterCommitsEnglishSegment) {
-  composer_->feedShiftTap();  // idle toggle: English
-  composer_->feedShiftTap();  // back: no stray state
-  Type("de");
-  composer_->feedShiftTap();
-  Type("abc");
-  auto r = composer_->feedEnter();
-  EXPECT_TRUE(r.consumed);
-  EXPECT_EQ(r.commitText, "的 abc");
-}
 
 }  // namespace
 }  // namespace mspy

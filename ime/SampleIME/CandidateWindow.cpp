@@ -201,7 +201,19 @@ void CCandidateWindow::_ResizeWindow()
     {
         rows = candidateListPageCnt;
     }
-    CBaseWindow::_Resize(0, 0, _cxTitle,
+
+    // Keep the window where the presenter placed it (next to the text
+    // extent); resizing must never snap it back to the screen origin.
+    POINT pt = {0, 0};
+    HWND wndHandle = _GetWnd();
+    if (wndHandle != nullptr)
+    {
+        RECT rcWnd = {0, 0, 0, 0};
+        GetWindowRect(wndHandle, &rcWnd);
+        pt.x = rcWnd.left;
+        pt.y = rcWnd.top;
+    }
+    CBaseWindow::_Resize(pt.x, pt.y, _cxTitle,
                          _cyRow * rows + CANDWND_PAGEBAR_HEIGHT);
 }
 
