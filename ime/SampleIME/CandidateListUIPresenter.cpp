@@ -831,8 +831,14 @@ void CCandidateListUIPresenter::_SetText(_In_ CSampleImeArray<CCandidateListItem
 
     SetPageIndexWithScrollInfo(pCandidateList);
 
-    // [MspyIME] Fit the window height to the rows of the current page.
+    // [MspyIME] Fit the window height to the rows of the current page,
+    // then re-place it: the height just changed, so the above/below fit
+    // decision must be redone with the final extent.
     _pCandidateWnd->_OnListUpdated();
+    if (_isShowMode)
+    {
+        _MoveWindowToTextExt();
+    }
 
     if (_isShowMode)
     {
@@ -1017,7 +1023,14 @@ void CCandidateListUIPresenter::_MoveWindowToTextExt()
         return;
     }
 
-    _pCandidateWnd->_Move(rc.left, rc.bottom);
+    // [MspyIME] Fit the window around the text extent instead of blindly
+    // below it: CalcFitPointAroundTextExtent flips it above the anchor
+    // when the bottom of the work area would clip it.
+    RECT rcCandidate = {0, 0, 0, 0};
+    POINT ptCandidate = {rc.left, rc.bottom};
+    _pCandidateWnd->_GetClientRect(&rcCandidate);
+    _pCandidateWnd->_GetWindowExtent(&rc, &rcCandidate, &ptCandidate);
+    _pCandidateWnd->_Move(ptCandidate.x, ptCandidate.y);
 }
 //+---------------------------------------------------------------------------
 //
