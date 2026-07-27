@@ -48,6 +48,16 @@ RelaxedToneLM::RelaxedToneLM(std::shared_ptr<LanguageModel> inner)
 
 std::vector<LanguageModel::Unigram> RelaxedToneLM::getUnigrams(
     const std::string& key) {
+  // Literal readings: one fixed candidate; any joined key containing the
+  // literal marker (a would-be phrase spanning a literal) never matches.
+  if (key.find(kLiteralPrefix) != std::string::npos) {
+    if (key.size() > 1 && key[0] == kLiteralPrefix &&
+        key.find('-') == std::string::npos) {
+      return {Unigram(key.substr(1), 0.0)};
+    }
+    return {};
+  }
+
   const auto syllables = SplitKey(key);
 
   // Cartesian product of the per-syllable expansions.
@@ -86,6 +96,10 @@ std::vector<LanguageModel::Unigram> RelaxedToneLM::getUnigrams(
 }
 
 bool RelaxedToneLM::hasUnigrams(const std::string& key) {
+  if (key.find(kLiteralPrefix) != std::string::npos) {
+    return key.size() > 1 && key[0] == kLiteralPrefix &&
+           key.find('-') == std::string::npos;
+  }
   const auto syllables = SplitKey(key);
   // Fast path for single syllables (the common case during typing).
   if (syllables.size() == 1) {

@@ -224,8 +224,10 @@ std::vector<ReadingGrid::Candidate> ReadingGrid::candidatesAt(size_t loc) {
 
   for (const NodeInSpan& nodeInSpan : nodes) {
     for (const LanguageModel::Unigram& unigram : nodeInSpan.node->unigrams()) {
+      // [mspy] carry the span so callers can detect no-op candidates.
       result.emplace_back(nodeInSpan.node->reading(), unigram.value(),
-                          unigram.rawValue());
+                          unigram.rawValue(), nodeInSpan.spanIndex,
+                          nodeInSpan.node->spanningLength());
     }
   }
   return result;

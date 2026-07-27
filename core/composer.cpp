@@ -116,7 +116,6 @@ Composer::DisplaySegments Composer::displaySegments() const {
   }
   segments.before = std::move(left);
   segments.unconfirmed += pending_.displayText();
-  segments.unconfirmed += pendingSymbol_;
 
   // The character right of the cursor is the selection anchor; emphasize
   // it so the user can see where digit-8 selection would start.
@@ -179,6 +178,28 @@ bool Composer::insertReading(const std::string& reading) {
     }
   }
   return true;
+}
+
+void Composer::insertLiteralText(const std::string& utf8) {
+  // One literal reading per code point keeps the reading/character 1:1
+  // mapping the cursor and display math rely on. Literals have a single
+  // fixed candidate, so no UOM/suggestion pass is needed.
+  size_t i = 0;
+  while (i < utf8.size()) {
+    size_t j = i + 1;
+    while (j < utf8.size() &&
+           (static_cast<unsigned char>(utf8[j]) & 0xC0) == 0x80) {
+      ++j;
+    }
+    std::string reading;
+    reading.push_back(kLiteralPrefix);
+    reading.append(utf8, i, j - i);
+    grid_.insertReading(reading);
+    i = j;
+  }
+  walk_ = grid_.walk();
+  lastWasBare_ = false;
+  state_ = State::kComposing;
 }
 
 void Composer::moveCursor(int delta) {
@@ -253,7 +274,6 @@ void Composer::reset() {
   selectionLocation_ = 0;
   pageIndex_ = 0;
   hollowFinal_ = false;
-  pendingSymbol_.clear();
   state_ = State::kEmpty;
 }
 
@@ -267,8 +287,8 @@ void Composer::updateStateAfterMutation() {
 
 bool Composer::wouldConsume(char c) const {
   if (state_ == State::kSelecting) return true;
-  if (hollowFinal_ || !pendingSymbol_.empty()) return true;
-  if (c == '`') return true;  // hollows the initial slot
+  if (hollowFinal_) return true;
+  if (c == '`') return true;  // settles/hollows bopomofo
   const bool composing = state_ == State::kComposing;
   if (c >= 'a' && c <= 'z') return true;
   if (DirectPunctuation(c) != nullptr || c == '"' || c == '\'') return true;
@@ -298,16 +318,21 @@ Composer::Result Composer::feedChar(char c) {
     dismissMenu();
   }
 
-  if (hollowFinal_ || !pendingSymbol_.empty()) {
+  if (hollowFinal_) {
     return feedHollowFinal(c);
   }
 
   const bool composing = state_ == State::kComposing;
 
-  // Backtick hollows out the initial slot: the NEXT key is read as a final
-  // and shows its bopomofo. Only meaningful with no half-typed syllable.
+  // Backtick settles bopomofo as fixed text: with a pending syllable it
+  // settles the visible display (n` -> settled ㄋ); with none it hollows
+  // the initial slot so the next key is read as a final.
   if (c == '`') {
-    if (pending_.empty()) {
+    if (!pending_.empty()) {
+      std::string symbols = pending_.displayText();
+      pending_.clear();
+      insertLiteralText(symbols);
+    } else {
       hollowFinal_ = true;
       state_ = State::kComposing;
     }
@@ -418,10 +443,9 @@ Composer::Result Composer::feedBackspace() {
     // Close the menu, then delete as usual.
     dismissMenu();
   }
-  if (hollowFinal_ || !pendingSymbol_.empty()) {
-    // Undo the hollow-final entry (symbol first, then the backtick state).
+  if (hollowFinal_) {
+    // Undo the bare backtick.
     hollowFinal_ = false;
-    pendingSymbol_.clear();
     updateStateAfterMutation();
     return {true, ""};
   }
@@ -469,7 +493,22 @@ Composer::Result Composer::openCandidateMenu() {
   // cursor and falls back to the last character at the end of the buffer.
   selectionLocation_ = grid_.cursor();
   candidates_ = grid_.candidatesAt(selectionLocation_);
-  if (candidates_.empty()) return {true, ""};
+
+  // Hide no-op candidates: a value identical to the walked text over its
+  // own span changes nothing when picked (the 聽不懂 menu would otherwise
+  // lead with 聽不懂/不懂/懂 themselves).
+  std::string walked;
+  for (const auto& v : walk_.valuesAsStrings()) walked += v;
+  std::vector<Formosa::Gramambular2::ReadingGrid::Candidate> filtered;
+  for (const auto& candidate : candidates_) {
+    std::string left, rest, covered, right;
+    SplitAtCodePoints(walked, candidate.location, &left, &rest);
+    SplitAtCodePoints(rest, candidate.spanningLength, &covered, &right);
+    if (covered != candidate.value) filtered.push_back(candidate);
+  }
+  candidates_ = std::move(filtered);
+
+  if (candidates_.empty()) return {true, ""};  // nothing worth a menu
   lastWasBare_ = false;
   pageIndex_ = 0;
   state_ = State::kSelecting;
@@ -491,12 +530,12 @@ Composer::Result Composer::selectOnCurrentPage(size_t indexInPage) {
 }
 
 Composer::Result Composer::feedHollowFinal(char c) {
-  if (hollowFinal_ && ((c >= 'a' && c <= 'z') || c == ';')) {
-    // The hollowed key is read as a final; show its bopomofo.
+  if ((c >= 'a' && c <= 'z') || c == ';') {
+    // The hollowed key is read as a final; its bopomofo settles directly.
     std::string symbol = HollowFinalDisplay(c);
     if (!symbol.empty()) {
-      pendingSymbol_ = std::move(symbol);
       hollowFinal_ = false;
+      insertLiteralText(symbol);
     }
     return {true, ""};
   }
@@ -510,7 +549,7 @@ Composer::Result Composer::feedHollowFinal(char c) {
 }
 
 Composer::Result Composer::commitWithResidue() {
-  std::string residue = pending_.displayText() + pendingSymbol_;
+  std::string residue = pending_.displayText();
   if (residue.empty()) {
     std::string commit = takeCommitText();
     if (commit.empty()) {

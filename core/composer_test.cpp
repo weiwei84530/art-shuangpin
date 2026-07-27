@@ -35,7 +35,9 @@ class ComposerTest : public ::testing::Test {
     inner->add("ㄋㄧ", "妮", -6);
     inner->add("ㄋㄧˇ", "你", -2);
     inner->add("ㄏㄠˇ", "好", -2);
+    inner->add("ㄏㄠˇ", "郝", -7);
     inner->add("ㄋㄧˇ-ㄏㄠˇ", "你好", -1);
+    inner->add("ㄋㄧˇ-ㄏㄠˇ", "妳好", -4);
     lm_ = std::make_shared<RelaxedToneLM>(inner);
     composer_ = std::make_unique<Composer>(lm_);
   }
@@ -139,15 +141,18 @@ TEST_F(ComposerTest, CursorMovementAndMidBufferEditing) {
   Type("ni3hk3");  // 你好
   EXPECT_EQ(composer_->composedText(), "你好");
 
-  // 9 moves left: cursor between 你 and 好; 8 opens the menu there and
-  // the candidates must include 好 (the char right of the cursor).
+  // 9 moves left: cursor between 你 and 好; 8 opens the menu there. The
+  // currently displayed picks (你好/好) are hidden as no-ops; the other
+  // ㄏㄠˇ readings remain.
   Type("98");
   ASSERT_EQ(composer_->state(), Composer::State::kSelecting);
-  bool found = false;
+  bool foundAlternative = false;
   for (const auto& c : composer_->candidates()) {
-    if (c.value == "好") found = true;
+    EXPECT_NE(c.value, "好");
+    EXPECT_NE(c.value, "你好");
+    if (c.value == "郝") foundAlternative = true;
   }
-  EXPECT_TRUE(found);
+  EXPECT_TRUE(foundAlternative);
   composer_->closeCandidateMenu();
   EXPECT_EQ(composer_->state(), Composer::State::kComposing);
 
@@ -273,14 +278,30 @@ TEST_F(ComposerTest, SelectionFlow) {
   auto r = composer_->feedChar('8');
   EXPECT_TRUE(r.consumed);
   ASSERT_EQ(composer_->state(), Composer::State::kSelecting);
-  ASSERT_GE(composer_->candidates().size(), 2u);
-  EXPECT_EQ(composer_->candidates()[0].value, "的");
-  EXPECT_EQ(composer_->candidates()[1].value, "得");
+  // The displayed 的 is hidden as a no-op; 得 remains selectable.
+  ASSERT_GE(composer_->candidates().size(), 1u);
+  EXPECT_EQ(composer_->candidates()[0].value, "得");
 
   // Digit selects during selection instead of acting as a tone.
-  composer_->feedChar('2');
+  composer_->feedChar('1');
   EXPECT_EQ(composer_->state(), Composer::State::kComposing);
   EXPECT_EQ(composer_->composedText(), "得");
+}
+
+TEST_F(ComposerTest, MenuHidesNoOpCandidatesAndSkipsEmptyMenus) {
+  // A span whose only candidate is what is already displayed opens no
+  // menu at all.
+  Type("x;");  // 星 is the only ㄒㄧㄥ entry
+  EXPECT_EQ(composer_->composedText(), "星");
+  composer_->feedChar('8');
+  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
+
+  composer_->feedEsc();
+
+  // Same for a settled bopomofo literal (single fixed candidate).
+  Type("n`");
+  composer_->feedChar('8');
+  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
 }
 
 TEST_F(ComposerTest, SelectDigitWithoutCandidateIsNoOp) {
@@ -356,11 +377,13 @@ TEST_F(ComposerTest, MenuOpensAtLastCharWhenCursorAtEnd) {
   Type("ni3hk3");  // cursor at the right end
   Type("8");
   ASSERT_EQ(composer_->state(), Composer::State::kSelecting);
-  bool found = false;
+  bool foundAlternative = false;
   for (const auto& c : composer_->candidates()) {
-    if (c.value == "好") found = true;
+    EXPECT_NE(c.value, "好");    // displayed: hidden as a no-op
+    EXPECT_NE(c.value, "你好");  // ditto
+    if (c.value == "郝" || c.value == "妳好") foundAlternative = true;
   }
-  EXPECT_TRUE(found);
+  EXPECT_TRUE(foundAlternative);
 }
 
 TEST_F(ComposerTest, Digits67EatenWhileComposing) {
@@ -396,37 +419,51 @@ TEST_F(ComposerTest, SpaceCommitsVisibleBopomofoResidue) {
   EXPECT_EQ(composer_->feedEnter().commitText, "種");
 }
 
-TEST_F(ComposerTest, HollowFinalBacktick) {
-  // ` reads the next key as a final: `k -> ㄠ.
-  Type("`k");
-  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
-  EXPECT_EQ(composer_->composedText(), "ㄠ");
-  auto r = composer_->feedChar(' ');
-  EXPECT_EQ(r.commitText, "ㄠ");
-  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
-
-  // ㄋㄧㄠ = n␠ y␠ `k␠.
-  EXPECT_EQ((Type("n"), composer_->feedChar(' ').commitText), "ㄋ");
-  EXPECT_EQ((Type("y"), composer_->feedChar(' ').commitText), "ㄧ");
-  EXPECT_EQ((Type("`k"), composer_->feedChar(' ').commitText), "ㄠ");
-
-  // Compound and single finals map per key: `x -> ㄧㄝ, `f -> ㄣ.
-  EXPECT_EQ((Type("`x"), composer_->feedChar(' ').commitText), "ㄧㄝ");
-  EXPECT_EQ((Type("`f"), composer_->feedChar(' ').commitText), "ㄣ");
-
-  // Mid-composition: the symbol joins the buffer at commit.
-  Type("vs3`k");
-  EXPECT_EQ(composer_->composedText(), "種ㄠ");
-  EXPECT_EQ(composer_->feedChar(' ').commitText, "種ㄠ");
-
-  // While a half-typed syllable is pending, ` is a no-op.
+TEST_F(ComposerTest, BacktickSettlesPendingBopomofo) {
+  // n` settles ㄋ as fixed (black) text, still uncommitted.
   Type("n`");
-  EXPECT_EQ(composer_->composedText(), "ㄋ");
+  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
+  auto segments = composer_->displaySegments();
+  EXPECT_EQ(segments.before, "ㄋ");
+  EXPECT_EQ(segments.unconfirmed, "");
+
+  // Chinese continues around the settled symbol; Enter commits both.
+  Type("vs3");
+  EXPECT_EQ(composer_->composedText(), "ㄋ種");
+  EXPECT_EQ(composer_->feedEnter().commitText, "ㄋ種");
+
+  // A tone-awaiting syllable settles its whole display.
+  Type("ul`");
+  EXPECT_EQ(composer_->displaySegments().before, "ㄕㄞ");
   composer_->feedEsc();
 }
 
+TEST_F(ComposerTest, HollowFinalSettlesDirectly) {
+  // A bare ` hollows the initial slot: the next key is read as a final
+  // and its bopomofo settles immediately: `k -> ㄠ.
+  Type("`k");
+  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
+  EXPECT_EQ(composer_->displaySegments().before, "ㄠ");
+  EXPECT_EQ(composer_->feedEnter().commitText, "ㄠ");
+
+  // ㄋㄧㄠ in one composition: n` y` `k, committed together.
+  Type("n`y``k");
+  EXPECT_EQ(composer_->composedText(), "ㄋㄧㄠ");
+  EXPECT_EQ(composer_->feedEnter().commitText, "ㄋㄧㄠ");
+
+  // Compound and single finals map per key: `x -> ㄧㄝ, `f -> ㄣ.
+  Type("`x`f");
+  EXPECT_EQ(composer_->composedText(), "ㄧㄝㄣ");
+  composer_->feedEsc();
+
+  // Mid-composition settle joins the buffer.
+  Type("vs3`k");
+  EXPECT_EQ(composer_->composedText(), "種ㄠ");
+  EXPECT_EQ(composer_->feedEnter().commitText, "種ㄠ");
+}
+
 TEST_F(ComposerTest, HollowFinalBackspaceAndEsc) {
-  // Backspace undoes the symbol, then the composition is empty again.
+  // A settled symbol deletes like any other character.
   Type("`k");
   composer_->feedBackspace();
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
@@ -441,10 +478,6 @@ TEST_F(ComposerTest, HollowFinalBackspaceAndEsc) {
   composer_->feedEsc();
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
   EXPECT_FALSE(composer_->feedChar('7').consumed);
-
-  // Enter drops the hollow symbol like any other residue.
-  Type("vs3`k");
-  EXPECT_EQ(composer_->feedEnter().commitText, "種");
 }
 
 TEST_F(ComposerTest, EscCancelsSelectionAndComposition) {

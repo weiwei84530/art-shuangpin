@@ -17,12 +17,15 @@
 // commits the buffer and toggles the system keyboard-open state); the
 // composer itself is Chinese-only.
 //
-// Raw bopomofo symbols (勿轉換): Space commits any VISIBLE bopomofo residue
-// as literal symbols (a lone first key: n + Space -> ㄋ; a tone-awaiting
-// syllable: ul + Space -> …ㄕㄞ), while Enter still drops the residue.
-// '`' hollows out the initial slot: the next key is read as a FINAL and
-// shows its bopomofo (`k -> ㄠ), committed with Space. ㄋㄧㄠ is typed as
-// "n␠y␠`k␠".
+// Raw bopomofo symbols (勿轉換): '`' SETTLES bopomofo into the composition
+// as fixed black text (still underlined/uncommitted). With a pending
+// syllable visible, '`' settles its display (n` -> settled ㄋ); with no
+// pending, '`' hollows the initial slot and the next key is read as a
+// FINAL whose bopomofo settles directly (`k -> settled ㄠ). Settled
+// symbols live in the grid as single-candidate literal readings, so they
+// mix freely with converted Chinese and commit together (ㄋㄧㄠ = n`y``k).
+// Space additionally commits any still-BLUE residue as symbols
+// (n + Space -> ㄋ), while Enter drops blue residue as before.
 
 #pragma once
 
@@ -140,6 +143,9 @@ class Composer {
   bool retrofitToneToLastSyllable(char digit);
   // Inserts a reading into the grid and re-walks.
   bool insertReading(const std::string& reading);
+  // Settles UTF-8 text into the grid as literal readings, one per code
+  // point ('`'-fixed bopomofo symbols).
+  void insertLiteralText(const std::string& utf8);
   // Moves the cursor by delta with wrap-around at both ends.
   void moveCursor(int delta);
   // Opens the candidate menu at the cursor span (digit 8).
@@ -148,11 +154,11 @@ class Composer {
   void dismissMenu();
   // Selects by page-relative index ('1'..'6'); out of range is a no-op.
   Result selectOnCurrentPage(size_t indexInPage);
-  // Key dispatch while the hollow-final sub-state is active ('`' pressed
-  // and/or a final symbol chosen).
+  // Key dispatch while the hollow-final sub-state is active ('`' pressed,
+  // awaiting the final key).
   Result feedHollowFinal(char c);
-  // Commits the buffer PLUS the visible bopomofo residue (pending display
-  // and/or hollow-final symbol) as literal symbols.
+  // Commits the buffer PLUS the visible bopomofo residue (the pending
+  // syllable's display) as literal symbols.
   Result commitWithResidue();
   // Commits the current buffer (dropping a half-typed syllable) and resets.
   std::string takeCommitText();
@@ -178,11 +184,8 @@ class Composer {
   bool doubleQuoteOpen_ = false;
   bool singleQuoteOpen_ = false;
 
-  // Hollow-final sub-state ('`'): hollowFinal_ is set between the backtick
-  // and the final key; pendingSymbol_ then holds that final's bopomofo
-  // until Space commits it (or Backspace/Esc discards it).
+  // Hollow-final sub-state: set between a bare '`' and the final key.
   bool hollowFinal_ = false;
-  std::string pendingSymbol_;
 
   // Selection state.
   size_t selectionLocation_ = 0;

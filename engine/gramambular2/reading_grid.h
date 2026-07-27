@@ -183,11 +183,21 @@ class ReadingGrid {
   WalkResult walk();
 
   struct Candidate {
-    Candidate(std::string r, std::string v, std::string rv = "")
-        : reading(std::move(r)), value(std::move(v)), rawValue(std::move(rv)) {}
+    Candidate(std::string r, std::string v, std::string rv = "",
+              size_t loc = 0, size_t len = 0)
+        : reading(std::move(r)),
+          value(std::move(v)),
+          rawValue(std::move(rv)),
+          location(loc),
+          spanningLength(len) {}
     const std::string reading;
     const std::string value;
     const std::string rawValue;
+    // [mspy] Grid span of the node this candidate comes from (filled by
+    // candidatesAt), so callers can tell whether picking it would change
+    // the currently walked text.
+    const size_t location;
+    const size_t spanningLength;
   };
 
   // Returns all candidate values at the location. If spans are not empty and

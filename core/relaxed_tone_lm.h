@@ -28,6 +28,12 @@ inline constexpr char kTone3[] = "ˇ";          // U+02C7
 inline constexpr char kTone4[] = "ˋ";          // U+02CB
 inline constexpr char kTone5[] = "˙";          // U+02D9
 
+// Prefix for literal readings ("\x01" + one UTF-8 code point). A literal
+// reading resolves to exactly one fixed candidate whose value is that code
+// point; it is how '`'-settled bopomofo symbols live inside the grid.
+// 0x01 never appears in dictionary keys, so it is safe as a marker.
+inline constexpr char kLiteralPrefix = '\x01';
+
 class RelaxedToneLM : public Formosa::Gramambular2::LanguageModel {
  public:
   explicit RelaxedToneLM(

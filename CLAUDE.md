@@ -51,6 +51,7 @@ cli\    REPL 測試臺（日常開發主力，不碰 TSF）
 
 ## 狀態記錄
 
+- 2026-07-27：**M5 回饋第四輪**。(1) 詞放寬確認為使用者誤解，**拍板不採用**、清乾淨（alias 腳本刪除、build-data 還原，spec 留一行決策記錄防反覆）。(2) 注音 v3：`` ` `` 改為「定案」語意——待定注音按 `` ` `` 轉黑融入組字串（literal 讀音 `\x01`+符號，每碼位一節點）、`` ` ``+韻母鍵直接定案（ㄋㄧㄠ＝``n`y``k`` 一次組）；Space 上屏藍殘鍵的 v2 通則保留。(3) 選單過濾無效候選（值＝該跨距現顯示文字者隱藏；Candidate 加 location/spanningLength，見 reading_grid [mspy] 註記）；過濾後空選單不開。138 tests 全綠。
 - 2026-07-27：**M5 回饋第三輪**。(1) 含輕聲詞放寬**暫時停用**（使用者改測 er2zi 實調工作流；build-data 第 4 步註解保留，`add_neutral_phrase_aliases.py` 留檔待決）。(2) 注音輸入改版：Space 上屏可見注音殘鍵（`n`+Space→ㄋ、Enter 仍丟棄）；`` ` ``＝挖空聲母、下一鍵讀為韻母（`` \`k ``→ㄠ，`HollowFinalDisplay` 全鍵表）；舊的 ` 前導模式移除。(3) 圖示換紅底白字「特」（`scripts\make_icon.py` 產生 SampleIme.ico 全尺寸；免重註冊，圖示快取可能需重開 explorer/登出才更新）。136 tests 全綠。
 - 2026-07-27：**M5 回饋第二輪**。(1) 含輕聲的詞放寬（方案 2）：build-data 第 4 步 `add_neutral_phrase_aliases.py` 為含 `˙` 的詞鍵加「其他音節去調」alias（+3649 列）——`erzi`→兒子、`ufme`→什麼；不含輕聲的詞維持嚴格。(2) 選字窗改開在游標錨點字正下方（layout 追蹤錨點子範圍）。(3) 新增 `` ` `` 前導注音字面模式（`` `b ``→ㄅ、`` `ok ``→ㄠ、`` `ul3 ``→ㄕㄞˇ；Space/Enter 上屏、Esc 取消；組字中按 `` ` `` 先 commit 前段）。136 tests 全綠。
 - 2026-07-27：**M5 實測回饋修正（v2）**。(1) Shift 切換失效根因＝樣本把「Shift 單獨放開」註冊為 TSF preserved key（IME-mode），TSF 在 KeyEventSink 前攔截並關掉輸入法；改為在 OnPreservedKey 接管執行新流程，KeyEventSink 偵測法移除。(2) Shift 語意改 commit 式（見規格摘要）；底線內英文段機制（literal 讀音）整個移除，composer 回歸純中文。(3) 選字窗跑到左上角＝_ResizeWindow 重設座標為 (0,0) 的回歸，改為保留現位置。(4) 首鍵顯示對齊：y→ㄧ、w→ㄨ、a→ㄚ、e→ㄜ、o→ㄛ。133 tests 全綠。已知：Sublime Text 不渲染 TSF display attribute（無底線/反白/顏色），屬應用程式限制、無解於輸入法端。
