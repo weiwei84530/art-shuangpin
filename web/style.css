@@ -148,43 +148,56 @@ body {
 .kb-body {
   position: relative; transform-style: preserve-3d;
   background: linear-gradient(180deg, #2c2f37, #23252c);
-  padding: 12px; border-radius: 14px;
+  padding: 12px; border-radius: 10px;
   box-shadow: inset 0 1px 0 #ffffff14;
 }
-/* fake slab thickness: darker copy shifted down in Z */
+/* case thickness: bottom copy + four side faces folded down (-Z) */
 .kb-under {
-  position: absolute; inset: 0; border-radius: 14px;
-  background: #16181d; transform: translateZ(-16px);
+  position: absolute; inset: 0; border-radius: 10px;
+  background: #101216; transform: translateZ(-18px);
+}
+.kb-front, .kb-back {
+  position: absolute; left: 0; right: 0; height: 18px;
 }
 .kb-front {
-  position: absolute; left: 0; right: 0; top: 100%; height: 16px;
-  transform-origin: 50% 0; transform: rotateX(-90deg);
-  background: linear-gradient(180deg, #1d2026, #121419);
-  border-radius: 0 0 6px 6px;
+  top: 100%; transform-origin: 50% 0; transform: rotateX(-90deg);
+  background: linear-gradient(180deg, #22252c, #121419);
+}
+.kb-back {
+  bottom: 100%; transform-origin: 50% 100%; transform: rotateX(90deg);
+  background: #16181d;
 }
 .kb-left, .kb-right {
-  position: absolute; top: 0; bottom: 0; width: 16px;
-  background: #1a1c22;
+  position: absolute; top: 0; bottom: 0; width: 18px;
+  background: linear-gradient(180deg, #1d2026, #14161b);
 }
-.kb-left  { right: 100%; transform-origin: 100% 50%; transform: rotateY(90deg); }
-.kb-right { left: 100%;  transform-origin: 0 50%;    transform: rotateY(-90deg); }
+.kb-left  { right: 100%; transform-origin: 100% 50%; transform: rotateY(-90deg); }
+.kb-right { left: 100%;  transform-origin: 0 50%;    transform: rotateY(90deg); }
 .kb-row { display: flex; gap: var(--kgap); margin-bottom: var(--kgap); transform-style: preserve-3d; }
 .kb-row:last-child { margin-bottom: 0; }
 
+/* mechanical-style keycap: plate hole (.key) + cap skirt (.side) + top (.cap) */
 .key {
-  position: relative; height: var(--u); border-radius: 7px;
-  background: #101216; transform-style: preserve-3d;
+  position: relative; height: var(--u); border-radius: 6px;
+  background: #0c0e12; transform-style: preserve-3d;
   flex: none;
 }
+.key .side {
+  position: absolute; inset: 0; border-radius: 6px;
+  background: linear-gradient(180deg, #d7d9de, #a6aab4);
+  transform: translateZ(13px);
+  transition: transform .09s ease, background .09s ease;
+}
 .key .cap {
-  position: absolute; inset: 0; border-radius: 7px;
-  background: linear-gradient(180deg, #fbfbfa, #e8e9ea);
-  border: 1px solid #c9cbd2; border-bottom-color: #b4b7c0;
-  transform: translateZ(11px);
+  position: absolute; inset: 3px; border-radius: 5px;
+  background: linear-gradient(180deg, #fcfcfb, #e9eaec);
+  box-shadow: inset 0 1px 0 #ffffff, inset 0 -3px 4px #0000000f;
+  transform: translateZ(19px);
   transition: transform .09s ease, background .09s ease;
   display: flex; align-items: center; justify-content: center;
-  color: #33363f; font-size: 15px;
+  color: #33363f; font-size: 14px;
 }
+.key:not(.wide) .cap .main { position: absolute; top: 4px; left: 7px; }
 .key .cap .main { pointer-events: none; }
 .key .cap .sub-i, .key .cap .sub-f, .key .cap .sub-c {
   position: absolute; font-size: 9.5px; line-height: 1; pointer-events: none;
@@ -194,10 +207,10 @@ body {
 .key .cap .sub-f { bottom: 4px; right: 5px; color: var(--final-c); }
 .key .cap .sub-c { bottom: 4px; left: 5px; color: var(--ctrl-c); }
 .key.wide .cap { font-size: 11.5px; color: #6a6f7c; }
+.key.pressed .side { transform: translateZ(5px); }
 .key.pressed .cap {
-  transform: translateZ(3px);
+  transform: translateZ(10px);
   background: linear-gradient(180deg, #cfe0ff, #b8d0fb);
-  border-color: var(--accent);
   color: #17335c;
 }
 .kb-hint { margin-top: 14px; font-size: 12px; color: #8a93a8; }

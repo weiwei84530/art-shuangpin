@@ -11,7 +11,7 @@ const keyEls = {};
 function buildKeyboard() {
   const body = $('#kbBody');
   // slab thickness faces
-  for (const cls of ['kb-under', 'kb-front', 'kb-left', 'kb-right']) {
+  for (const cls of ['kb-under', 'kb-front', 'kb-back', 'kb-left', 'kb-right']) {
     const d = document.createElement('div');
     d.className = cls;
     body.appendChild(d);
@@ -24,6 +24,9 @@ function buildKeyboard() {
       key.className = 'key' + (size > 1 ? ' wide' : '');
       key.style.width = `calc(var(--u) * ${size} + var(--kgap) * ${size - 1})`;
       key.dataset.key = id;
+      const side = document.createElement('div');
+      side.className = 'side';
+      key.appendChild(side);
       const cap = document.createElement('div');
       cap.className = 'cap';
       cap.innerHTML = `<span class="main">${label}</span>`;
@@ -74,13 +77,17 @@ function setupDrag() {
 
 /* ---------- screen rendering ---------- */
 
-const EMPTY = { text: '', comp: [], anchor: null, menu: null, mode: 'zh' };
+const EMPTY = { text: '', comp: [], anchor: null, cur: null, menu: null, mode: 'zh' };
 
 function renderScreen(st) {
   $('#committed').textContent = st.text;
   const compEl = $('#composition');
   compEl.innerHTML = '';
+  // blinking caret sits at the IME cursor (st.cur index; null = at the end)
+  const caret = document.createElement('span');
+  caret.className = 'caret';
   st.comp.forEach(([ch, kind], i) => {
+    if (st.cur === i) compEl.appendChild(caret);
     const s = document.createElement('span');
     s.className = 'ch ' + (kind === 's' ? 'settled' : 'pending');
     if (st.anchor === i && !st.menu) s.classList.add('anchor');
@@ -88,6 +95,7 @@ function renderScreen(st) {
     s.textContent = ch;
     compEl.appendChild(s);
   });
+  if (st.cur == null || st.cur >= st.comp.length) compEl.appendChild(caret);
   const badge = $('#modeBadge');
   badge.textContent = st.mode === 'en' ? '英' : '中';
   badge.className = 'mode-badge ' + st.mode;
@@ -168,10 +176,11 @@ const player = {
   },
 
   async play() {
+    const t = TUTORIALS[this.ti];
+    if (this.si >= t.steps.length - 1) { this.load(this.ti); return; }
     const gen = ++this.gen;
     this.playing = true;
     this.updateBtn();
-    const t = TUTORIALS[this.ti];
     while (this.si < t.steps.length - 1) {
       await this.stepTo(this.si + 1, true, gen);
       if (gen !== this.gen) return;
@@ -206,6 +215,11 @@ function buildNav() {
     nav.appendChild(b);
   });
 }
+
+$('#btnPrev').addEventListener('click', () => player.prev());
+$('#btnPlay').addEventListener('click', () => player.toggle());
+$('#btnNext').addEventListener('click', () => player.next());
+$('#btnRestart').addEventListener('click', () => player.restart());
 
 buildKeyboard();
 applyRot();

@@ -102,9 +102,9 @@ const TUTORIALS = [
     steps: [
       { keys: ['n','i','3','h','k','3'], screen: { comp: [['你','s'],['好','s']] },
         cap: '先打出「你好」（ni3hk3）。組字中<b>數字全是控制鍵</b>：<kbd>9</kbd>/<kbd>0</kbd> 移游標、<kbd>8</kbd> 開選單。' },
-      { keys: ['9'], screen: { anchor: 1 },
+      { keys: ['9'], screen: { anchor: 1, cur: 1 },
         cap: '<kbd>9</kbd>＝游標左移。反白的「好」＝目前的選字對象（游標右邊那個字）。' },
-      { keys: ['9'], screen: { anchor: 0 },
+      { keys: ['9'], screen: { anchor: 0, cur: 0 },
         cap: '再按 <kbd>9</kbd>，反白移到「你」。<kbd>0</kbd> 往右移；到兩端會環繞到另一頭。' },
       { keys: ['8'], screen: { menu: { anchor: 0, page: '1/2', sel: null,
           items: ['妳','擬','旎','苨','柅','狔'] } },
@@ -117,7 +117,7 @@ const TUTORIALS = [
         cap: '<kbd>7</kbd> 回到第一頁。每頁最多 6 個候選，對應數字 <kbd>1</kbd>–<kbd>6</kbd>。' },
       { keys: ['1'], screen: { comp: [['妳','s'],['好','s']], anchor: 0, menu: null },
         cap: '<kbd>1</kbd> 選「妳」：選單關閉、該詞段釘選，選擇會被記住（使用者選字學習）。選單開著時按<b>其他任何鍵</b>＝關窗並執行那個鍵原本的功能。' },
-      { keys: ['Enter'], screen: { text: '妳好', comp: [], anchor: null },
+      { keys: ['Enter'], screen: { text: '妳好', comp: [], anchor: null, cur: null },
         cap: '<kbd>Enter</kbd> 上屏「妳好」。' }
     ]
   },
