@@ -315,6 +315,15 @@ STDAPI CSampleIME::OnTestKeyDown(ITfContext *pContext, WPARAM wParam, LPARAM lPa
     UINT code = 0;
     *pIsEaten = _IsKeyEaten(pContext, (UINT)wParam, &code, &wch, &KeystrokeState);
 
+    if (!*pIsEaten)
+    {
+        // [MspyIME] For keys we do not eat, most hosts never call OnKeyDown
+        // (only this test) — so the last-character-class observation for the
+        // Shift separator space must happen HERE. Classification is a pure
+        // assignment, so a host that calls both hooks is harmless.
+        _ObserveBypassedKey(code);
+    }
+
     if (KeystrokeState.Category == CATEGORY_INVOKE_COMPOSITION_EDIT_SESSION)
     {
         //
