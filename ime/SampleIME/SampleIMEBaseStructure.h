@@ -68,7 +68,12 @@ enum KEYSTROKE_FUNCTION
     FUNCTION_PUNCTUATION,
 
     // [MspyIME] Bare Shift tap: Chinese/English mode toggle.
-    FUNCTION_SHIFT_TAP
+    FUNCTION_SHIFT_TAP,
+
+    // [MspyIME] Idle navigation keys (9/0/-/=): the eaten key is replayed
+    // as an injected Left/Right/Home/End keystroke. Handled directly in
+    // OnKeyDown (no document access needed, so no edit session).
+    FUNCTION_NAV_INJECT
 };
 
 //---------------------------------------------------------------------

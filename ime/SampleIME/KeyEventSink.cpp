@@ -52,6 +52,33 @@ __inline UINT VKeyFromVKPacketAndWchar(UINT vk, WCHAR wch)
     return vkRet;
 }
 
+// [MspyIME] Replays an idle navigation key (9/0/-/=) as the arrow/Home/End
+// keystroke it stands for. SendInput only appends to the input queue, so the
+// injected key is processed after the current one and re-enters our key sink
+// in the idle state, where these VKs always pass through to the app. A
+// physically held Shift modifies the injected key into a selection.
+static void InjectNavigationKey(UINT code)
+{
+    WORD vk = 0;
+    switch (code)
+    {
+    case '9':          vk = VK_LEFT;  break;
+    case '0':          vk = VK_RIGHT; break;
+    case VK_OEM_MINUS: vk = VK_HOME;  break;
+    case VK_OEM_PLUS:  vk = VK_END;   break;
+    default:           return;
+    }
+
+    INPUT inputs[2] = {};
+    inputs[0].type = INPUT_KEYBOARD;
+    inputs[0].ki.wVk = vk;
+    inputs[0].ki.dwFlags = KEYEVENTF_EXTENDEDKEY;
+    inputs[1].type = INPUT_KEYBOARD;
+    inputs[1].ki.wVk = vk;
+    inputs[1].ki.dwFlags = KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP;
+    SendInput(ARRAYSIZE(inputs), inputs, sizeof(INPUT));
+}
+
 //+---------------------------------------------------------------------------
 //
 // _IsKeyEaten
@@ -318,6 +345,14 @@ STDAPI CSampleIME::OnKeyDown(ITfContext *pContext, WPARAM wParam, LPARAM lParam,
 
     if (*pIsEaten)
     {
+        // [MspyIME] Idle navigation keys need no document access: skip the
+        // edit session and replay the mapped keystroke directly.
+        if (KeystrokeState.Function == FUNCTION_NAV_INJECT)
+        {
+            InjectNavigationKey(code);
+            return S_OK;
+        }
+
         bool needInvokeKeyHandler = true;
         //
         // Invoke key handler edit session

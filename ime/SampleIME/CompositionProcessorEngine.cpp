@@ -1646,6 +1646,22 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeedMspy(UINT uCode, _In_reads_(1)
         break;
     }
 
+    // [MspyIME] Idle navigation keys (spec §6.5): with no composition, 9/0
+    // (Shift up) and -/= (any Shift state) are replayed as injected
+    // Left/Right/Home/End keystrokes; a physically held Shift then extends
+    // the selection for free. Shift+9/0 falls through to the char path so
+    // （）stay typable. ModifiersValue is refreshed by every sink call
+    // before we run, so reading it here is side-effect free.
+    if (!active)
+    {
+        const bool shiftHeld = (Global::ModifiersValue & (TF_MOD_SHIFT | TF_MOD_LSHIFT | TF_MOD_RSHIFT)) != 0;
+        if ((!shiftHeld && (uCode == '9' || uCode == '0')) ||
+            uCode == VK_OEM_MINUS || uCode == VK_OEM_PLUS)
+        {
+            return eat(CATEGORY_COMPOSING, FUNCTION_NAV_INJECT);
+        }
+    }
+
     WCHAR wch = pwch ? *pwch : L'\0';
     if (wch >= L'A' && wch <= L'Z')
     {
