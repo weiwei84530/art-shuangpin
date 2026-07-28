@@ -34,6 +34,8 @@ if ($staged -eq 0) { throw "No built DLLs found - build the ime solution first" 
 if ($staged -lt 2) { Write-Output "WARN: packaging only $staged architecture(s); 32-bit apps need the x86 DLL" }
 
 Copy-Item (Join-Path $PSScriptRoot "install.ps1") $stage
+Copy-Item (Join-Path $PSScriptRoot "install.bat") $stage
+Copy-Item (Join-Path $PSScriptRoot "uninstall.bat") $stage
 
 $zip = Join-Path $root "out\art-shuangpin-$Version.zip"
 if (Test-Path $zip) { Remove-Item -Force $zip }
