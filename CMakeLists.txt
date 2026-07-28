@@ -31,6 +31,7 @@ add_library(mspy_core STATIC
   core/syllable_input.cpp
   core/relaxed_tone_lm.cpp
   core/composer.cpp
+  core/reconverter.cpp
 )
 target_include_directories(mspy_core PUBLIC core)
 target_link_libraries(mspy_core PUBLIC mcb_engine)
@@ -74,6 +75,7 @@ add_executable(core_tests
   core/double_pinyin_test.cpp
   core/relaxed_tone_lm_test.cpp
   core/composer_test.cpp
+  core/reconverter_test.cpp
 )
 target_link_libraries(core_tests PRIVATE mspy_core GTest::gtest_main)
 gtest_discover_tests(core_tests)
