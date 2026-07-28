@@ -140,7 +140,29 @@ public:
     void _RememberCommittedTail(const std::wstring& text);
     // Classifies a key that was passed through to the application.
     void _ObserveBypassedKey(UINT code);
-    void _ResetLastCharClass() { _lastCharClass = LASTCHAR_UNKNOWN; }
+    // Saves the caret position right after a commit; _IsCaretAtLastCommit
+    // later verifies the caret has not been repositioned (the last line of
+    // defense in hosts that never report caret moves through OnEndEdit).
+    void _SaveLastCommitCaret(TfEditCookie ec, _In_ ITfContext *pContext);
+    BOOL _IsCaretAtLastCommit(TfEditCookie ec, _In_ ITfContext *pContext);
+    void _ClearLastCommitCaret()
+    {
+        if (_pLastCommitCaret)
+        {
+            _pLastCommitCaret->Release();
+            _pLastCommitCaret = nullptr;
+        }
+        if (_pLastCommitContext)
+        {
+            _pLastCommitContext->Release();
+            _pLastCommitContext = nullptr;
+        }
+    }
+    void _ResetLastCharClass()
+    {
+        _lastCharClass = LASTCHAR_UNKNOWN;
+        _ClearLastCommitCaret();
+    }
     // [MspyIME] Numpad key while composing: commit the buffer, then emit
     // the numpad character literally.
     HRESULT _HandleNumpadCommit(TfEditCookie ec, _In_ ITfContext *pContext, WCHAR wch);
@@ -273,11 +295,11 @@ private:
     CCandidateListUIPresenter *_pCandidateListUIPresenter;
     BOOL _isCandidateWithWildcard : 1;
 
-    // [MspyIME] See LastCharClass above. _ownDocEditPending marks that the
-    // next selection-changed OnEndEdit was caused by our own document edit,
-    // so it must not reset the memory.
+    // [MspyIME] See LastCharClass above. The caret snapshot taken at the
+    // last commit backs _IsCaretAtLastCommit.
     LastCharClass _lastCharClass = LASTCHAR_UNKNOWN;
-    BOOL _ownDocEditPending = FALSE;
+    ITfRange* _pLastCommitCaret = nullptr;
+    ITfContext* _pLastCommitContext = nullptr;
 
     ITfDocumentMgr* _pDocMgrLastFocused;
 

@@ -170,7 +170,7 @@ HRESULT CSampleIME::_SyncComposer(TfEditCookie ec, _In_ ITfContext *pContext, co
         _TerminateComposition(ec, pContext);
         // The composer is Empty after producing commit text.
         _RememberCommittedTail(commitText);
-        _ownDocEditPending = TRUE;
+        _SaveLastCommitCaret(ec, pContext);
     }
 
     const mspy::Composer::State state = pComposer->state();
@@ -182,7 +182,6 @@ HRESULT CSampleIME::_SyncComposer(TfEditCookie ec, _In_ ITfContext *pContext, co
         {
             _RemoveDummyCompositionForComposing(ec, _pComposition);
             _TerminateComposition(ec, pContext);
-            _ownDocEditPending = TRUE;
         }
         return S_OK;
     }
@@ -192,7 +191,6 @@ HRESULT CSampleIME::_SyncComposer(TfEditCookie ec, _In_ ITfContext *pContext, co
     {
         _StartComposition(pContext);
     }
-    _ownDocEditPending = TRUE;
     const CMspyBridge::Segments& segments = pBridge->GetSegments();
     const std::wstring composedText = segments.FullText();
     HRESULT hr = _SetCompositionText(ec, pContext, composedText.c_str(),
@@ -576,7 +574,12 @@ HRESULT CSampleIME::_HandleShiftTap(TfEditCookie ec, _In_ ITfContext *pContext)
         }
         else
         {
-            addSpace = (_lastCharClass == LASTCHAR_CHINESE);
+            // The memory is only trustworthy while the caret still sits
+            // where our last commit left it; in hosts that never report
+            // caret moves (no selection-changed OnEndEdit), this compare is
+            // the only way to notice a mouse repositioning.
+            addSpace = (_lastCharClass == LASTCHAR_CHINESE) &&
+                       _IsCaretAtLastCommit(ec, pContext);
         }
     }
     else
@@ -604,6 +607,54 @@ HRESULT CSampleIME::_HandleShiftTap(TfEditCookie ec, _In_ ITfContext *pContext)
 // The two feeders of _lastCharClass (see SampleIME.h).
 //
 //----------------------------------------------------------------------------
+
+void CSampleIME::_SaveLastCommitCaret(TfEditCookie ec, _In_ ITfContext *pContext)
+{
+    _ClearLastCommitCaret();
+
+    ULONG fetched = 0;
+    TF_SELECTION tfSelection;
+    if (pContext->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &tfSelection, &fetched) != S_OK || fetched == 0)
+    {
+        return;
+    }
+    ITfRange* pClone = nullptr;
+    if (SUCCEEDED(tfSelection.range->Clone(&pClone)))
+    {
+        pClone->Collapse(ec, TF_ANCHOR_END);
+        _pLastCommitCaret = pClone;
+        pContext->AddRef();
+        _pLastCommitContext = pContext;
+    }
+    tfSelection.range->Release();
+}
+
+BOOL CSampleIME::_IsCaretAtLastCommit(TfEditCookie ec, _In_ ITfContext *pContext)
+{
+    // Conservative: any doubt (no snapshot, other context, non-empty
+    // selection, failed compare) counts as "moved".
+    if (_pLastCommitCaret == nullptr || _pLastCommitContext != pContext)
+    {
+        return FALSE;
+    }
+
+    ULONG fetched = 0;
+    TF_SELECTION tfSelection;
+    if (pContext->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &tfSelection, &fetched) != S_OK || fetched == 0)
+    {
+        return FALSE;
+    }
+
+    BOOL isEmpty = FALSE;
+    LONG cmp = 1;
+    HRESULT hr = tfSelection.range->IsEmpty(ec, &isEmpty);
+    if (SUCCEEDED(hr) && isEmpty)
+    {
+        hr = tfSelection.range->CompareStart(ec, _pLastCommitCaret, TF_ANCHOR_START, &cmp);
+    }
+    tfSelection.range->Release();
+    return SUCCEEDED(hr) && isEmpty && cmp == 0;
+}
 
 void CSampleIME::_RememberCommittedTail(const std::wstring& text)
 {

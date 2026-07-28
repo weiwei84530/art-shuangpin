@@ -102,6 +102,7 @@ CSampleIME::~CSampleIME()
         delete _pCandidateListUIPresenter;
         _pCandidateListUIPresenter = nullptr;
     }
+    _ClearLastCommitCaret();  // [MspyIME]
     DllRelease();
 }
 
