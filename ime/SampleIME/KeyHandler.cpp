@@ -169,6 +169,8 @@ HRESULT CSampleIME::_SyncComposer(TfEditCookie ec, _In_ ITfContext *pContext, co
         _DestroyCandidatePresenter();
         _TerminateComposition(ec, pContext);
         // The composer is Empty after producing commit text.
+        _RememberCommittedTail(commitText);
+        _ownDocEditPending = TRUE;
     }
 
     const mspy::Composer::State state = pComposer->state();
@@ -180,6 +182,7 @@ HRESULT CSampleIME::_SyncComposer(TfEditCookie ec, _In_ ITfContext *pContext, co
         {
             _RemoveDummyCompositionForComposing(ec, _pComposition);
             _TerminateComposition(ec, pContext);
+            _ownDocEditPending = TRUE;
         }
         return S_OK;
     }
@@ -189,6 +192,7 @@ HRESULT CSampleIME::_SyncComposer(TfEditCookie ec, _In_ ITfContext *pContext, co
     {
         _StartComposition(pContext);
     }
+    _ownDocEditPending = TRUE;
     const CMspyBridge::Segments& segments = pBridge->GetSegments();
     const std::wstring composedText = segments.FullText();
     HRESULT hr = _SetCompositionText(ec, pContext, composedText.c_str(),
@@ -536,46 +540,18 @@ UINT32 LastCodePoint(const WCHAR* buf, ULONG cch)
     return last;
 }
 
-// Reads up to two UTF-16 units immediately left of the caret. Returns the
-// fetched count (0 when the document is empty or refuses read access).
-ULONG GetTextBeforeCaret(TfEditCookie ec, _In_ ITfContext *pContext,
-                         _Out_writes_(2) WCHAR *buf)
-{
-    ULONG fetched = 0;
-    TF_SELECTION tfSelection;
-    if (pContext->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &tfSelection, &fetched) != S_OK || fetched == 0)
-    {
-        return 0;
-    }
-
-    ULONG cch = 0;
-    ITfRange* pRange = nullptr;
-    if (SUCCEEDED(tfSelection.range->Clone(&pRange)))
-    {
-        LONG shifted = 0;
-        pRange->Collapse(ec, TF_ANCHOR_START);
-        pRange->ShiftStart(ec, -2, &shifted, nullptr);
-        if (FAILED(pRange->GetText(ec, 0, buf, 2, &cch)))
-        {
-            cch = 0;
-        }
-        pRange->Release();
-    }
-    tfSelection.range->Release();
-    return cch;
-}
-
 }  // namespace
 
 HRESULT CSampleIME::_HandleShiftTap(TfEditCookie ec, _In_ ITfContext *pContext)
 {
-    // The separator space is decided purely from the character left of the
-    // caret at the moment of the switch (no typing-history state):
-    //   switching to English: left char is Chinese      -> insert one space
-    //   switching to Chinese: left char is an A-Z letter -> insert one space
-    //   anything else (space, digits, punctuation, empty, unreadable): none.
-    // A live composition commits first; its last character then plays the
-    // "left of caret" role.
+    // Separator space, v4 (2026-07-29, passive memory): most hosts never
+    // let an IME read the document (only full TSF apps do), so the decision
+    // uses only what the IME itself knows — _lastCharClass, maintained from
+    // our own commits and from keys watched passing through to the app:
+    //   switching to English: last known char is Chinese     -> one space
+    //   switching to Chinese: last known char is A-Z/a-z/0-9 -> one space
+    //   anything else (space, punctuation, Unknown): none.
+    // A live composition commits first; its tail then plays that role.
     CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
     if (pBridge == nullptr || !pBridge->IsReady())
     {
@@ -600,29 +576,125 @@ HRESULT CSampleIME::_HandleShiftTap(TfEditCookie ec, _In_ ITfContext *pContext)
         }
         else
         {
-            WCHAR before[2] = {L'\0', L'\0'};
-            ULONG cch = GetTextBeforeCaret(ec, pContext, before);
-            addSpace = IsCjkCodePoint(LastCodePoint(before, cch));
+            addSpace = (_lastCharClass == LASTCHAR_CHINESE);
         }
     }
     else
     {
         // English -> Chinese. Digits belong to the English class.
-        WCHAR before[2] = {L'\0', L'\0'};
-        ULONG cch = GetTextBeforeCaret(ec, pContext, before);
-        UINT32 cp = LastCodePoint(before, cch);
-        addSpace = (cp >= L'A' && cp <= L'Z') || (cp >= L'a' && cp <= L'z') ||
-                   (cp >= L'0' && cp <= L'9');
+        addSpace = (_lastCharClass == LASTCHAR_ENGLISH);
     }
 
     if (addSpace)
     {
         commit += " ";
     }
+    // The commit path also refreshes _lastCharClass from the commit tail
+    // (a lone separator space classifies as Other, which is correct).
     _SyncComposer(ec, pContext, commit.c_str());
 
     CompartmentKeyboardOpen._SetCompartmentBOOL(isOpen ? FALSE : TRUE);
     return S_OK;
+}
+
+//+---------------------------------------------------------------------------
+//
+// _RememberCommittedTail / _ObserveBypassedKey    [MspyIME]
+//
+// The two feeders of _lastCharClass (see SampleIME.h).
+//
+//----------------------------------------------------------------------------
+
+void CSampleIME::_RememberCommittedTail(const std::wstring& text)
+{
+    if (text.empty())
+    {
+        return;
+    }
+    UINT32 cp = LastCodePoint(text.c_str(), (ULONG)text.length());
+    if (IsCjkCodePoint(cp))
+    {
+        _lastCharClass = LASTCHAR_CHINESE;
+    }
+    else if ((cp >= L'A' && cp <= L'Z') || (cp >= L'a' && cp <= L'z') ||
+             (cp >= L'0' && cp <= L'9'))
+    {
+        _lastCharClass = LASTCHAR_ENGLISH;
+    }
+    else
+    {
+        _lastCharClass = LASTCHAR_OTHER;
+    }
+}
+
+void CSampleIME::_ObserveBypassedKey(UINT code)
+{
+    // Bare modifiers say nothing (a bare Shift IS the toggle trigger).
+    switch (code)
+    {
+    case VK_SHIFT: case VK_LSHIFT: case VK_RSHIFT:
+    case VK_CONTROL: case VK_LCONTROL: case VK_RCONTROL:
+    case VK_MENU: case VK_LMENU: case VK_RMENU:
+    case VK_LWIN: case VK_RWIN: case VK_CAPITAL:
+        return;
+    default:
+        break;
+    }
+
+    // Ctrl/Alt chords (paste, undo, app shortcuts) can put anything at the
+    // caret: forget.
+    if (Global::ModifiersValue & (TF_MOD_CONTROL | TF_MOD_LCONTROL | TF_MOD_RCONTROL |
+                                  TF_MOD_ALT | TF_MOD_LALT | TF_MOD_RALT))
+    {
+        _lastCharClass = LASTCHAR_UNKNOWN;
+        return;
+    }
+
+    const bool shiftHeld =
+        (Global::ModifiersValue & (TF_MOD_SHIFT | TF_MOD_LSHIFT | TF_MOD_RSHIFT)) != 0;
+
+    if ((code >= 'A' && code <= 'Z') || (code >= VK_NUMPAD0 && code <= VK_NUMPAD9))
+    {
+        _lastCharClass = LASTCHAR_ENGLISH;
+        return;
+    }
+    if (code >= '0' && code <= '9')
+    {
+        // Shift+digit types punctuation ("!", "@", ...), not a digit.
+        _lastCharClass = shiftHeld ? LASTCHAR_OTHER : LASTCHAR_ENGLISH;
+        return;
+    }
+
+    switch (code)
+    {
+    case VK_SPACE:
+        _lastCharClass = LASTCHAR_OTHER;
+        return;
+
+    // Caret moves, or edits whose result we cannot see: forget.
+    case VK_RETURN: case VK_TAB: case VK_BACK: case VK_DELETE:
+    case VK_LEFT: case VK_RIGHT: case VK_UP: case VK_DOWN:
+    case VK_HOME: case VK_END: case VK_PRIOR: case VK_NEXT:
+    case VK_ESCAPE:
+        _lastCharClass = LASTCHAR_UNKNOWN;
+        return;
+
+    default:
+        break;
+    }
+
+    // Non-typing keys (F1-F24, browser/media/IME keys) change nothing.
+    if ((code >= VK_F1 && code <= VK_F24) ||
+        (code >= VK_BROWSER_BACK && code <= VK_LAUNCH_APP2) ||
+        code == VK_INSERT || code == VK_SNAPSHOT || code == VK_APPS ||
+        code == VK_NUMLOCK || code == VK_SCROLL)
+    {
+        return;
+    }
+
+    // Everything else that reaches the app is punctuation-like output
+    // (OEM keys and their Shift variants).
+    _lastCharClass = LASTCHAR_OTHER;
 }
 
 //+---------------------------------------------------------------------------

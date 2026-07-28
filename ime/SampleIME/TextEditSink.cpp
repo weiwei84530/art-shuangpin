@@ -33,6 +33,21 @@ STDAPI CSampleIME::OnEndEdit(__RPC__in_opt ITfContext *pContext, TfEditCookie ec
     if (SUCCEEDED(pEditRecord->GetSelectionStatus(&isSelectionChanged)) &&
         isSelectionChanged)
     {
+        // [MspyIME] The selection moved. When the edit did not come from our
+        // own composer mirroring (_ownDocEditPending), the caret was
+        // repositioned by the user or the app: forget the last-character
+        // class so the Shift separator space cannot fire at an unknown
+        // position. While composing, the memory is refreshed at commit
+        // anyway, so only the idle case matters.
+        if (_ownDocEditPending)
+        {
+            _ownDocEditPending = FALSE;
+        }
+        else if (!_IsComposing())
+        {
+            _ResetLastCharClass();
+        }
+
         // If the selection is moved to out side of the current composition,
         // we terminate the composition. This TextService supports only one
         // composition in one context object.

@@ -123,6 +123,24 @@ public:
     // [MspyIME] Bare Shift tap: Chinese/English toggle (with mid-composition
     // space insertion handled by the composer).
     HRESULT _HandleShiftTap(TfEditCookie ec, _In_ ITfContext *pContext);
+
+    // [MspyIME] Passive last-character-class memory for the Shift separator
+    // space. Most hosts never let an IME read the document (only full TSF
+    // apps like Notepad/Word expose it), so the decision uses only what the
+    // IME itself knows: the tail of its own commits and the keys it watched
+    // pass through to the application. Unknown never adds a space.
+    enum LastCharClass
+    {
+        LASTCHAR_UNKNOWN = 0,   // caret may have moved: never add a space
+        LASTCHAR_CHINESE,       // Han ideograph or bopomofo
+        LASTCHAR_ENGLISH,       // A-Z a-z 0-9
+        LASTCHAR_OTHER,         // space, punctuation, anything else
+    };
+    // Classifies the tail of text this IME just committed.
+    void _RememberCommittedTail(const std::wstring& text);
+    // Classifies a key that was passed through to the application.
+    void _ObserveBypassedKey(UINT code);
+    void _ResetLastCharClass() { _lastCharClass = LASTCHAR_UNKNOWN; }
     // [MspyIME] Numpad key while composing: commit the buffer, then emit
     // the numpad character literally.
     HRESULT _HandleNumpadCommit(TfEditCookie ec, _In_ ITfContext *pContext, WCHAR wch);
@@ -254,6 +272,12 @@ private:
     CANDIDATE_MODE _candidateMode;
     CCandidateListUIPresenter *_pCandidateListUIPresenter;
     BOOL _isCandidateWithWildcard : 1;
+
+    // [MspyIME] See LastCharClass above. _ownDocEditPending marks that the
+    // next selection-changed OnEndEdit was caused by our own document edit,
+    // so it must not reset the memory.
+    LastCharClass _lastCharClass = LASTCHAR_UNKNOWN;
+    BOOL _ownDocEditPending = FALSE;
 
     ITfDocumentMgr* _pDocMgrLastFocused;
 

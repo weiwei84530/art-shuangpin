@@ -36,6 +36,12 @@ STDAPI CSampleIME::OnCompositionTerminated(TfEditCookie ecWrite, _In_ ITfComposi
         }
     }
 
+    // [MspyIME] The composition died because the caret went somewhere we
+    // cannot see (click elsewhere / focus loss): the auto-committed text is
+    // NOT at the new caret, so the last-character memory must not survive.
+    _ResetLastCharClass();
+    _ownDocEditPending = FALSE;
+
     // Clear display attribute and end composition, _EndComposition will release composition for us
     ITfContext* pContext = _pContext;
     if (pContext)

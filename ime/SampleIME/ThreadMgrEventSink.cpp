@@ -51,6 +51,10 @@ STDAPI CSampleIME::OnSetFocus(_In_ ITfDocumentMgr *pDocMgrFocus, _In_ ITfDocumen
 {
     pDocMgrPrevFocus;
 
+    // [MspyIME] Document focus changed: forget the last-character class
+    // (Shift separator space must never fire at an unknown caret).
+    _ResetLastCharClass();
+
     _InitTextEditSink(pDocMgrFocus);
 
     _UpdateLanguageBarOnSetFocus(pDocMgrFocus);

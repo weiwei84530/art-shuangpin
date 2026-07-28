@@ -293,6 +293,9 @@ STDAPI CSampleIME::OnSetFocus(BOOL fForeground)
 {
 	fForeground;
 
+    // [MspyIME] Keyboard focus moved: the caret position is unknown now.
+    _ResetLastCharClass();
+
     return S_OK;
 }
 
@@ -342,6 +345,13 @@ STDAPI CSampleIME::OnKeyDown(ITfContext *pContext, WPARAM wParam, LPARAM lParam,
     UINT code = 0;
 
     *pIsEaten = _IsKeyEaten(pContext, (UINT)wParam, &code, &wch, &KeystrokeState);
+
+    if (!*pIsEaten)
+    {
+        // [MspyIME] The key goes to the application: watch it to keep the
+        // last-character-class memory (Shift separator space) current.
+        _ObserveBypassedKey(code);
+    }
 
     if (*pIsEaten)
     {
