@@ -32,13 +32,18 @@ const WCHAR CDisplayAttributeInfoAnchor::_s_szDescription[] = L"Mspy IME Selecti
 //
 //----------------------------------------------------------------------------
 
+// [MspyIME] 2026-07-29: the blue "tone undetermined" coloring was removed —
+// only fully TSF-aware hosts (Notepad, Word) ever rendered the colors, so
+// the whole composition now uses the app's default text color. The
+// black/blue segment split still exists internally (caret and anchor math);
+// this attribute just no longer colors it.
 const TF_DISPLAYATTRIBUTE CDisplayAttributeInfoInput::_s_DisplayAttribute =
 {
-    { TF_CT_COLORREF, RGB(0, 103,206) },    // text color
+    { TF_CT_NONE, 0 },                      // text color (app default)
     { TF_CT_NONE, 0 },                      // background color (TF_CT_NONE => app default)
     TF_LS_DOT,								// underline style
     FALSE,                                  // underline boldness
-    { TF_CT_COLORREF, RGB(0, 103,206) },    // underline color
+    { TF_CT_NONE, 0 },                      // underline color (app default)
     TF_ATTR_INPUT                           // attribute info
 };
 
