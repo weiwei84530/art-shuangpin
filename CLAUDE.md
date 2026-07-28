@@ -51,6 +51,7 @@ cli\    REPL 測試臺（日常開發主力，不碰 TSF）
 
 ## 狀態記錄
 
+- 2026-07-29：**tag v0.2.1 並發佈 GitHub Release**（附 art-shuangpin-v0.2.1.zip 安裝包）。內容＝第八、九輪全部改進：閒置導航鍵、NumPad 豁免、LINE 反白修正、單色顯示、Shift 空白被動記憶（含三段演進：OnTestKeyDown 目擊修正、純游標移動判定＋commit 游標快照、**執行緒內 WH_MOUSE hook 滑鼠歸零**——LINE/Sublime 不回報游標事件的最終解）。
 - 2026-07-29：**M5 回饋第九輪（Shift 空白改被動記憶＋移除藍色）**。(1) **Shift 分隔空白 v4＝純被動記憶**：確認讀取游標周邊文字只有完整 TSF app（記事本/Word）支援——Chromium 系（LINE/Chrome）text store 只暴露組字段、Sublime 走 IMM32、Terminal 最小化實作，v3「讀文件」在多數 app 失效。改為完全不讀文件：記憶「自己 commit 的尾字＋英文模式目擊放行的按鍵」（`_lastCharClass`），保守歸零（焦點切換/導航鍵/Ctrl-Alt 組合/app 回報 selection change 排除自身編輯 `_ownDocEditPending`/組字被點擊終止），未知不補——寧缺勿濫。(2) **藍色（聲調未定/殘鍵）換色整個移除**：同因只有完整 TSF app 會畫顏色，組字全段改 app 預設色＋虛線底線；黑/藍分段語意留在內部 segments（游標/錨點計算沿用）、選字錨點淡藍反白保留。142 tests 全綠、x64/x86 已建置部署。規格見 docs/spec.md §6〈中英切換〉v4、〈單色顯示〉。
 - 2026-07-28：**M5 回饋第八輪（三項功能＋LINE 反白修正）**。(1) **LINE 定調字黑色反白修正**：定調黑段顯示屬性 `TF_ATTR_TARGET_CONVERTED`→`TF_ATTR_INPUT`（Chromium 系把前者畫成選取反白並忽略色彩；錨點淡藍維持 TARGET_CONVERTED 不改）。(2) **閒置導航鍵**：無組字時 `9`/`0`（Shift 未按）代送 ←/→、`-`/`=`（不分 Shift）代送 Home/End（SendInput 注入、實體 Shift 自然成選取）；組字中 `-`/`=` 新增游標跳組字串頭/尾；Shift+9/0 保留（）故無字元級選取（拍板）。閒置 `_`→「——」對映因此消失（組字中不受影響）。(3) **NumPad 豁免**：VK_NUMPAD0-9 與 0x6A-0x6F 閒置放行字面輸入、組字中先整段上屏再輸出（`FUNCTION_NUMPAD_COMMIT`）。順修 ParselessPhraseDB `reverseFindRows` 檔末無換行漏配對的 off-by-one。**決策記錄（同日撤銷，勿再實作）**：曾完整實作「重選字」（閒置按 `8` 對既有已上屏文字反查同音字、在既有文字上開 composition 原地取代，含 core\reconverter 類與引擎 `getReadings` 曝光），實測**大多數應用程式不支援**（只有文字編輯器可用），整組 revert 移除，閒置 `8` 回歸吃掉無作用。142 tests 全綠、x64/x86 已建置部署。規格見 docs/spec.md §6〈閒置導航鍵〉。
 
