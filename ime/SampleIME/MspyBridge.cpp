@@ -62,6 +62,21 @@ BOOL CMspyBridge::Initialize()
     _relaxed = std::make_shared<mspy::RelaxedToneLM>(_lm);
     _composer = std::make_unique<mspy::Composer>(_relaxed);
 
+    // Reconversion queries the LM directly (exact tone-marked keys), not
+    // through the relaxed adapter; the reverse lookup is bridged as a
+    // function so core never sees engine types.
+    _reconverter = std::make_unique<mspy::Reconverter>(
+        _lm,
+        [lm = _lm](const std::string& value)
+    {
+        std::vector<mspy::Reconverter::FoundReading> out;
+        for (const auto& found : lm->getReadings(value))
+        {
+            out.push_back({found.reading, found.score});
+        }
+        return out;
+    });
+
     // User phrases live under %APPDATA%\MspyIME\user-phrases.txt.
     WCHAR appData[MAX_PATH] = {L'\0'};
     if (ExpandEnvironmentStringsW(L"%APPDATA%", appData, ARRAYSIZE(appData)) > 1)
@@ -138,4 +153,17 @@ const std::vector<std::wstring>& CMspyBridge::CandidateTexts()
         }
     }
     return _candidateTexts;
+}
+
+const std::vector<std::wstring>& CMspyBridge::ReconversionPageTexts()
+{
+    _reconvTexts.clear();
+    if (_reconverter)
+    {
+        for (const auto& c : _reconverter->currentPageCandidates())
+        {
+            _reconvTexts.push_back(ToWide(c.value));
+        }
+    }
+    return _reconvTexts;
 }

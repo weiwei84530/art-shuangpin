@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "composer.h"
+#include "reconverter.h"
 
 namespace McBopomofo {
 class McBopomofoLM;
@@ -29,6 +30,8 @@ public:
     BOOL IsReady() const { return _ready; }
 
     mspy::Composer* Composer() { return _composer.get(); }
+    // Reconversion session for committed document text (idle digit 8).
+    mspy::Reconverter* Reconverter() { return _reconverter.get(); }
 
     static std::wstring ToWide(const std::string& utf8);
     static std::string ToUtf8(const std::wstring& wide);
@@ -51,6 +54,8 @@ public:
     // Refreshes and returns the candidate strings of the CURRENT MENU PAGE
     // (at most Composer::kCandidatePageSize entries, Selecting state).
     const std::vector<std::wstring>& CandidateTexts();
+    // Same, for the reconversion session's current page.
+    const std::vector<std::wstring>& ReconversionPageTexts();
 
 private:
     // Persists a manually selected multi-syllable phrase and reloads the
@@ -62,9 +67,11 @@ private:
     std::shared_ptr<McBopomofo::McBopomofoLM> _lm;
     std::shared_ptr<mspy::RelaxedToneLM> _relaxed;
     std::unique_ptr<mspy::Composer> _composer;
+    std::unique_ptr<mspy::Reconverter> _reconverter;
     std::wstring _userPhrasesPath;
     std::set<std::string> _userPhraseLines;
     Segments _segments;
     std::vector<std::wstring> _candidateTexts;
+    std::vector<std::wstring> _reconvTexts;
     BOOL _ready = FALSE;
 };

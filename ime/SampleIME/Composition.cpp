@@ -33,8 +33,16 @@ STDAPI CSampleIME::OnCompositionTerminated(TfEditCookie ecWrite, _In_ ITfComposi
         if (pBridge && pBridge->IsReady())
         {
             pBridge->Composer()->cancel();
+            // A reconversion session dies with its composition; the text
+            // stays as-is (it was never modified).
+            if (pBridge->Reconverter() != nullptr)
+            {
+                pBridge->Reconverter()->dismiss();
+            }
         }
     }
+    _isReconverting = FALSE;
+    _reconvText.clear();
 
     // Clear display attribute and end composition, _EndComposition will release composition for us
     ITfContext* pContext = _pContext;

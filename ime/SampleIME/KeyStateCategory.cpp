@@ -132,6 +132,12 @@ HRESULT CKeyStateCategory::KeyStateHandler(KEYSTROKE_FUNCTION function, KeyHandl
     case FUNCTION_NUMPAD_COMMIT:
         return HandleKeyNumpadCommit(dto);
 
+    case FUNCTION_RECONVERT_START:
+        return HandleKeyReconvertStart(dto);
+
+    case FUNCTION_RECONVERT_KEY:
+        return HandleKeyReconvertKey(dto);
+
     }
     return E_INVALIDARG;
 }
@@ -244,6 +250,19 @@ HRESULT CKeyStateCategory::HandleKeyNumpadCommit(KeyHandlerEditSessionDTO dto)
     return E_NOTIMPL;
 }
 
+// [MspyIME] reconversion
+HRESULT CKeyStateCategory::HandleKeyReconvertStart(KeyHandlerEditSessionDTO dto)
+{
+	dto;
+    return E_NOTIMPL;
+}
+
+HRESULT CKeyStateCategory::HandleKeyReconvertKey(KeyHandlerEditSessionDTO dto)
+{
+	dto;
+    return E_NOTIMPL;
+}
+
 /*
 class CKeyStateComposing
 */
@@ -323,6 +342,18 @@ HRESULT CKeyStateComposing::HandleKeyShiftTap(KeyHandlerEditSessionDTO dto)
 HRESULT CKeyStateComposing::HandleKeyNumpadCommit(KeyHandlerEditSessionDTO dto)
 {
     return _pTextService->_HandleNumpadCommit(dto.ec, dto.pContext, dto.wch);
+}
+
+// [MspyIME]
+HRESULT CKeyStateComposing::HandleKeyReconvertStart(KeyHandlerEditSessionDTO dto)
+{
+    return _pTextService->_HandleReconversionStart(dto.ec, dto.pContext);
+}
+
+// [MspyIME]
+HRESULT CKeyStateComposing::HandleKeyReconvertKey(KeyHandlerEditSessionDTO dto)
+{
+    return _pTextService->_HandleReconversionKey(dto.ec, dto.pContext, dto.wch);
 }
 
 /*

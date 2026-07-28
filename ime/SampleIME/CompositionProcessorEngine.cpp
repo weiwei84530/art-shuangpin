@@ -1611,6 +1611,12 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeedMspy(UINT uCode, _In_reads_(1)
     const bool selecting = state == mspy::Composer::State::kSelecting;
     const bool active = state != mspy::Composer::State::kEmpty;
 
+    // [MspyIME] While a reconversion menu is open (idle 8 over committed
+    // text) every key belongs to us except bare modifiers; the handler
+    // decides select/page/dismiss. Reading active() is side-effect free.
+    mspy::Reconverter* reconverter = _pMspyBridge->Reconverter();
+    const bool reconverting = reconverter != nullptr && reconverter->active();
+
     auto eat = [pKeyState](KEYSTROKE_CATEGORY cat, KEYSTROKE_FUNCTION fn) -> BOOL
     {
         if (pKeyState)
@@ -1622,6 +1628,20 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeedMspy(UINT uCode, _In_reads_(1)
     };
 
     selecting;  // selection keys are all plain chars routed through feedChar
+
+    if (reconverting)
+    {
+        switch (uCode)
+        {
+        case VK_SHIFT: case VK_LSHIFT: case VK_RSHIFT:
+        case VK_CONTROL: case VK_LCONTROL: case VK_RCONTROL:
+        case VK_MENU: case VK_LMENU: case VK_RMENU:
+        case VK_CAPITAL: case VK_LWIN: case VK_RWIN:
+            return FALSE;
+        default:
+            return eat(CATEGORY_COMPOSING, FUNCTION_RECONVERT_KEY);
+        }
+    }
 
     switch (uCode)
     {
@@ -1669,6 +1689,12 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeedMspy(UINT uCode, _In_reads_(1)
             uCode == VK_OEM_MINUS || uCode == VK_OEM_PLUS)
         {
             return eat(CATEGORY_COMPOSING, FUNCTION_NAV_INJECT);
+        }
+        // Idle 8 (Shift up): reconvert the committed text around the caret.
+        // Shift+8 falls through to the char path ('*', passes to the app).
+        if (!shiftHeld && uCode == '8')
+        {
+            return eat(CATEGORY_COMPOSING, FUNCTION_RECONVERT_START);
         }
     }
 
