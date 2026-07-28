@@ -9,6 +9,9 @@
 //   6,7  eaten, no-op
 //   8    open the candidate menu at the cursor
 //   9/0  move the cursor left/right, wrapping at both ends
+//   -/=  jump the cursor to the start/end of the composition
+//        (when idle, '-'/'=' pass through: the shell owns them as
+//        Home/End navigation keys)
 // While the candidate menu is open:
 //   1-6  pick the numbered candidate on the current page
 //   7/8  previous/next page (no wrap; out-of-range is a no-op)
@@ -148,6 +151,8 @@ class Composer {
   void insertLiteralText(const std::string& utf8);
   // Moves the cursor by delta with wrap-around at both ends.
   void moveCursor(int delta);
+  // Jumps the cursor to the start or the end of the grid ('-'/'=').
+  void jumpCursor(bool toStart);
   // Opens the candidate menu at the cursor span (digit 8).
   Result openCandidateMenu();
   // Clears menu state and returns to kComposing.

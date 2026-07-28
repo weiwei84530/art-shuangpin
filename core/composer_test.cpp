@@ -201,6 +201,46 @@ TEST_F(ComposerTest, CursorWrapsAtBothEnds) {
   EXPECT_EQ(segments.highlighted, "好");
 }
 
+TEST_F(ComposerTest, MinusJumpsCursorToStart) {
+  Type("ni3hk3");  // 你好, cursor at the right end
+  Type("-");
+  auto segments = composer_->displaySegments();
+  EXPECT_EQ(segments.before, "");
+  EXPECT_EQ(segments.highlighted, "你");
+  EXPECT_EQ(segments.after, "好");
+}
+
+TEST_F(ComposerTest, EqualsJumpsCursorToEnd) {
+  Type("ni3hk3-");  // cursor jumped to the front
+  Type("=");
+  auto segments = composer_->displaySegments();
+  EXPECT_EQ(segments.before, "你好");
+  EXPECT_EQ(segments.highlighted, "");
+  EXPECT_EQ(segments.after, "");
+}
+
+TEST_F(ComposerTest, MinusWhileSelectingDismissesMenuAndJumps) {
+  Type("ni3hk39");  // cursor between 你 and 好
+  Type("8");
+  ASSERT_EQ(composer_->state(), Composer::State::kSelecting);
+  // Like 9/0, '-' closes the menu and then performs its normal function.
+  Type("-");
+  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
+  auto segments = composer_->displaySegments();
+  EXPECT_EQ(segments.before, "");
+  EXPECT_EQ(segments.highlighted, "你");
+}
+
+TEST_F(ComposerTest, MinusEqualsPassThroughWhenIdle) {
+  // Idle '-'/'=' belong to the shell (Home/End navigation keys); the
+  // composer must not consume them.
+  auto r = composer_->feedChar('-');
+  EXPECT_FALSE(r.consumed);
+  r = composer_->feedChar('=');
+  EXPECT_FALSE(r.consumed);
+  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
+}
+
 TEST_F(ComposerTest, DirectPunctuation) {
   auto r = composer_->feedChar(',');
   EXPECT_TRUE(r.consumed);

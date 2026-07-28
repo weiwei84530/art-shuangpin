@@ -214,6 +214,11 @@ void Composer::moveCursor(int delta) {
   }
 }
 
+void Composer::jumpCursor(bool toStart) {
+  lastWasBare_ = false;  // moving away ends the tone-retrofit window
+  grid_.setCursor(toStart ? 0 : grid_.length());
+}
+
 bool Composer::finalizePendingBare() {
   if (!pending_.complete()) return false;
   for (const auto& syllable : pending_.candidates()) {
@@ -401,6 +406,14 @@ Composer::Result Composer::feedChar(char c) {
       default:  // 6, 7 and non-tone-position 1-5
         return {true, ""};
     }
+  }
+
+  // '-'/'=' jump the cursor to the start/end of the composition. When idle
+  // they pass through: the shell owns them as Home/End navigation keys.
+  if (c == '-' || c == '=') {
+    if (!composing) return {false, ""};
+    jumpCursor(c == '-');
+    return {true, ""};
   }
 
   // Quotes alternate between opening and closing forms.
