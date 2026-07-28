@@ -123,6 +123,9 @@ public:
     // [MspyIME] Bare Shift tap: Chinese/English toggle (with mid-composition
     // space insertion handled by the composer).
     HRESULT _HandleShiftTap(TfEditCookie ec, _In_ ITfContext *pContext);
+    // [MspyIME] Numpad key while composing: commit the buffer, then emit
+    // the numpad character literally.
+    HRESULT _HandleNumpadCommit(TfEditCookie ec, _In_ ITfContext *pContext, WCHAR wch);
 
     // key event handlers for candidate object.
     HRESULT _HandleCandidateFinalize(TfEditCookie ec, _In_ ITfContext *pContext);

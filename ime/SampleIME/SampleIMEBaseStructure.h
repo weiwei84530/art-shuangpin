@@ -73,7 +73,12 @@ enum KEYSTROKE_FUNCTION
     // [MspyIME] Idle navigation keys (9/0/-/=): the eaten key is replayed
     // as an injected Left/Right/Home/End keystroke. Handled directly in
     // OnKeyDown (no document access needed, so no edit session).
-    FUNCTION_NAV_INJECT
+    FUNCTION_NAV_INJECT,
+
+    // [MspyIME] Numpad key while composing: commit the whole buffer first,
+    // then emit the numpad character literally (like the punctuation
+    // commit-and-append idiom). Idle numpad keys pass through untouched.
+    FUNCTION_NUMPAD_COMMIT
 };
 
 //---------------------------------------------------------------------

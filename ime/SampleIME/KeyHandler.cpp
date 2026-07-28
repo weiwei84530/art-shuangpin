@@ -627,6 +627,32 @@ HRESULT CSampleIME::_HandleShiftTap(TfEditCookie ec, _In_ ITfContext *pContext)
 
 //+---------------------------------------------------------------------------
 //
+// _HandleNumpadCommit    [MspyIME]
+//
+//----------------------------------------------------------------------------
+
+HRESULT CSampleIME::_HandleNumpadCommit(TfEditCookie ec, _In_ ITfContext *pContext, WCHAR wch)
+{
+    // Numpad keys are exempt from the top-row digit ban. While composing,
+    // commit the whole buffer first (a menu is dismissed by feedEnter),
+    // then emit the numpad character literally after it.
+    CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
+    if (pBridge == nullptr || !pBridge->IsReady())
+    {
+        return S_OK;
+    }
+
+    mspy::Composer::Result result = pBridge->Composer()->feedEnter();
+    std::string commit = result.commitText;
+    if (wch >= 0x20 && wch < 0x7F)
+    {
+        commit += static_cast<char>(wch);
+    }
+    return _SyncComposer(ec, pContext, commit.c_str());
+}
+
+//+---------------------------------------------------------------------------
+//
 // _HandleCompositionDoubleSingleByte
 //
 //----------------------------------------------------------------------------

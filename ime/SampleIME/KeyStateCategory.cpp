@@ -129,6 +129,9 @@ HRESULT CKeyStateCategory::KeyStateHandler(KEYSTROKE_FUNCTION function, KeyHandl
     case FUNCTION_SHIFT_TAP:
         return HandleKeyShiftTap(dto);
 
+    case FUNCTION_NUMPAD_COMMIT:
+        return HandleKeyNumpadCommit(dto);
+
     }
     return E_INVALIDARG;
 }
@@ -234,6 +237,13 @@ HRESULT CKeyStateCategory::HandleKeyShiftTap(KeyHandlerEditSessionDTO dto)
     return E_NOTIMPL;
 }
 
+// [MspyIME] _HandleNumpadCommit
+HRESULT CKeyStateCategory::HandleKeyNumpadCommit(KeyHandlerEditSessionDTO dto)
+{
+	dto;
+    return E_NOTIMPL;
+}
+
 /*
 class CKeyStateComposing
 */
@@ -307,6 +317,12 @@ HRESULT CKeyStateComposing::HandleKeyPunctuation(KeyHandlerEditSessionDTO dto)
 HRESULT CKeyStateComposing::HandleKeyShiftTap(KeyHandlerEditSessionDTO dto)
 {
     return _pTextService->_HandleShiftTap(dto.ec, dto.pContext);
+}
+
+// [MspyIME]
+HRESULT CKeyStateComposing::HandleKeyNumpadCommit(KeyHandlerEditSessionDTO dto)
+{
+    return _pTextService->_HandleNumpadCommit(dto.ec, dto.pContext, dto.wch);
 }
 
 /*

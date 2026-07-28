@@ -1646,6 +1646,16 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeedMspy(UINT uCode, _In_reads_(1)
         break;
     }
 
+    // [MspyIME] Numpad keys (VK_NUMPAD0-9 and the 0x6A-0x6F operator/decimal
+    // block) are exempt from the top-row digit ban: idle they pass through
+    // as literal characters; while composing they commit the buffer first
+    // and then emit the character.
+    if ((uCode >= VK_NUMPAD0 && uCode <= VK_NUMPAD9) ||
+        (uCode >= VK_MULTIPLY && uCode <= VK_DIVIDE))
+    {
+        return active ? eat(CATEGORY_COMPOSING, FUNCTION_NUMPAD_COMMIT) : FALSE;
+    }
+
     // [MspyIME] Idle navigation keys (spec §6.5): with no composition, 9/0
     // (Shift up) and -/= (any Shift state) are replayed as injected
     // Left/Right/Home/End keystrokes; a physically held Shift then extends
