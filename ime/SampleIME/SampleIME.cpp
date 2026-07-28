@@ -12,6 +12,69 @@
 #include "CompositionProcessorEngine.h"
 #include "Compartment.h"
 
+// [MspyIME] Thread-scoped mouse hook: hosts like Chromium (LINE) and
+// IMM32-era editors (Sublime) never report caret moves through TSF — their
+// idle selection is a fake position, so neither the OnEndEdit reset nor the
+// commit-caret snapshot can notice a mouse click repositioning the caret.
+// The IME DLL lives inside the host process, so a plain WH_MOUSE hook on
+// the UI thread (no cross-process injection) sees every button-down in the
+// host's own windows; any click resets the last-character-class memory.
+namespace
+{
+
+thread_local CSampleIME* g_pThreadIme = nullptr;
+thread_local HHOOK g_hThreadMouseHook = nullptr;
+
+LRESULT CALLBACK ThreadMouseHookProc(int nCode, WPARAM wParam, LPARAM lParam)
+{
+    if (nCode == HC_ACTION && g_pThreadIme != nullptr)
+    {
+        switch (wParam)
+        {
+        case WM_LBUTTONDOWN:
+        case WM_RBUTTONDOWN:
+        case WM_MBUTTONDOWN:
+        case WM_XBUTTONDOWN:
+        case WM_NCLBUTTONDOWN:
+        case WM_NCRBUTTONDOWN:
+        case WM_NCMBUTTONDOWN:
+        case WM_NCXBUTTONDOWN:
+            // The caret may be anywhere now.
+            g_pThreadIme->_ResetLastCharClass();
+            break;
+        default:
+            break;
+        }
+    }
+    return CallNextHookEx(nullptr, nCode, wParam, lParam);
+}
+
+void InstallThreadMouseHook(CSampleIME* pIme)
+{
+    g_pThreadIme = pIme;
+    if (g_hThreadMouseHook == nullptr)
+    {
+        // hMod is NULL for a hook on a thread of the current process.
+        g_hThreadMouseHook = SetWindowsHookEx(WH_MOUSE, ThreadMouseHookProc,
+                                              nullptr, GetCurrentThreadId());
+    }
+}
+
+void RemoveThreadMouseHook(CSampleIME* pIme)
+{
+    if (g_pThreadIme == pIme)
+    {
+        g_pThreadIme = nullptr;
+        if (g_hThreadMouseHook != nullptr)
+        {
+            UnhookWindowsHookEx(g_hThreadMouseHook);
+            g_hThreadMouseHook = nullptr;
+        }
+    }
+}
+
+}  // namespace
+
 //+---------------------------------------------------------------------------
 //
 // CreateInstance
@@ -268,6 +331,10 @@ STDAPI CSampleIME::ActivateEx(ITfThreadMgr *pThreadMgr, TfClientId tfClientId, D
         goto ExitError;
     }
 
+    // [MspyIME] Click detection for the separator-space memory (see the
+    // hook block at the top of this file).
+    InstallThreadMouseHook(this);
+
     return S_OK;
 
 ExitError:
@@ -283,6 +350,8 @@ ExitError:
 
 STDAPI CSampleIME::Deactivate()
 {
+    RemoveThreadMouseHook(this);  // [MspyIME]
+
     if (_pCompositionProcessorEngine)
     {
         delete _pCompositionProcessorEngine;
