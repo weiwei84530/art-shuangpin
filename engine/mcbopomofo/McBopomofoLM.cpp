@@ -244,6 +244,12 @@ std::string McBopomofoLM::getReading(const std::string& value) const {
   return topValue;
 }
 
+// [mspy] Plural counterpart of getReading: every reading of the value.
+std::vector<ParselessLM::FoundReading> McBopomofoLM::getReadings(
+    const std::string& value) const {
+  return languageModel_.getReadings(value);
+}
+
 std::vector<AssociatedPhrasesV2::Phrase> McBopomofoLM::findAssociatedPhrasesV2(
     const std::string& prefixValue,
     const std::vector<std::string>& prefixReadings) const {

@@ -94,6 +94,12 @@ class McBopomofoLM : public Formosa::Gramambular2::LanguageModel {
 
   std::string getReading(const std::string& value) const;
 
+  // [mspy] All readings of a value with their scores (reverse lookup on the
+  // primary LM; user phrases and exclusions are not consulted). Multi-code-
+  // point values return joined reading keys ("ㄋㄧˇ-ㄏㄠˇ").
+  std::vector<ParselessLM::FoundReading> getReadings(
+      const std::string& value) const;
+
   std::vector<AssociatedPhrasesV2::Phrase> findAssociatedPhrasesV2(
       const std::string& prefixValue,
       const std::vector<std::string>& prefixReadings) const;

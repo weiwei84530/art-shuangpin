@@ -265,7 +265,9 @@ std::vector<std::string> ParselessPhraseDB::reverseFindRows(
     // now walk to the end of this record
     const char* recordEnd = FindNextCharacter(ptr, end_, '\n');
 
-    if (ptr + value.length() < end_ &&
+    // [mspy] <= (was <): a final record with no trailing newline could
+    // never prefix-match when the value reached exactly to the buffer end.
+    if (ptr + value.length() <= end_ &&
         memcmp(ptr, value.data(), value.length()) == 0) {
       // prefix match, add entire record to return value
       rows.emplace_back(recordBegin, recordEnd - recordBegin);

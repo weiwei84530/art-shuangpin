@@ -87,6 +87,26 @@ TEST(McBopomofoLMTest, PrimaryLanguageModel) {
   EXPECT_LT(unigrams[0].score(), 0);
 }
 
+// [mspy] Plural reverse lookup: every reading of a value, with scores.
+TEST(McBopomofoLMTest, GetReadingsReverseLookup) {
+  McBopomofoLM lm;
+  auto db = std::make_unique<ParselessPhraseDB>(kPrimaryLMData,
+                                                sizeof(kPrimaryLMData));
+  lm.loadLanguageModel(std::move(db));
+
+  auto readings = lm.getReadings("明");
+  ASSERT_EQ(readings.size(), 1);
+  EXPECT_EQ(readings[0].reading, "ㄇㄧㄥˊ");
+  EXPECT_LT(readings[0].score, 0);
+
+  // Multi-code-point values return joined reading keys.
+  readings = lm.getReadings("名詞");
+  ASSERT_EQ(readings.size(), 1);
+  EXPECT_EQ(readings[0].reading, "ㄇㄧㄥˊ-ㄘˊ");
+
+  EXPECT_TRUE(lm.getReadings("貓").empty());
+}
+
 TEST(McBopomofoLMTest, AssociatedPhrasesV2) {
   McBopomofoLM lm;
   auto db = std::make_unique<ParselessPhraseDB>(

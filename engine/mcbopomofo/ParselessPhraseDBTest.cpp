@@ -238,6 +238,11 @@ TEST(ParselessPhraseDBTest, LookUpByValue) {
   rows = db.reverseFindRows("3\n");
   ASSERT_TRUE(rows.empty());
 
+  // [mspy] The final record has no trailing newline; its value must still
+  // match (regression test for the off-by-one strict `<` bound).
+  rows = db.reverseFindRows("3");
+  ASSERT_EQ(rows, (std::vector<std::string>{"d 3"}));
+
   rows = db.reverseFindRows("4");
   ASSERT_TRUE(rows.empty());
 }
