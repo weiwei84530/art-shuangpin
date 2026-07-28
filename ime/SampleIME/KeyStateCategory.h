@@ -103,10 +103,6 @@ protected:
     // [MspyIME] HandleKeyNumpadCommit
     virtual HRESULT HandleKeyNumpadCommit(KeyHandlerEditSessionDTO dto);
 
-    // [MspyIME] HandleKeyReconvertStart / HandleKeyReconvertKey
-    virtual HRESULT HandleKeyReconvertStart(KeyHandlerEditSessionDTO dto);
-    virtual HRESULT HandleKeyReconvertKey(KeyHandlerEditSessionDTO dto);
-
 protected:
     CSampleIME* _pTextService;
 };
@@ -158,10 +154,6 @@ protected:
 
     // [MspyIME] HandleKeyNumpadCommit
     HRESULT HandleKeyNumpadCommit(KeyHandlerEditSessionDTO dto);
-
-    // [MspyIME] HandleKeyReconvertStart / HandleKeyReconvertKey
-    HRESULT HandleKeyReconvertStart(KeyHandlerEditSessionDTO dto);
-    HRESULT HandleKeyReconvertKey(KeyHandlerEditSessionDTO dto);
 };
 
 class CKeyStateCandidate : public CKeyStateCategory

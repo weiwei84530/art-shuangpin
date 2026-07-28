@@ -150,15 +150,6 @@ HRESULT CSampleIME::_SetCompositionText(TfEditCookie ec, _In_ ITfContext *pConte
 // [MspyIME] Single place where the composer's state is reflected into TSF.
 HRESULT CSampleIME::_SyncComposer(TfEditCookie ec, _In_ ITfContext *pContext, const char* commitUtf8)
 {
-    // A live reconversion session dissolves before any composer mirroring:
-    // its composition must never be treated as the composer's (in
-    // particular _RemoveDummyCompositionForComposing would wipe the
-    // document text the reconversion range covers).
-    if (_isReconverting)
-    {
-        _EndReconversion(ec, pContext, TRUE);
-    }
-
     CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
     if (pBridge == nullptr || !pBridge->IsReady())
     {
@@ -227,8 +218,19 @@ HRESULT CSampleIME::_SyncComposer(TfEditCookie ec, _In_ ITfContext *pContext, co
         {
             // The composer owns paging: the window shows exactly the
             // current page (at most 6 entries) plus a page indicator.
-            _RefreshCandidateWindowTexts(
-                pBridge->CandidateTexts(),
+            CSampleImeArray<CCandidateListItem> items;
+            const std::vector<std::wstring>& texts = pBridge->CandidateTexts();
+            for (const std::wstring& text : texts)
+            {
+                CCandidateListItem* pItem = items.Append();
+                if (pItem)
+                {
+                    pItem->_ItemString.Set(text.c_str(), text.length());
+                }
+            }
+            _pCandidateListUIPresenter->_ClearList();
+            _pCandidateListUIPresenter->_SetText(&items, FALSE);
+            _pCandidateListUIPresenter->_SetPageStatus(
                 (UINT)(pBridge->Composer()->candidatePageIndex() + 1),
                 (UINT)pBridge->Composer()->candidatePageCount());
         }
@@ -383,22 +385,10 @@ HRESULT CSampleIME::_CreateAndStartCandidate(_In_ CCompositionProcessorEngine *p
                 CMspyBridge* pBridge = pCompositionProcessorEngine->GetBridge();
                 if (pBridge != nullptr && pBridge->IsReady())
                 {
-                    LONG total, start, len;
-                    if (_isReconverting)
-                    {
-                        // Reconversion: the anchor is the trailing code
-                        // point of the covered document text.
-                        total = (LONG)_reconvText.length();
-                        len = _reconvAnchorUnits;
-                        start = total - len;
-                    }
-                    else
-                    {
-                        const CMspyBridge::Segments& segments = pBridge->GetSegments();
-                        total = (LONG)segments.FullText().length();
-                        start = (LONG)(segments.before.length() + segments.unconfirmed.length());
-                        len = (LONG)segments.highlighted.length();
-                    }
+                    const CMspyBridge::Segments& segments = pBridge->GetSegments();
+                    LONG total = (LONG)segments.FullText().length();
+                    LONG start = (LONG)(segments.before.length() + segments.unconfirmed.length());
+                    LONG len = (LONG)segments.highlighted.length();
                     if (len == 0 && total > 0)
                     {
                         // Cursor at the right end: the menu targets the
@@ -575,116 +565,6 @@ ULONG GetTextBeforeCaret(TfEditCookie ec, _In_ ITfContext *pContext,
     return cch;
 }
 
-// [MspyIME] Reads up to maxBefore UTF-16 units left of the caret and up to
-// maxAfter units right of it (reconversion context). Returns FALSE when
-// the selection is not an empty caret or the document refuses reads.
-BOOL GetTextAroundCaret(TfEditCookie ec, _In_ ITfContext *pContext,
-                        _Out_writes_(maxBefore) WCHAR *before, ULONG maxBefore, _Out_ ULONG *cchBefore,
-                        _Out_writes_(maxAfter) WCHAR *after, ULONG maxAfter, _Out_ ULONG *cchAfter)
-{
-    *cchBefore = 0;
-    *cchAfter = 0;
-
-    ULONG fetched = 0;
-    TF_SELECTION tfSelection;
-    if (pContext->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &tfSelection, &fetched) != S_OK || fetched == 0)
-    {
-        return FALSE;
-    }
-
-    BOOL isEmpty = TRUE;
-    if (SUCCEEDED(tfSelection.range->IsEmpty(ec, &isEmpty)) && !isEmpty)
-    {
-        tfSelection.range->Release();
-        return FALSE;
-    }
-
-    ITfRange* pRange = nullptr;
-    if (SUCCEEDED(tfSelection.range->Clone(&pRange)))
-    {
-        LONG shifted = 0;
-        pRange->Collapse(ec, TF_ANCHOR_START);
-        pRange->ShiftStart(ec, -(LONG)maxBefore, &shifted, nullptr);
-        if (FAILED(pRange->GetText(ec, 0, before, maxBefore, cchBefore)))
-        {
-            *cchBefore = 0;
-        }
-        pRange->Release();
-    }
-    if (SUCCEEDED(tfSelection.range->Clone(&pRange)))
-    {
-        LONG shifted = 0;
-        pRange->Collapse(ec, TF_ANCHOR_END);
-        pRange->ShiftEnd(ec, (LONG)maxAfter, &shifted, nullptr);
-        if (FAILED(pRange->GetText(ec, 0, after, maxAfter, cchAfter)))
-        {
-            *cchAfter = 0;
-        }
-        pRange->Release();
-    }
-    tfSelection.range->Release();
-    return TRUE;
-}
-
-// [MspyIME] The LAST up-to-maxCps code points of a UTF-16 buffer, in
-// document order, surrogate-aware. A buffer whose head was cut mid-pair by
-// a fixed-unit backward shift is safe: collection walks from the tail.
-std::vector<std::wstring> TrailingCodePoints(const WCHAR* buf, ULONG cch, size_t maxCps)
-{
-    std::vector<std::wstring> cps;
-    ULONG i = cch;
-    while (i > 0 && cps.size() < maxCps)
-    {
-        ULONG start = i - 1;
-        if (start > 0 && buf[start] >= 0xDC00 && buf[start] <= 0xDFFF &&
-            buf[start - 1] >= 0xD800 && buf[start - 1] <= 0xDBFF)
-        {
-            --start;
-        }
-        cps.insert(cps.begin(), std::wstring(buf + start, i - start));
-        i = start;
-    }
-    return cps;
-}
-
-// [MspyIME] The first code point of a UTF-16 buffer ("" when empty).
-std::wstring LeadingCodePoint(const WCHAR* buf, ULONG cch)
-{
-    if (cch == 0)
-    {
-        return std::wstring();
-    }
-    if (cch >= 2 && buf[0] >= 0xD800 && buf[0] <= 0xDBFF &&
-        buf[1] >= 0xDC00 && buf[1] <= 0xDFFF)
-    {
-        return std::wstring(buf, 2);
-    }
-    return std::wstring(buf, 1);
-}
-
-// [MspyIME] UTF-16 units spanned by the trailing `cps` code points.
-LONG TrailingUnits(const std::wstring& text, size_t cps)
-{
-    size_t i = text.length();
-    while (cps > 0 && i > 0)
-    {
-        --i;
-        if (i > 0 && text[i] >= 0xDC00 && text[i] <= 0xDFFF &&
-            text[i - 1] >= 0xD800 && text[i - 1] <= 0xDBFF)
-        {
-            --i;
-        }
-        --cps;
-    }
-    return (LONG)(text.length() - i);
-}
-
-// [MspyIME] True when the single-code-point string reads as Chinese.
-bool IsCjkCp(const std::wstring& cp)
-{
-    return !cp.empty() && IsCjkCodePoint(LastCodePoint(cp.c_str(), (ULONG)cp.length()));
-}
-
 }  // namespace
 
 HRESULT CSampleIME::_HandleShiftTap(TfEditCookie ec, _In_ ITfContext *pContext)
@@ -769,281 +649,6 @@ HRESULT CSampleIME::_HandleNumpadCommit(TfEditCookie ec, _In_ ITfContext *pConte
         commit += static_cast<char>(wch);
     }
     return _SyncComposer(ec, pContext, commit.c_str());
-}
-
-//+---------------------------------------------------------------------------
-//
-// _RefreshCandidateWindowTexts    [MspyIME]
-//
-//----------------------------------------------------------------------------
-
-void CSampleIME::_RefreshCandidateWindowTexts(const std::vector<std::wstring>& texts, UINT page, UINT pageCount)
-{
-    if (_pCandidateListUIPresenter == nullptr)
-    {
-        return;
-    }
-    CSampleImeArray<CCandidateListItem> items;
-    for (const std::wstring& text : texts)
-    {
-        CCandidateListItem* pItem = items.Append();
-        if (pItem)
-        {
-            pItem->_ItemString.Set(text.c_str(), text.length());
-        }
-    }
-    _pCandidateListUIPresenter->_ClearList();
-    _pCandidateListUIPresenter->_SetText(&items, FALSE);
-    _pCandidateListUIPresenter->_SetPageStatus(page, pageCount);
-}
-
-//+---------------------------------------------------------------------------
-//
-// _HandleReconversionStart    [MspyIME]
-//
-// Idle digit 8: open a homophone menu over the committed Chinese text
-// around the caret (spec §6 重選字). A composition is started OVER the
-// existing characters; nothing is mutated until a candidate is picked, so
-// every failure path is a silent no-op with the key eaten.
-//----------------------------------------------------------------------------
-
-HRESULT CSampleIME::_HandleReconversionStart(TfEditCookie ec, _In_ ITfContext *pContext)
-{
-    CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
-    if (pBridge == nullptr || !pBridge->IsReady())
-    {
-        return S_OK;
-    }
-    mspy::Reconverter* pReconverter = pBridge->Reconverter();
-    if (pReconverter == nullptr || _IsComposing() || _isReconverting)
-    {
-        return S_OK;
-    }
-
-    // Up to 3 code points left of the caret and 1 right of it.
-    WCHAR before[6] = {L'\0'};
-    WCHAR after[2] = {L'\0'};
-    ULONG cchBefore = 0, cchAfter = 0;
-    if (!GetTextAroundCaret(ec, pContext, before, ARRAYSIZE(before), &cchBefore,
-                            after, ARRAYSIZE(after), &cchAfter))
-    {
-        return S_OK;
-    }
-
-    std::vector<std::wstring> beforeCps = TrailingCodePoints(before, cchBefore, 3);
-    const std::wstring rightCp = LeadingCodePoint(after, cchAfter);
-
-    // Anchor = the code point right of the caret when it is Han, else the
-    // one left of it; the span then extends left over up to 2 more
-    // contiguous Han code points.
-    std::wstring anchorCp;
-    LONG afterUnits = 0;
-    size_t leftAvailable = beforeCps.size();
-    if (IsCjkCp(rightCp))
-    {
-        anchorCp = rightCp;
-        afterUnits = (LONG)rightCp.length();
-    }
-    else if (!beforeCps.empty() && IsCjkCp(beforeCps.back()))
-    {
-        anchorCp = beforeCps.back();
-        leftAvailable = beforeCps.size() - 1;
-    }
-    else
-    {
-        return S_OK;  // no Chinese next to the caret
-    }
-
-    size_t take = 0;
-    while (take < 2 && take < leftAvailable &&
-           IsCjkCp(beforeCps[leftAvailable - 1 - take]))
-    {
-        ++take;
-    }
-
-    std::vector<std::wstring> contextCps;
-    for (size_t i = leftAvailable - take; i < leftAvailable; ++i)
-    {
-        contextCps.push_back(beforeCps[i]);
-    }
-    contextCps.push_back(anchorCp);
-
-    std::vector<std::string> contextUtf8;
-    for (const std::wstring& cp : contextCps)
-    {
-        contextUtf8.push_back(CMspyBridge::ToUtf8(cp));
-    }
-    if (!pReconverter->start(contextUtf8))
-    {
-        return S_OK;  // nothing to offer
-    }
-
-    std::wstring spanText;
-    for (const std::wstring& cp : contextCps)
-    {
-        spanText += cp;
-    }
-    const LONG leftUnits = (LONG)spanText.length() - afterUnits;
-
-    // Build the span range from the caret and start a composition over it.
-    ULONG fetched = 0;
-    TF_SELECTION tfSelection;
-    if (pContext->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &tfSelection, &fetched) != S_OK || fetched == 0)
-    {
-        pReconverter->dismiss();
-        return S_OK;
-    }
-    ITfRange* pSpan = nullptr;
-    HRESULT hr = tfSelection.range->Clone(&pSpan);
-    tfSelection.range->Release();
-    if (FAILED(hr))
-    {
-        pReconverter->dismiss();
-        return S_OK;
-    }
-
-    LONG shifted = 0;
-    pSpan->Collapse(ec, TF_ANCHOR_START);
-    BOOL rangeOk = TRUE;
-    if (leftUnits > 0)
-    {
-        pSpan->ShiftStart(ec, -leftUnits, &shifted, nullptr);
-        rangeOk = (shifted == -leftUnits);
-    }
-    if (rangeOk && afterUnits > 0)
-    {
-        pSpan->ShiftEnd(ec, afterUnits, &shifted, nullptr);
-        rangeOk = (shifted == afterUnits);
-    }
-    if (rangeOk)
-    {
-        ITfContextComposition* pContextComposition = nullptr;
-        if (SUCCEEDED(pContext->QueryInterface(IID_ITfContextComposition, (void **)&pContextComposition)))
-        {
-            ITfComposition* pComposition = nullptr;
-            if (SUCCEEDED(pContextComposition->StartComposition(ec, pSpan, this, &pComposition)) && pComposition != nullptr)
-            {
-                _SetComposition(pComposition);
-                _SaveCompositionContext(pContext);
-            }
-            pContextComposition->Release();
-        }
-    }
-    pSpan->Release();
-    if (!_IsComposing())
-    {
-        pReconverter->dismiss();
-        return S_OK;
-    }
-
-    _isReconverting = TRUE;
-    _reconvText = spanText;
-    _reconvCaretOffsetUnits = leftUnits;
-    _reconvAnchorUnits = (LONG)anchorCp.length();
-
-    // Dashed underline over the span, anchor highlighted; the text itself
-    // is untouched. The caret stays where it was (inside the range), so
-    // the text-edit sink does not terminate the composition.
-    _SetCompositionDisplayAttributesSplit(ec, pContext,
-                                          (LONG)_reconvText.length() - _reconvAnchorUnits,
-                                          0, _reconvAnchorUnits);
-
-    hr = _CreateAndStartCandidate(_pCompositionProcessorEngine, ec, pContext);
-    if (SUCCEEDED(hr) && _pCandidateListUIPresenter)
-    {
-        _RefreshCandidateWindowTexts(pBridge->ReconversionPageTexts(),
-                                     (UINT)(pReconverter->pageIndex() + 1),
-                                     (UINT)pReconverter->pageCount());
-    }
-    return S_OK;
-}
-
-//+---------------------------------------------------------------------------
-//
-// _HandleReconversionKey    [MspyIME]
-//
-//----------------------------------------------------------------------------
-
-HRESULT CSampleIME::_HandleReconversionKey(TfEditCookie ec, _In_ ITfContext *pContext, WCHAR wch)
-{
-    CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
-    if (pBridge == nullptr || !pBridge->IsReady())
-    {
-        return S_OK;
-    }
-    mspy::Reconverter* pReconverter = pBridge->Reconverter();
-    if (pReconverter == nullptr || !pReconverter->active() || !_isReconverting)
-    {
-        return _EndReconversion(ec, pContext, TRUE);
-    }
-
-    // Non-printable keys (arrows, Esc, Backspace, ...) dismiss via '\0'.
-    const char key = (wch >= 0x20 && wch < 0x7F) ? static_cast<char>(wch) : '\0';
-    mspy::Reconverter::KeyResult result = pReconverter->feedKey(key);
-    switch (result.action)
-    {
-    case mspy::Reconverter::Action::kNone:
-        return S_OK;
-
-    case mspy::Reconverter::Action::kPageChanged:
-        _RefreshCandidateWindowTexts(pBridge->ReconversionPageTexts(),
-                                     (UINT)(pReconverter->pageIndex() + 1),
-                                     (UINT)pReconverter->pageCount());
-        return S_OK;
-
-    case mspy::Reconverter::Action::kSelected:
-    {
-        // Replace the trailing spanLength code points, commit in place.
-        const std::wstring chosen = CMspyBridge::ToWide(result.selected.value);
-        const LONG cutUnits = TrailingUnits(_reconvText, result.selected.spanLength);
-        std::wstring newText = _reconvText.substr(0, _reconvText.length() - cutUnits);
-        newText += chosen;
-        _SetCompositionText(ec, pContext, newText.c_str(), (LONG)newText.length());
-        _SetCaretInComposition(ec, pContext, (LONG)newText.length());
-        _DestroyCandidatePresenter();
-        _TerminateComposition(ec, pContext);
-        _isReconverting = FALSE;
-        _reconvText.clear();
-        return S_OK;
-    }
-
-    case mspy::Reconverter::Action::kDismissed:
-    default:
-        return _EndReconversion(ec, pContext, TRUE);
-    }
-}
-
-//+---------------------------------------------------------------------------
-//
-// _EndReconversion    [MspyIME]
-//
-// Tears the session down leaving the document text untouched.
-//----------------------------------------------------------------------------
-
-HRESULT CSampleIME::_EndReconversion(TfEditCookie ec, _In_ ITfContext *pContext, BOOL restoreCaret)
-{
-    if (!_isReconverting)
-    {
-        return S_OK;
-    }
-    _isReconverting = FALSE;  // clear first: _SyncComposer guards on this
-
-    if (restoreCaret && _IsComposing())
-    {
-        _SetCaretInComposition(ec, pContext, _reconvCaretOffsetUnits);
-    }
-    _DestroyCandidatePresenter();
-    if (_IsComposing())
-    {
-        _TerminateComposition(ec, pContext);
-    }
-    CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
-    if (pBridge != nullptr && pBridge->IsReady() && pBridge->Reconverter() != nullptr)
-    {
-        pBridge->Reconverter()->dismiss();
-    }
-    _reconvText.clear();
-    return S_OK;
 }
 
 //+---------------------------------------------------------------------------

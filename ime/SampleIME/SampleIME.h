@@ -7,9 +7,6 @@
 
 #pragma once
 
-#include <string>
-#include <vector>
-
 #include "KeyHandlerEditSession.h"
 #include "SampleIMEBaseStructure.h"
 
@@ -129,15 +126,6 @@ public:
     // [MspyIME] Numpad key while composing: commit the buffer, then emit
     // the numpad character literally.
     HRESULT _HandleNumpadCommit(TfEditCookie ec, _In_ ITfContext *pContext, WCHAR wch);
-    // [MspyIME] Reconversion of committed document text (idle digit 8):
-    // a composition is opened OVER the existing characters around the
-    // caret and the homophone menu drives an in-place replacement.
-    HRESULT _HandleReconversionStart(TfEditCookie ec, _In_ ITfContext *pContext);
-    HRESULT _HandleReconversionKey(TfEditCookie ec, _In_ ITfContext *pContext, WCHAR wch);
-    HRESULT _EndReconversion(TfEditCookie ec, _In_ ITfContext *pContext, BOOL restoreCaret);
-    // [MspyIME] Fills the candidate window with one page of strings (the
-    // strings must outlive the call; CStringRange does not copy).
-    void _RefreshCandidateWindowTexts(const std::vector<std::wstring>& texts, UINT page, UINT pageCount);
 
     // key event handlers for candidate object.
     HRESULT _HandleCandidateFinalize(TfEditCookie ec, _In_ ITfContext *pContext);
@@ -266,14 +254,6 @@ private:
     CANDIDATE_MODE _candidateMode;
     CCandidateListUIPresenter *_pCandidateListUIPresenter;
     BOOL _isCandidateWithWildcard : 1;
-
-    // [MspyIME] Reconversion session state (idle-8 over committed text).
-    // The composition covers _reconvText verbatim; offsets are UTF-16
-    // units from the composition start.
-    BOOL _isReconverting = FALSE;
-    std::wstring _reconvText;
-    LONG _reconvCaretOffsetUnits = 0;  // original caret position
-    LONG _reconvAnchorUnits = 0;       // trailing units of the anchor cp
 
     ITfDocumentMgr* _pDocMgrLastFocused;
 

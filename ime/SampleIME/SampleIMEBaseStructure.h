@@ -78,14 +78,7 @@ enum KEYSTROKE_FUNCTION
     // [MspyIME] Numpad key while composing: commit the whole buffer first,
     // then emit the numpad character literally (like the punctuation
     // commit-and-append idiom). Idle numpad keys pass through untouched.
-    FUNCTION_NUMPAD_COMMIT,
-
-    // [MspyIME] Idle digit 8: reconvert committed document text around the
-    // caret (homophone menu over existing Chinese characters).
-    FUNCTION_RECONVERT_START,
-    // [MspyIME] Any key while the reconversion menu is open: select, page
-    // or dismiss.
-    FUNCTION_RECONVERT_KEY
+    FUNCTION_NUMPAD_COMMIT
 };
 
 //---------------------------------------------------------------------
