@@ -54,7 +54,11 @@ const TF_DISPLAYATTRIBUTE CDisplayAttributeInfoConverted::_s_DisplayAttribute =
                                             // only the COLOR differs
     FALSE,                                  // underline boldness
     { TF_CT_NONE, 0 },                      // underline color (app default)
-    TF_ATTR_TARGET_CONVERTED                // attribute info
+    TF_ATTR_INPUT                           // attribute info: NOT
+                                            // TARGET_CONVERTED - Chromium
+                                            // (LINE, Chrome) renders that as
+                                            // an inverted selection block and
+                                            // ignores the color fields
 };
 
 // [MspyIME] Selection anchor: soft accent background so the character the
