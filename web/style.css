@@ -5,7 +5,6 @@
   --init-c: #e08b3c;   /* initial (聲母) annotation */
   --final-c: #2f9e8f;  /* final (韻母) annotation */
   --ctrl-c: #8a93b5;   /* control-key annotation */
-  --pending: #1a6ee0;  /* undecided-tone blue */
   --u: 50px;           /* 1u keycap unit */
   --kgap: 6px;
 }
@@ -90,10 +89,12 @@ body {
 .mode-badge.zh { background: var(--accent); color: #fff; }
 .mode-badge.en { background: #59637a; color: #fff; }
 
-/* composition rendering */
+/* composition rendering — one color for the whole composition, like the
+   real IME (the blue "undecided tone" segment was dropped in 2026-07-29:
+   most hosts never draw IME colors). Pending segments are the ones still
+   shown as bopomofo. */
 #composition .ch { border-bottom: 2px dotted #8a90a0; padding-bottom: 1px; }
-#composition .ch.settled { color: #111; }
-#composition .ch.pending { color: var(--pending); }
+#composition .ch.settled, #composition .ch.pending { color: #111; }
 #composition .ch.anchor { background: #cfe4ff; border-radius: 3px; }
 .caret {
   display: inline-block; width: 2px; height: 1.15em; background: #222;

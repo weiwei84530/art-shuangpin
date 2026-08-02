@@ -40,6 +40,10 @@
 #define CANDWND_BK_COLOR				(RGB(0xFF, 0xFF, 0xFF))
 #define CANDWND_PAGE_COLOR				(RGB(0xA0, 0xA0, 0xA0))
 #define CANDWND_PAGEBAR_HEIGHT			(20)
+// [MspyIME] Candidate text size in points. All CANDWND_* pixel metrics are
+// authored for 96 dpi and scaled to the window's monitor at runtime
+// (CCandidateWindow::_UpdateMetricsForDpi).
+#define CANDWND_FONT_POINT_SIZE			(10)
 
 //---------------------------------------------------------------------
 // defined modifier

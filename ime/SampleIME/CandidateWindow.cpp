@@ -35,7 +35,13 @@ CCandidateWindow::CCandidateWindow(_In_ CANDWNDCALLBACK pfnCallback, _In_ void *
 
     _pShadowWnd = nullptr;
 
+    // [MspyIME] 96 dpi defaults; _UpdateMetricsForDpi rescales them (and
+    // builds the font) once the window knows which monitor it is on.
+    _dpi = 0;
+    _hFont = nullptr;
     _cyRow = CANDWND_ROW_WIDTH;
+    _cyPageBar = CANDWND_PAGEBAR_HEIGHT;
+    _cxBorder = CANDWND_BORDER_WIDTH;
     _cxTitle = 0;
 
     _pVScrollBarWnd = nullptr;
@@ -74,6 +80,92 @@ CCandidateWindow::~CCandidateWindow()
     _ClearList();
     _DeleteShadowWnd();
     _DeleteVScrollBarWnd();
+
+    if (_hFont != nullptr)  // [MspyIME] per-DPI font
+    {
+        DeleteObject(_hFont);
+        _hFont = nullptr;
+    }
+}
+
+//+---------------------------------------------------------------------------
+//
+// _GetDpiForWnd / _CandidateFont / _UpdateMetricsForDpi    [MspyIME]
+//
+// Everything this window draws is authored at 96 dpi. Hosts differ in what
+// they report: a per-monitor-aware host (LINE, Chrome) leaves the process
+// system DPI at 96, so the shared Global::defaultlFontHandle — built once
+// from GetDeviceCaps(LOGPIXELSY) — comes out tiny on a 150%/175% display.
+// Ask the window itself instead and rebuild everything per monitor.
+//----------------------------------------------------------------------------
+
+UINT CCandidateWindow::_GetDpiForWnd(_In_opt_ HWND wndHandle)
+{
+    UINT dpi = 0;
+    if (wndHandle != nullptr)
+    {
+        dpi = GetDpiForWindow(wndHandle);
+    }
+    if (dpi == 0)
+    {
+        HDC dcHandle = GetDC(nullptr);
+        if (dcHandle != nullptr)
+        {
+            dpi = (UINT)GetDeviceCaps(dcHandle, LOGPIXELSY);
+            ReleaseDC(nullptr, dcHandle);
+        }
+    }
+    return (dpi != 0) ? dpi : 96;
+}
+
+HFONT CCandidateWindow::_CandidateFont() const
+{
+    return (_hFont != nullptr) ? _hFont : Global::defaultlFontHandle;
+}
+
+void CCandidateWindow::_UpdateMetricsForDpi(_In_opt_ HWND wndHandle)
+{
+    const UINT dpi = _GetDpiForWnd(wndHandle);
+    if (dpi == _dpi && _hFont != nullptr)
+    {
+        return;
+    }
+    _dpi = dpi;
+
+    WCHAR fontName[50] = {L'\0'};
+    LoadString(Global::dllInstanceHandle, IDS_DEFAULT_FONT, fontName, ARRAYSIZE(fontName));
+    const int fontHeight = -MulDiv(CANDWND_FONT_POINT_SIZE, (int)dpi, 72);
+    HFONT hFont = CreateFont(fontHeight, 0, 0, 0, FW_MEDIUM, 0, 0, 0, 0, 0, 0, 0, 0, fontName);
+    if (hFont == nullptr)
+    {
+        LOGFONT lf = {0};
+        SystemParametersInfo(SPI_GETICONTITLELOGFONT, sizeof(LOGFONT), &lf, 0);
+        hFont = CreateFont(fontHeight, 0, 0, 0, FW_MEDIUM, 0, 0, 0, 0, 0, 0, 0, 0, lf.lfFaceName);
+    }
+    if (hFont != nullptr)
+    {
+        if (_hFont != nullptr)
+        {
+            DeleteObject(_hFont);
+        }
+        _hFont = hFont;
+    }
+
+    _cyRow = MulDiv(CANDWND_ROW_WIDTH, (int)dpi, 96);
+    _cyPageBar = MulDiv(CANDWND_PAGEBAR_HEIGHT, (int)dpi, 96);
+    _cxBorder = max(1, MulDiv(CANDWND_BORDER_WIDTH, (int)dpi, 96));
+
+    // The window width is a multiple of the character width, so it follows
+    // the font once the metrics are re-measured with it.
+    HDC dcHandle = GetDC(wndHandle);
+    if (dcHandle != nullptr)
+    {
+        HFONT hFontOld = (HFONT)SelectObject(dcHandle, _CandidateFont());
+        GetTextMetrics(dcHandle, &_TextMetric);
+        _cxTitle = _TextMetric.tmMaxCharWidth * _wndWidth;
+        SelectObject(dcHandle, hFontOld);
+        ReleaseDC(wndHandle, dcHandle);
+    }
 }
 
 //+---------------------------------------------------------------------------
@@ -187,6 +279,11 @@ void CCandidateWindow::_ResizeWindow()
 {
     SIZE size = {0, 0};
 
+    // [MspyIME] The presenter moves the window next to the caret before the
+    // list is filled in, so this is where the monitor (and its DPI) is
+    // finally known.
+    _UpdateMetricsForDpi(_GetWnd());
+
     _cxTitle = max(_cxTitle, size.cx + 2 * GetSystemMetrics(SM_CXFRAME));
 
     // [MspyIME] Size to the rows actually shown (the list holds only the
@@ -213,8 +310,7 @@ void CCandidateWindow::_ResizeWindow()
         pt.x = rcWnd.left;
         pt.y = rcWnd.top;
     }
-    CBaseWindow::_Resize(pt.x, pt.y, _cxTitle,
-                         _cyRow * rows + CANDWND_PAGEBAR_HEIGHT);
+    CBaseWindow::_Resize(pt.x, pt.y, _cxTitle, _cyRow * rows + _cyPageBar);
 }
 
 //+---------------------------------------------------------------------------
@@ -276,20 +372,16 @@ LRESULT CALLBACK CCandidateWindow::_WindowProcCallback(_In_ HWND wndHandle, UINT
     switch (uMsg)
     {
     case WM_CREATE:
-        {
-            HDC dcHandle = nullptr;
+        // [MspyIME] Font + pixel metrics for this window's DPI (redone in
+        // _ResizeWindow once the window has been placed).
+        _UpdateMetricsForDpi(wndHandle);
+        return 0;
 
-            dcHandle = GetDC(wndHandle);
-            if (dcHandle)
-            {
-                HFONT hFontOld = (HFONT)SelectObject(dcHandle, Global::defaultlFontHandle);
-                GetTextMetrics(dcHandle, &_TextMetric);
-
-                _cxTitle = _TextMetric.tmMaxCharWidth * _wndWidth;
-                SelectObject(dcHandle, hFontOld);
-                ReleaseDC(wndHandle, dcHandle);
-            }
-        }
+    // [MspyIME] Dragged onto a monitor with a different scale factor.
+    case WM_DPICHANGED:
+        _UpdateMetricsForDpi(wndHandle);
+        _ResizeWindow();
+        _InvalidateRect();
         return 0;
 
     case WM_DESTROY:
@@ -371,7 +463,7 @@ LRESULT CALLBACK CCandidateWindow::_WindowProcCallback(_In_ HWND wndHandle, UINT
 
             dcHandle = BeginPaint(wndHandle, &ps);
             _OnPaint(dcHandle, &ps);
-            _DrawBorder(wndHandle, CANDWND_BORDER_WIDTH);
+            _DrawBorder(wndHandle, _cxBorder);
             EndPaint(wndHandle, &ps);
         }
         return 0;
@@ -461,7 +553,7 @@ void CCandidateWindow::_OnPaint(_In_ HDC dcHandle, _In_ PAINTSTRUCT *pPaintStruc
 {
     SetBkMode(dcHandle, TRANSPARENT);
 
-    HFONT hFontOld = (HFONT)SelectObject(dcHandle, Global::defaultlFontHandle);
+    HFONT hFontOld = (HFONT)SelectObject(dcHandle, _CandidateFont());
 
     FillRect(dcHandle, &pPaintStruct->rcPaint, _brshBkColor);
 
@@ -711,7 +803,7 @@ void CCandidateWindow::_DrawList(_In_ HDC dcHandle, _In_ UINT iIndex, _In_ RECT 
         RECT rcBar;
         rcBar.left = rcClient.left;
         rcBar.right = rcClient.right - cxLine;
-        rcBar.top = rcClient.bottom - CANDWND_PAGEBAR_HEIGHT;
+        rcBar.top = rcClient.bottom - _cyPageBar;
         rcBar.bottom = rcClient.bottom;
 
         SetTextColor(dcHandle, CANDWND_PAGE_COLOR);

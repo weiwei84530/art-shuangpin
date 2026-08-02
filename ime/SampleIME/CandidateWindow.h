@@ -93,6 +93,13 @@ private:
     void _DeleteShadowWnd();
     void _DeleteVScrollBarWnd();
 
+    // [MspyIME] The candidate window is plain GDI, so nothing scales by
+    // itself: rebuild the font and the pixel metrics for the DPI of the
+    // monitor the window currently sits on (no-op when unchanged).
+    void _UpdateMetricsForDpi(_In_opt_ HWND wndHandle);
+    static UINT _GetDpiForWnd(_In_opt_ HWND wndHandle);
+    HFONT _CandidateFont() const;
+
     friend COLORREF _AdjustTextColor(_In_ COLORREF crColor, _In_ COLORREF crBkColor);
 
 private:
@@ -108,6 +115,13 @@ private:
     int _cyRow;
     int _cxTitle;
     UINT _wndWidth;
+
+    // [MspyIME] DPI the metrics above/below were built for (0 = not yet)
+    // and the font sized for it (owned; falls back to the shared font).
+    UINT _dpi;
+    HFONT _hFont;
+    int _cyPageBar;
+    int _cxBorder;
 
     CCandidateRange* _pIndexRange;
 
