@@ -52,6 +52,7 @@ cli\    REPL 測試臺（日常開發主力，不碰 TSF）
 
 ## 狀態記錄
 
+- 2026-08-02：**tag v0.3 並發佈 GitHub Release**（附 art-shuangpin-v0.3.zip）。內容＝第十輪四項互動調整（注音維持顯示、空白鍵定案、選字後游標右移、per-app 中英記憶）＋候選窗 DPI 縮放修正；教學網站已隨 push 自動重佈。
 - 2026-08-02：**候選窗 DPI 縮放修正＋教學網站同步更新**。(1) 候選窗在 150%／175% 縮放螢幕上特別小＝所有尺寸寫死 96 dpi、字型又吃行程層級的 `Global::defaultlFontHandle`（per-monitor aware 宿主如 LINE/Chrome 回報 96）。改為 `CCandidateWindow` 自己持有 per-DPI 字型與度量（`_UpdateMetricsForDpi`：`GetDpiForWindow` → 重建 10pt 字型、列高/頁碼列/邊框 `MulDiv(…, dpi, 96)`），在 WM_CREATE、每次 `_ResizeWindow`（＝presenter 定位後）與 `WM_DPICHANGED` 重算。(2) `web\` 教學腳本補齊到現行規格：組字改單色（移除藍色 `--pending`）、待定音節顯示注音、新增〈空白鍵：定案與上屏〉一課（共 8 課）、選字後游標右移並可連按 `8`、Shift 課補 per-app 模式記憶、Space 鍵帽標註「定案」；候選清單改用 REPL 實跑的真實候選。已用 Chrome 實測。
 - 2026-08-02：**M5 回饋第十輪（四項互動調整）**。(1) **中英模式改 per-app 記憶**：TIP 本來就跑在各應用程式行程內，改為新 app 一律英文（`InitializeSampleIMECompartment` 設 FALSE，原本設 TRUE）＋焦點回來時把記憶值寫回 OPENCLOSE compartment（ThreadMgr/KeyEvent 兩個 OnSetFocus），蓋掉系統的跨 app 同步；記憶只由 Shift 輕按更新（工具列點擊無法與系統寫入區分，故不納入）。(2) **選字後游標跳到該詞段之後**（`chosen.location + spanningLength`）——可連按 `8` 一路往右改完整句。(3) **最新音節維持注音顯示**：eager 進詞格照舊（整句轉換不變），但顯示層把該字蓋成注音（`lastBareDisplay_`），聲調／空白／下一音節首鍵／移游標／開選單才現字。(4) **空白鍵改「定案」不 commit**：完整音節以一聲/輕聲預設轉字、查無無聲調讀音的注音（`n`、ㄋㄧㄠ）定案成注音符號融入組字串（走 `` ` `` 同機制）；**沒東西可定案時才整段 commit**（使用者選擇保留舊習慣）。143 tests 全綠、x64/x86 已建置部署。規格見 docs/spec.md §6。
 - 2026-07-29：**tag v0.2.1 並發佈 GitHub Release**（附 art-shuangpin-v0.2.1.zip 安裝包）。內容＝第八、九輪全部改進：閒置導航鍵、NumPad 豁免、LINE 反白修正、單色顯示、Shift 空白被動記憶（含三段演進：OnTestKeyDown 目擊修正、純游標移動判定＋commit 游標快照、**執行緒內 WH_MOUSE hook 滑鼠歸零**——LINE/Sublime 不回報游標事件的最終解）。
