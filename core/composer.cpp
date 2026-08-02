@@ -109,9 +109,13 @@ Composer::DisplaySegments Composer::displaySegments() const {
 
   if (lastWasBare_ && !left.empty()) {
     // The just-inserted bare syllable (left of the cursor) is still
-    // tone-retrofittable.
+    // tone-retrofittable: show the bopomofo the user typed, not the
+    // tone-1/neutral character it would convert to. A tone digit, Space,
+    // the next syllable or any cursor move settles it into that character.
     size_t n = LastUtf8CharBytes(left);
-    segments.unconfirmed = left.substr(left.size() - n);
+    segments.unconfirmed = lastBareDisplay_.empty()
+                               ? left.substr(left.size() - n)
+                               : lastBareDisplay_;
     left.resize(left.size() - n);
   }
   segments.before = std::move(left);
@@ -224,6 +228,7 @@ bool Composer::finalizePendingBare() {
   for (const auto& syllable : pending_.candidates()) {
     if (insertReading(syllable)) {  // bare reading = tone 1 or neutral
       lastBareSyllables_ = pending_.candidates();
+      lastBareDisplay_ = syllable;
       pending_.clear();
       return true;
     }
@@ -252,7 +257,10 @@ bool Composer::retrofitToneToLastSyllable(char digit) {
   }
   // No entry for that tone: restore the bare syllable and stay retrofittable.
   for (const auto& syllable : lastBareSyllables_) {
-    if (insertReading(syllable)) return false;
+    if (insertReading(syllable)) {
+      lastBareDisplay_ = syllable;
+      return false;
+    }
   }
   walk_ = grid_.walk();  // should be unreachable; keep the walk consistent
   return false;
@@ -275,6 +283,7 @@ void Composer::reset() {
   pending_.clear();
   candidates_.clear();
   lastBareSyllables_.clear();
+  lastBareDisplay_.clear();
   lastWasBare_ = false;
   selectionLocation_ = 0;
   pageIndex_ = 0;
@@ -436,13 +445,14 @@ Composer::Result Composer::feedChar(char c) {
     return {true, commit};
   }
 
-  // Space commits the composition; unlike Enter, any VISIBLE bopomofo
-  // residue (a half-typed or tone-awaiting syllable) commits as literal
-  // symbols instead of being dropped (n + Space -> ㄋ). A plain space when
-  // idle passes through to the application.
+  // Space settles the syllable in progress WITHOUT committing: the default
+  // tone-1/neutral reading wins (ㄏㄠ -> 蒿) and bopomofo no reading
+  // accepts settles as symbols (ㄋ, ㄋㄧㄠ). With nothing left to settle it
+  // commits the whole buffer like Enter. A plain space when idle passes
+  // through to the application.
   if (c == ' ') {
     if (!composing) return {false, ""};
-    return commitWithResidue();
+    return settleOrCommit();
   }
 
   // Everything else printable: pass through when idle; eaten while
@@ -553,30 +563,43 @@ Composer::Result Composer::feedHollowFinal(char c) {
     return {true, ""};
   }
   if (c == ' ') {
+    // The hollow slot has nothing to settle: drop it and let Space act on
+    // the rest of the buffer.
     hollowFinal_ = false;
-    return commitWithResidue();
+    return settleOrCommit();
   }
   // Anything else while the sub-state is active: eaten (Backspace, Enter
   // and Esc are handled by their dedicated feeds).
   return {true, ""};
 }
 
-Composer::Result Composer::commitWithResidue() {
-  std::string residue = pending_.displayText();
-  if (residue.empty()) {
-    std::string commit = takeCommitText();
-    if (commit.empty()) {
-      // Nothing at all (e.g. a bare '`'): consumed, back to idle.
-      updateStateAfterMutation();
-      return {true, ""};
+Composer::Result Composer::settleOrCommit() {
+  if (!pending_.empty()) {
+    // A complete syllable with a tone-1/neutral entry converts; anything
+    // else (half syllable, or a syllable no toneless entry accepts)
+    // settles as its bopomofo symbols, exactly like '`'.
+    if (!(pending_.complete() && finalizePendingBare())) {
+      std::string symbols = pending_.displayText();
+      pending_.clear();
+      insertLiteralText(symbols);
     }
-    return {true, commit};
+    lastWasBare_ = false;  // settled: no tone digit may retrofit it
+    updateStateAfterMutation();
+    return {true, ""};
   }
-  std::string text;
-  for (const auto& v : walk_.valuesAsStrings()) text += v;
-  text += residue;
-  reset();
-  return {true, text};
+  if (lastWasBare_) {
+    // Already in the grid with its default reading; settling only ends the
+    // tone-retrofit window, which turns the bopomofo into the character.
+    lastWasBare_ = false;
+    return {true, ""};
+  }
+  std::string commit = takeCommitText();
+  if (commit.empty()) {
+    // Nothing at all (e.g. a bare '`'): consumed, back to idle.
+    updateStateAfterMutation();
+    return {true, ""};
+  }
+  return {true, commit};
 }
 
 Composer::Result Composer::selectCandidate(size_t index) {
@@ -588,6 +611,13 @@ Composer::Result Composer::selectCandidate(size_t index) {
   grid_.overrideCandidate(selectionLocation_, chosen);
   walk_ = grid_.walk();
   uom_.observe(walkBefore, walk_, selectionLocation_, NowSeconds());
+
+  // Park the cursor just past the span that was fixed, so its anchor is
+  // the next character: repeated 8s walk through the sentence without
+  // touching the cursor keys. At the right end the cursor simply stays
+  // there (8 then re-targets the last character).
+  const size_t next = chosen.location + chosen.spanningLength;
+  grid_.setCursor(next > grid_.length() ? grid_.length() : next);
 
   if (onManualSelection) {
     // Strip the internal explicit-tone-1 sentinel before handing the

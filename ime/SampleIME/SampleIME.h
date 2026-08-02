@@ -163,6 +163,14 @@ public:
         _lastCharClass = LASTCHAR_UNKNOWN;
         _ClearLastCommitCaret();
     }
+    // [MspyIME] Per-application Chinese/English memory (spec §6). The TIP
+    // runs inside the application's own process, so this instance IS the
+    // per-app slot: whatever the system does with the shared keyboard
+    // open/close state while another app has focus, the mode this app was
+    // last left in is restored when focus comes back. Applications start in
+    // English (InitializeSampleIMECompartment).
+    void _RestoreKeyboardOpenForApp();
+    void _RememberKeyboardOpen(BOOL isOpen) { _rememberedKeyboardOpen = isOpen; }
     // [MspyIME] Numpad key while composing: commit the buffer, then emit
     // the numpad character literally.
     HRESULT _HandleNumpadCommit(TfEditCookie ec, _In_ ITfContext *pContext, WCHAR wch);
@@ -300,6 +308,11 @@ private:
     LastCharClass _lastCharClass = LASTCHAR_UNKNOWN;
     ITfRange* _pLastCommitCaret = nullptr;
     ITfContext* _pLastCommitContext = nullptr;
+
+    // [MspyIME] Chinese/English mode remembered for this application; see
+    // _RestoreKeyboardOpenForApp. FALSE = English, the state every
+    // application starts in.
+    BOOL _rememberedKeyboardOpen = FALSE;
 
     ITfDocumentMgr* _pDocMgrLastFocused;
 

@@ -1100,8 +1100,11 @@ void CCompositionProcessorEngine::SetupPunctuationPair()
 void CCompositionProcessorEngine::InitializeSampleIMECompartment(_In_ ITfThreadMgr *pThreadMgr, TfClientId tfClientId)
 {
 	// set initial mode
+    // [MspyIME] Applications start in ENGLISH (keyboard closed): the mode
+    // is per-application memory now (CSampleIME::_RestoreKeyboardOpenForApp),
+    // and an application nobody switched yet has no Chinese to remember.
     CCompartment CompartmentKeyboardOpen(pThreadMgr, tfClientId, GUID_COMPARTMENT_KEYBOARD_OPENCLOSE);
-    CompartmentKeyboardOpen._SetCompartmentBOOL(TRUE);
+    CompartmentKeyboardOpen._SetCompartmentBOOL(FALSE);
 
     CCompartment CompartmentDoubleSingleByte(pThreadMgr, tfClientId, Global::SampleIMEGuidCompartmentDoubleSingleByte);
     CompartmentDoubleSingleByte._SetCompartmentBOOL(FALSE);

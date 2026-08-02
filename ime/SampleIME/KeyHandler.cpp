@@ -596,7 +596,10 @@ HRESULT CSampleIME::_HandleShiftTap(TfEditCookie ec, _In_ ITfContext *pContext)
     // (a lone separator space classifies as Other, which is correct).
     _SyncComposer(ec, pContext, commit.c_str());
 
-    CompartmentKeyboardOpen._SetCompartmentBOOL(isOpen ? FALSE : TRUE);
+    const BOOL nowOpen = isOpen ? FALSE : TRUE;
+    CompartmentKeyboardOpen._SetCompartmentBOOL(nowOpen);
+    // This application now remembers the mode it was switched to.
+    _RememberKeyboardOpen(nowOpen);
     return S_OK;
 }
 

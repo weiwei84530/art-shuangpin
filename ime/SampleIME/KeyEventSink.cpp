@@ -291,10 +291,15 @@ BOOL CSampleIME::_IsKeyboardDisabled()
 
 STDAPI CSampleIME::OnSetFocus(BOOL fForeground)
 {
-	fForeground;
-
     // [MspyIME] Keyboard focus moved: the caret position is unknown now.
     _ResetLastCharClass();
+
+    // [MspyIME] Taking the keystroke focus is the other half of the
+    // per-application Chinese/English memory (see ThreadMgrEventSink).
+    if (fForeground)
+    {
+        _RestoreKeyboardOpenForApp();
+    }
 
     return S_OK;
 }

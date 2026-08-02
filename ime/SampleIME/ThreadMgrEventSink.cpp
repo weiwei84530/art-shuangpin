@@ -55,6 +55,14 @@ STDAPI CSampleIME::OnSetFocus(_In_ ITfDocumentMgr *pDocMgrFocus, _In_ ITfDocumen
     // (Shift separator space must never fire at an unknown caret).
     _ResetLastCharClass();
 
+    // [MspyIME] Coming back to this application restores the Chinese/
+    // English mode it was left in, whatever another application did to the
+    // shared keyboard open/close state meanwhile.
+    if (pDocMgrFocus != nullptr)
+    {
+        _RestoreKeyboardOpenForApp();
+    }
+
     _InitTextEditSink(pDocMgrFocus);
 
     _UpdateLanguageBarOnSetFocus(pDocMgrFocus);

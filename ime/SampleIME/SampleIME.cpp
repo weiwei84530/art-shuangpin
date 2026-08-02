@@ -344,6 +344,36 @@ ExitError:
 
 //+---------------------------------------------------------------------------
 //
+// _RestoreKeyboardOpenForApp    [MspyIME]
+//
+// Chinese/English is remembered per application. The keyboard open/close
+// state is shared across applications by the system, so re-assert this
+// application's own mode whenever it takes the focus back; a freshly
+// started application begins in English (see
+// InitializeSampleIMECompartment).
+//----------------------------------------------------------------------------
+
+void CSampleIME::_RestoreKeyboardOpenForApp()
+{
+    if (_pThreadMgr == nullptr || _tfClientId == TF_CLIENTID_NULL)
+    {
+        return;
+    }
+
+    CCompartment CompartmentKeyboardOpen(_pThreadMgr, _tfClientId, GUID_COMPARTMENT_KEYBOARD_OPENCLOSE);
+    BOOL isOpen = FALSE;
+    if (SUCCEEDED(CompartmentKeyboardOpen._GetCompartmentBOOL(isOpen)) &&
+        (isOpen ? TRUE : FALSE) == (_rememberedKeyboardOpen ? TRUE : FALSE))
+    {
+        return;
+    }
+    Global::DebugLog(L"RestoreKeyboardOpenForApp: system=%d -> app=%d",
+                     isOpen ? 1 : 0, _rememberedKeyboardOpen ? 1 : 0);
+    CompartmentKeyboardOpen._SetCompartmentBOOL(_rememberedKeyboardOpen);
+}
+
+//+---------------------------------------------------------------------------
+//
 // ITfTextInputProcessorEx::Deactivate
 //
 //----------------------------------------------------------------------------

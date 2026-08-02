@@ -27,8 +27,12 @@
 // FINAL whose bopomofo settles directly (`k -> settled ㄠ). Settled
 // symbols live in the grid as single-candidate literal readings, so they
 // mix freely with converted Chinese and commit together (ㄋㄧㄠ = n`y``k).
-// Space additionally commits any still-BLUE residue as symbols
-// (n + Space -> ㄋ), while Enter drops blue residue as before.
+//
+// Space SETTLES rather than commits (2026-08-02): the syllable in progress
+// takes its default tone-1/neutral reading (ㄏㄠ -> 蒿) and bopomofo with
+// no reading of its own settles as symbols (ㄋ, ㄋㄧㄠ), all still inside
+// the composition. Only when there is nothing left to settle does Space
+// commit the whole buffer, like Enter (which still drops the residue).
 
 #pragma once
 
@@ -71,7 +75,10 @@ class Composer {
   // Display decomposition of composedText():
   //   before      tone-settled text left of the active area
   //   unconfirmed the pending syllable display plus, if the syllable just
-  //               inserted is still tone-retrofittable, its character
+  //               inserted is still tone-retrofittable, ITS BOPOMOFO
+  //               (2026-08-02: the second key of a syllable no longer
+  //               flashes the tone-1 character — hk shows ㄏㄠ, and a tone
+  //               digit or Space turns it into 好/蒿)
   //   highlighted the single character right of the cursor (the selection
   //               anchor emphasized with a background color); empty when
   //               the cursor is at the right end
@@ -134,9 +141,10 @@ class Composer {
 
  private:
   // Finalizes the pending complete syllable as tone-less (tone 1/neutral).
-  // This happens EAGERLY the moment the second key completes a syllable, so
-  // the converted character appears inline immediately ("母音一按就見字");
-  // a following tone digit then *retrofits* the tone onto that syllable.
+  // This happens EAGERLY the moment the second key completes a syllable so
+  // the sentence walk sees it (the character itself stays hidden behind
+  // its bopomofo until settled); a following tone digit then *retrofits*
+  // the tone onto that syllable.
   // Returns false if no dictionary entry accepts the tone-less reading (the
   // syllable then stays pending, shown as bopomofo, awaiting a tone digit).
   bool finalizePendingBare();
@@ -162,9 +170,10 @@ class Composer {
   // Key dispatch while the hollow-final sub-state is active ('`' pressed,
   // awaiting the final key).
   Result feedHollowFinal(char c);
-  // Commits the buffer PLUS the visible bopomofo residue (the pending
-  // syllable's display) as literal symbols.
-  Result commitWithResidue();
+  // Space: settles the syllable in progress (default tone, or its bopomofo
+  // when no reading fits) and commits the buffer only when there is
+  // nothing left to settle.
+  Result settleOrCommit();
   // Commits the current buffer (dropping a half-typed syllable) and resets.
   std::string takeCommitText();
   void reset();
@@ -181,9 +190,11 @@ class Composer {
   McBopomofo::UserOverrideModel uom_;
 
   // True when the most recent grid mutation was an eager bare insert, i.e.
-  // a tone digit may still retrofit it.
+  // a tone digit may still retrofit it. Such a syllable displays as
+  // bopomofo (lastBareDisplay_) instead of as its converted character.
   bool lastWasBare_ = false;
   std::vector<std::string> lastBareSyllables_;
+  std::string lastBareDisplay_;
 
   // Paired-quote alternation (Rime-style): next " types “ or ”.
   bool doubleQuoteOpen_ = false;
