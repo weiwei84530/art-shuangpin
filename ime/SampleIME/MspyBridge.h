@@ -1,18 +1,19 @@
 // [MspyIME] Bridge between the TSF shell and the mspy input core.
 //
 // Owns the conversion engine stack (McBopomofoLM -> RelaxedToneLM ->
-// mspy::Composer) and provides stable UTF-16 snapshots of the composer's
-// output for TSF (CStringRange does not own memory, so the shell points
-// into the strings cached here).
+// UserPreferenceLM -> mspy::Composer) and provides stable UTF-16 snapshots
+// of the composer's output for TSF (CStringRange does not own memory, so
+// the shell points into the strings cached here).
 
 #pragma once
 
 #include <memory>
-#include <set>
 #include <string>
 #include <vector>
 
 #include "composer.h"
+#include "user_preference_lm.h"
+#include "user_preferences.h"
 
 namespace McBopomofo {
 class McBopomofoLM;
@@ -53,17 +54,25 @@ public:
     const std::vector<std::wstring>& CandidateTexts();
 
 private:
-    // Persists a manually selected multi-syllable phrase and reloads the
-    // user-phrase LM. Single characters rely on the in-session
-    // UserOverrideModel instead (a permanent score-0 entry would
-    // steamroll the dictionary ranking).
-    void PersistUserPhrase(const std::string& reading, const std::string& value);
+    // Loads %APPDATA%\MspyIME\user-phrases.txt into _preferences, migrating
+    // the old two-field format and dropping keys the old append-only store
+    // left with two competing values (see UserPreferences).
+    void LoadPreferences();
+    // Merges _preferences with whatever is on disk now (another
+    // application's TIP instance may have written since we loaded) and
+    // rewrites the file atomically.
+    void SavePreferences();
 
     std::shared_ptr<McBopomofo::McBopomofoLM> _lm;
     std::shared_ptr<mspy::RelaxedToneLM> _relaxed;
+    std::shared_ptr<mspy::UserPreferences> _preferences;
+    std::shared_ptr<mspy::UserPreferenceLM> _preferenceLm;
     std::unique_ptr<mspy::Composer> _composer;
+    // Usage refreshes fire on every commit; only write the file this often.
+    static constexpr int64_t kSaveThrottleSeconds = 120;
+
     std::wstring _userPhrasesPath;
-    std::set<std::string> _userPhraseLines;
+    int64_t _lastSaveTime = 0;
     Segments _segments;
     std::vector<std::wstring> _candidateTexts;
     BOOL _ready = FALSE;

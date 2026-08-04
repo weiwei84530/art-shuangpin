@@ -13,7 +13,9 @@
 
 #include <windows.h>
 
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -23,6 +25,8 @@
 #include "composer.h"
 #include "gramambular2/reading_grid.h"
 #include "relaxed_tone_lm.h"
+#include "user_preference_lm.h"
+#include "user_preferences.h"
 
 namespace {
 
@@ -104,9 +108,21 @@ void PrintComposerState(const mspy::Composer& composer,
 }
 
 void RunKeyMode(std::shared_ptr<McBopomofo::McBopomofoLM> lm,
+                std::shared_ptr<mspy::UserPreferences> preferences,
                 const std::string& keys) {
   auto relaxed = std::make_shared<mspy::RelaxedToneLM>(lm);
-  mspy::Composer composer(relaxed);
+  auto preferred =
+      std::make_shared<mspy::UserPreferenceLM>(relaxed, preferences);
+  mspy::Composer composer(preferred);
+  // Echo what the shell would learn, so a key sequence shows its own
+  // effect on the store.
+  composer.onManualSelection = [&preferences, &preferred](
+                                   const std::string& reading,
+                                   const std::string& value) {
+    if (reading.find('-') == std::string::npos) return;
+    preferences->record(reading, value, preferred->clock());
+    std::cout << "  LEARNED: \"" << value << "\" " << reading << "\n";
+  };
   for (char c : keys) {
     mspy::Composer::Result r;
     switch (c) {
@@ -157,14 +173,27 @@ int wmain(int argc, wchar_t** argv) {
     return 1;
   }
 
-  // Same file the shell persists manual selections into (%APPDATA%\MspyIME\
-  // user-phrases.txt); loading it here reproduces the shell's ranking.
+  // Same file the shell learns into (%APPDATA%\MspyIME\user-phrases.txt);
+  // loading it here reproduces the shell's ranking exactly.
+  auto preferences = std::make_shared<mspy::UserPreferences>();
   if (!userPhrasesPath.empty()) {
-    lm->loadUserPhrases(userPhrasesPath.c_str(), nullptr);
+    std::ifstream in(userPhrasesPath, std::ios::binary);
+    if (!in.is_open()) {
+      std::cerr << "failed to open user phrases: " << userPhrasesPath << "\n";
+      return 1;
+    }
+    std::string text((std::istreambuf_iterator<char>(in)),
+                     std::istreambuf_iterator<char>());
+    preferences->loadFromText(text,
+                              mspy::UserPreferenceLM::SystemNowSeconds());
+    // Mirror the shell's one-time cleanup so the harness ranks identically.
+    for (const auto& key : preferences->dropAmbiguousLegacyKeys()) {
+      std::cout << "  DROPPED ambiguous legacy key: " << key << "\n";
+    }
   }
 
   if (keyMode) {
-    RunKeyMode(lm, keySequence);
+    RunKeyMode(lm, preferences, keySequence);
     return 0;
   }
 

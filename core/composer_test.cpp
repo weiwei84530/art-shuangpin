@@ -2,6 +2,8 @@
 
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "testing/fake_lm.h"
@@ -776,6 +778,105 @@ TEST_F(ComposerTest, HollowFinalBackspaceAndEsc) {
   EXPECT_TRUE(r.consumed);
   EXPECT_EQ(r.commitText, "");
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
+}
+
+// What the shell is told to learn from a manual pick. A single-character
+// pick reports the phrase around it, never the character alone.
+class ComposerLearningTest : public ComposerTest {
+ protected:
+  void SetUp() override {
+    ComposerTest::SetUp();
+    composer_->onManualSelection = [this](const std::string& reading,
+                                          const std::string& value) {
+      learned.push_back({reading, value});
+    };
+    composer_->onPhraseUsed = [this](const std::string& reading,
+                                     const std::string& value) {
+      used.push_back({reading, value});
+    };
+  }
+
+  // Opens the menu at the cursor and picks the named candidate.
+  void PickByValue(const std::string& value) {
+    Type("8");
+    ASSERT_EQ(composer_->state(), Composer::State::kSelecting);
+    for (size_t i = 0; i < composer_->candidates().size(); ++i) {
+      if (composer_->candidates()[i].value == value) {
+        composer_->selectCandidate(i);
+        return;
+      }
+    }
+    FAIL() << "no candidate " << value;
+  }
+
+  std::vector<std::pair<std::string, std::string>> learned;
+  std::vector<std::pair<std::string, std::string>> used;
+};
+
+TEST_F(ComposerLearningTest, MultiCharacterPickIsLearnedAsItself) {
+  Type("ni3hk3");
+  Settle();
+  Type("-");  // anchor the first character
+  PickByValue("妳好");
+  ASSERT_EQ(learned.size(), 1u);
+  EXPECT_EQ(learned[0].first, "ㄋㄧˇ-ㄏㄠˇ");
+  EXPECT_EQ(learned[0].second, "妳好");
+}
+
+TEST_F(ComposerLearningTest, SingleCharacterPickLearnsItsLeftContext) {
+  // Picking 郝 on its own would be a global preference for ㄏㄠˇ, which
+  // says nothing about when the user wants it. The phrase does.
+  Type("ni3hk3");
+  Settle();
+  Type("9");  // anchor the second character
+  ASSERT_EQ(composer_->displaySegments().highlighted, "好");
+  PickByValue("郝");
+  ASSERT_EQ(learned.size(), 1u);
+  EXPECT_EQ(learned[0].first, "ㄋㄧˇ-ㄏㄠˇ");
+  EXPECT_EQ(learned[0].second, "你郝");
+}
+
+TEST_F(ComposerLearningTest, SingleCharacterPickFallsBackToTheRightContext) {
+  // Nothing to the left of the first character, so pair rightwards.
+  Type("hk3ni3");
+  Settle();
+  Type("-");  // anchor the first character
+  ASSERT_EQ(composer_->displaySegments().highlighted, "好");
+  PickByValue("郝");
+  ASSERT_EQ(learned.size(), 1u);
+  EXPECT_EQ(learned[0].first, "ㄏㄠˇ-ㄋㄧˇ");
+  EXPECT_EQ(learned[0].second, "郝你");
+}
+
+TEST_F(ComposerLearningTest, NoPhraseIsLearnedAcrossPunctuation) {
+  // A settled symbol is a literal reading; a learned phrase must not span
+  // one, and a lone character with no neighbour teaches nothing.
+  Type("ni3hk3");
+  composer_->feedChar(',');
+  Type("hk3");
+  Settle();
+  Type("9");
+  ASSERT_EQ(composer_->displaySegments().highlighted, "好");
+  PickByValue("郝");
+  EXPECT_TRUE(learned.empty());
+}
+
+TEST_F(ComposerLearningTest, CommitReportsThePhrasesItUsed) {
+  // Phrases that reach the application unaided are the working vocabulary
+  // the shell refreshes so they do not decay out of the store.
+  Type("ni3hk3");
+  Settle();
+  EXPECT_EQ(composer_->feedEnter().commitText, "你好");
+  ASSERT_EQ(used.size(), 1u);
+  EXPECT_EQ(used[0].first, "ㄋㄧˇ-ㄏㄠˇ");
+  EXPECT_EQ(used[0].second, "你好");
+
+  // Single characters are not phrases and are not reported.
+  used.clear();
+  Type("wo3");
+  Settle();
+  composer_->feedEnter();
+  EXPECT_TRUE(used.empty());
 }
 
 TEST_F(ComposerTest, EscCancelsSelectionAndComposition) {

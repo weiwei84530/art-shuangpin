@@ -80,7 +80,11 @@ class Composer {
     std::string commitText;
   };
 
-  explicit Composer(std::shared_ptr<RelaxedToneLM> lm);
+  // Takes the OUTERMOST language model of the chain (normally
+  // UserPreferenceLM -> RelaxedToneLM -> McBopomofoLM); the composer only
+  // needs hasUnigrams from it.
+  explicit Composer(
+      std::shared_ptr<Formosa::Gramambular2::LanguageModel> lm);
 
   State state() const { return state_; }
 
@@ -153,10 +157,23 @@ class Composer {
   Result selectCandidate(size_t index);
 
   // Called on every manual candidate selection with (reading key, value);
-  // the shell persists these as user phrases. The reading key is free of
-  // internal sentinels.
+  // the shell persists these as user preferences. The reading key is free
+  // of internal sentinels.
+  //
+  // A SINGLE-CHARACTER pick reports the two-syllable phrase it sits in
+  // rather than the character alone (我在家 -> 我在, ㄨㄛˇ-ㄗㄞˋ). A global
+  // preference for a lone 在 would just flip 我在家 and 我再說一次 against
+  // each other; the surrounding context is what actually disambiguates, so
+  // that is what gets learned. Nothing is reported when the character has
+  // no single-character neighbour to pair with.
   std::function<void(const std::string&, const std::string&)>
       onManualSelection;
+
+  // Called once per multi-syllable phrase in the buffer when it commits,
+  // with the same normalized (reading key, value) pair. The shell refreshes
+  // matching preferences so vocabulary that keeps being used as-is does not
+  // decay out of the store; it never creates entries.
+  std::function<void(const std::string&, const std::string&)> onPhraseUsed;
 
  private:
   // Finalizes the pending complete syllable as tone-less (tone 1/neutral).
@@ -201,6 +218,12 @@ class Composer {
   void dismissMenu();
   // Selects by page-relative index ('1'..'6'); out of range is a no-op.
   Result selectOnCurrentPage(size_t indexInPage);
+  // Reports a manual pick to the shell, widening a single-character pick to
+  // the two-syllable phrase around it (see onManualSelection).
+  void reportManualSelection(
+      const Formosa::Gramambular2::ReadingGrid::Candidate& chosen);
+  // Reports every multi-syllable phrase in the walk to onPhraseUsed.
+  void reportPhrasesUsed() const;
   // Key dispatch while the hollow-final sub-state is active ('`' pressed,
   // awaiting the final key).
   Result feedHollowFinal(char c);
@@ -213,7 +236,7 @@ class Composer {
   void reset();
   void updateStateAfterMutation();
 
-  std::shared_ptr<RelaxedToneLM> lm_;
+  std::shared_ptr<Formosa::Gramambular2::LanguageModel> lm_;
   Formosa::Gramambular2::ReadingGrid grid_;
   Formosa::Gramambular2::ReadingGrid::WalkResult walk_;
   SyllableInput pending_;

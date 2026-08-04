@@ -75,6 +75,17 @@ size_t FirstUtf8CharBytes(const std::string& s) {
   return i;
 }
 
+// Strips the internal explicit-tone-1 sentinel: the store and the shell
+// both key on the plain bopomofo, so ㄍㄜˉ and ㄍㄜ are the same preference.
+std::string NormalizeReading(const std::string& reading) {
+  std::string out = reading;
+  size_t pos;
+  while ((pos = out.find(kToneSentinel1)) != std::string::npos) {
+    out.erase(pos, sizeof(kToneSentinel1) - 1);
+  }
+  return out;
+}
+
 const char* ToneMark(char digit) {
   switch (digit) {
     case '1': return kToneSentinel1;
@@ -104,7 +115,8 @@ char ToneDigit(char c) {
 
 }  // namespace
 
-Composer::Composer(std::shared_ptr<RelaxedToneLM> lm)
+Composer::Composer(
+    std::shared_ptr<Formosa::Gramambular2::LanguageModel> lm)
     : lm_(lm),
       grid_(std::move(lm)),
       uom_(kUserOverrideModelCapacity, kObservedOverrideHalfLife) {
@@ -336,6 +348,10 @@ std::string Composer::takeCommitText() {
   if (pending_.complete()) finalizePendingBare();
   std::string text;
   for (const auto& v : walk_.valuesAsStrings()) text += v;
+  // Phrases that reach the application without needing a correction are the
+  // user's working vocabulary; refreshing them here is what keeps daily
+  // words from decaying out of the preference store.
+  reportPhrasesUsed();
   reset();
   return text;
 }
@@ -681,19 +697,79 @@ Composer::Result Composer::selectCandidate(size_t index) {
   const size_t next = chosen.location + chosen.spanningLength;
   grid_.setCursor(next > grid_.length() ? grid_.length() : next);
 
-  if (onManualSelection) {
-    // Strip the internal explicit-tone-1 sentinel before handing the
-    // reading key to the shell for persistence.
-    std::string reading = chosen.reading;
-    size_t pos;
-    while ((pos = reading.find(kToneSentinel1)) != std::string::npos) {
-      reading.erase(pos, sizeof(kToneSentinel1) - 1);
-    }
-    onManualSelection(reading, chosen.value);
-  }
+  reportManualSelection(chosen);
 
   dismissMenu();
   return {true, ""};
+}
+
+void Composer::reportManualSelection(
+    const Formosa::Gramambular2::ReadingGrid::Candidate& chosen) {
+  if (!onManualSelection) return;
+
+  if (chosen.spanningLength >= 2) {
+    onManualSelection(NormalizeReading(chosen.reading), chosen.value);
+    return;
+  }
+
+  // Single character: learn the phrase it sits in, not the character. Walk
+  // the (already re-walked) nodes to find the pick and a single-character
+  // neighbour to pair it with, preferring the one on the LEFT -- the text
+  // before the cursor is settled and is what disambiguates 在/再, while
+  // whatever follows may not be typed yet.
+  const Formosa::Gramambular2::ReadingGrid::Node* previous = nullptr;
+  const Formosa::Gramambular2::ReadingGrid::Node* current = nullptr;
+  const Formosa::Gramambular2::ReadingGrid::Node* next = nullptr;
+  size_t location = 0;
+  for (const auto& node : walk_.nodes) {
+    if (location == chosen.location) {
+      current = node.get();
+    } else if (current != nullptr) {
+      next = node.get();
+      break;
+    } else {
+      previous = node.get();
+    }
+    location += node->spanningLength();
+  }
+  if (current == nullptr || current->spanningLength() != 1) return;
+
+  // Only pair with a single-character neighbour: gluing onto one end of an
+  // existing phrase would learn a span the user never chose.
+  const Formosa::Gramambular2::ReadingGrid::Node* partner = nullptr;
+  bool partnerIsLeft = false;
+  if (previous != nullptr && previous->spanningLength() == 1) {
+    partner = previous;
+    partnerIsLeft = true;
+  } else if (next != nullptr && next->spanningLength() == 1) {
+    partner = next;
+  }
+  if (partner == nullptr) return;
+
+  // Settled bopomofo symbols and punctuation live in the grid as literal
+  // readings; a phrase must not span one.
+  const std::string partnerReading = NormalizeReading(partner->reading());
+  const std::string ownReading = NormalizeReading(current->reading());
+  if (partnerReading.find(kLiteralPrefix) != std::string::npos ||
+      ownReading.find(kLiteralPrefix) != std::string::npos) {
+    return;
+  }
+
+  if (partnerIsLeft) {
+    onManualSelection(partnerReading + "-" + ownReading,
+                      partner->value() + current->value());
+  } else {
+    onManualSelection(ownReading + "-" + partnerReading,
+                      current->value() + partner->value());
+  }
+}
+
+void Composer::reportPhrasesUsed() const {
+  if (!onPhraseUsed) return;
+  for (const auto& node : walk_.nodes) {
+    if (node->spanningLength() < 2) continue;
+    onPhraseUsed(NormalizeReading(node->reading()), node->value());
+  }
 }
 
 }  // namespace mspy

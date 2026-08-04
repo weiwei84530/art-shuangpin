@@ -11,7 +11,7 @@ Windows 11 原生 TSF 輸入法：**注音式輸入節奏 + 微軟雙拼鍵位 +
 
 ```
 ime\    SampleIME 衍生 TSF 外殼（微軟官方範例 → 自有碼；候選窗、COM、註冊）
-core\   輸入核心（自寫）：雙拼解析、聲調規則、Composing/Selecting 模態狀態機
+core\   輸入核心（自寫）：雙拼解析、聲調規則、Composing/Selecting 模態狀態機、加權使用者偏好
 engine\ 小麥注音引擎子集（gramambular2 詞格轉換 + McBopomofoLM + UserOverrideModel）
 data\   小麥詞庫來源（Python 建置 → out\data.txt）
 cli\    REPL 測試臺（日常開發主力，不碰 TSF）
@@ -56,6 +56,7 @@ cli\    REPL 測試臺（日常開發主力，不碰 TSF）
 
 ## 狀態記錄
 
+- 2026-08-04：**智慧選字重做（使用者回報「選字記不起來」）**。根因：舊機制把 `值 讀音鍵` 餵給 McBopomofo `UserPhrasesLM`，**每筆分數都是 0**（字典是負的對數機率），walk 用嚴格 `>`＋`stable_sort`＋按行序載入 → **同一讀音鍵下最早寫入的永遠贏**；後選的修正打不過、一次性情境選擇永久綁架該讀音，學習檔甚至讓輸出比不學習還差（實測 `wo3vidk4` 純字典「我知道」、載入學習檔變「我之道」；使用者檔案 28 筆裡 5 組卡住）。改為自寫 `core\user_preferences`（`值 讀音鍵 次數 最後使用秒數`，權重＝次數每 14 天減半、低於 0.5 即失效、上限 32；`record` 從**衰減後**權重加、`touch` 於上屏時只更新時間戳讓常用詞不衰減；存檔前 `mergeFrom` 磁碟現況再 `MoveFileEx` 原子換檔，因每個 app 各有一份 TIP 實例）＋ `core\user_preference_lm`（夾在 Composer 與 RelaxedToneLM 之間，把有效偏好排到該讀音字典最佳分數 +1e-6，margin 極小故不干擾跨跨距競爭；字典沒有的詞以「逐字拼出成本」為基準）。**單字選擇改學上下文兩音節詞**（我在家選「在」→ 記「我在」），左鄰優先、只配單字節點、不跨標點。舊檔遷移：兩欄位行給遷移當下時間戳保住既有詞彙，**同鍵多筆且全為舊格式者整組刪除**。`repl --user-phrases` 新增供離線重現排序。75 core tests 全綠。規格見 docs/spec.md §7。
 - 2026-08-04：**M5 回饋第十一輪（三項互動調整）**。(1) **未定案窗口擴大到含聲調**：`lastWasBare_`／`lastBareSyllables_`／`lastBareDisplay_` 三個旗標整併為 `Composer::Unsettled`（`active`／`toneGiven`／`syllables`／`keys`／`display`），聲調鍵套用後保持未定案、顯示注音＋調號（明打一聲用 `ˉ` 哨兵、輕聲尾綴 `˙`，display 恰等於詞格裡的讀音）；定案觸發改為空白／標點／下一音節首鍵／`` ` ``。(2) **標點融入組字串**：`DirectPunctuation`／引號從「`takeCommitText` + 符號」改為 `settlePending()` + `insertLiteralText()`（與 `` ` `` 定案注音同一條 literal 路徑），閒置打標點開新組字串；無自動上屏界線。(3) **聲調鍵鏡像**（`ToneDigit()`：0=1、9=2、8=3、7=4、6=5），與 `8`/`9`/`0` 的衝突以未定案窗口切開——未定案時數字全是聲調鍵、給調後全部吃掉（含 `-`/`=`），定案後才是控制鍵；改調走 Backspace 退調（`undoUnsettledTone()`，無無聲調讀音者退回 pending）。148 tests 全綠、x64/x86 已建置（`ime\{x64\,}Release\SampleIME.dll`），教學網站 `web\` 已同步改寫（標點課重建、聲調課補鏡像鍵與 Backspace 退調、鍵帽 6-0 補調號）並以 Chrome 實測。**注意：build/ 與 build32/ 的 CMake 快取仍綁在舊路徑 `D:\Claude\Input`，已刪除重新 configure。**規格見 docs/spec.md §5、§6。已 `make-package.ps1` 打包並以管理員跑 `install.ps1` **安裝到 `C:\Program Files\ArtShuangpin`**（x64/x86 皆更新、CLSID 註冊路徑不變）。安裝時舊 DLL 被執行中的 TSF 宿主鎖住，依 `Copy-Payload` 的既定升級路徑改名為 `*.old.<8碼>` 留在原地——重開機後可安全刪除；**已載入輸入法的應用程式要重開才會吃到新 DLL**。
 - 2026-08-04：**開發機改為正式安裝**。專案資料夾從 `D:\Claude\Input` 搬到 `D:\Projects\art-shuangpin` 後輸入法失效＝這台機器一直只跑 dev 註冊（`InprocServer32` 指向 `out\deploy\` 絕對路徑），舊路徑消失 → COM 載不到 DLL。已解壓 `out\art-shuangpin-v0.3.zip` 以管理員跑 `install.ps1`，安裝到 `C:\Program Files\ArtShuangpin`（CLSID x64/x86 與 IconFile 皆已改指系統路徑）。互斥關係與診斷指令補進 docs/dev-loop.md。
 - 2026-08-02：**tag v0.3 並發佈 GitHub Release**（附 art-shuangpin-v0.3.zip）。內容＝第十輪四項互動調整（注音維持顯示、空白鍵定案、選字後游標右移、per-app 中英記憶）＋候選窗 DPI 縮放修正；教學網站已隨 push 自動重佈。
