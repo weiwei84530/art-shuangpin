@@ -5,7 +5,7 @@
 //   comp   composition segments: [text, 's'(settled) | 'p'(pending)]
 //          The real IME draws the whole composition in one color with a
 //          dotted underline; 'p' segments are the ones still shown as
-//          BOPOMOFO (no tone decided yet), not a different color.
+//          BOPOMOFO (UNSETTLED), tone mark included, not a different color.
 //   anchor index into comp highlighted as the selection anchor, or null
 //   menu   {anchor, items:[...], page:'1/2', sel:index|null} or null
 //   mode   'zh' | 'en'
@@ -39,10 +39,13 @@ const FINALS = {
   n:'ㄧㄣ', d:'ㄧㄤ ㄨㄤ', ';':'ㄧㄥ', s:'ㄨㄥ', v:'ㄨㄟ', p:'ㄨㄣ', t:'ㄩㄝ'
 };
 
-// Control / punctuation hints shown bottom-left in gray.
+// Control / punctuation hints shown bottom-left in gray. Every digit
+// carries a tone mark: 1-5 for the left hand, 0-6 mirrored around the 5/6
+// gap for the right. 7/8/9/0 also show the control they perform once the
+// syllable is settled (頁=page, 選=menu, ◂▸=cursor).
 const CONTROLS = {
   '1':'ˉ', '2':'ˊ', '3':'ˇ', '4':'ˋ', '5':'˙',
-  '6':'選', '7':'頁◂', '8':'選單', '9':'◂', '0':'▸',
+  '6':'˙', '7':'ˋ頁', '8':'ˇ選', '9':'ˊ◂', '0':'ˉ▸',
   ',':'，', '.':'。', '/':'？', '[':'「', ']':'」', "'":'『』', '`':'注音',
   'Space':'定案'
 };
@@ -52,13 +55,15 @@ const TUTORIALS = [
     id: 'intro', title: '總覽與鍵帽標註',
     steps: [
       { keys: [], screen: {},
-        cap: '歡迎！下方是可以<b>拖曳轉動</b>的 3D 鍵盤。每個鍵帽上：大字＝按鍵本身、右上<b>橘色＝聲母</b>注音、右下<b>青色＝韻母</b>注音；數字排的灰字是控制功能。每個音節固定「聲母鍵＋韻母鍵」兩鍵，之後可補聲調數字。' },
+        cap: '歡迎！下方是可以<b>拖曳轉動</b>的 3D 鍵盤。每個鍵帽上：大字＝按鍵本身、右上<b>橘色＝聲母</b>注音、右下<b>青色＝韻母</b>注音；數字排的灰字是聲調與控制功能。每個音節固定「聲母鍵＋韻母鍵」兩鍵，之後可補聲調數字。' },
       { keys: ['u'], screen: { comp: [['ㄕ','p']] },
         cap: '例：<kbd>u</kbd> 的聲母是 ㄕ。第一鍵一律顯示注音，不顯示英文字母；虛線底線代表這段還沒上屏。' },
       { keys: ['l'], screen: { comp: [['ㄕㄞ','p']] },
         cap: '<kbd>l</kbd> 的韻母是 ㄞ，「shai」兩鍵完成一個音節——畫面<b>維持注音</b>，等你決定聲調。' },
-      { keys: ['4'], screen: { comp: [['曬','s']] },
-        cap: '補上 <kbd>4</kbd>（四聲）＝定案成「曬」，注音轉成文字。左側選單有各主題的動畫教學，開始吧！' },
+      { keys: ['4'], screen: { comp: [['ㄕㄞˋ','p']] },
+        cap: '補上 <kbd>4</kbd>（四聲）：調號加到注音上，<b>字還是沒出來</b>——這叫「未定案」。想用右手打四聲也可以，<kbd>7</kbd> 和 <kbd>4</kbd> 完全等價。' },
+      { keys: ['Space'], screen: { comp: [['曬','s']] },
+        cap: '空白鍵＝<b>定案</b>：ㄕㄞˋ 轉成「曬」。定案的觸發還有：打下一個音節的首鍵、打標點、按 <kbd>`</kbd>。' },
       { keys: ['Enter'], screen: { text: '曬', comp: [] },
         cap: '<kbd>Enter</kbd> 整段上屏。（空白鍵的角色是「定案」，只有在沒東西可定案時才上屏——見〈空白鍵〉那課。）' }
     ]
@@ -70,14 +75,16 @@ const TUTORIALS = [
         cap: '目標：打出「你好」。先按聲母鍵 <kbd>n</kbd>＝ㄋ，畫面即時顯示注音。' },
       { keys: ['i'], screen: { comp: [['ㄋㄧ','p']] },
         cap: '再按韻母鍵 <kbd>i</kbd>＝ㄧ，兩鍵完成一個音節——畫面維持注音 ㄋㄧ。（內部已經在跑整句轉換了，只是還沒顯示成字。）' },
-      { keys: ['3'], screen: { comp: [['你','s']] },
-        cap: '<kbd>3</kbd>＝三聲，套到剛完成的音節：ㄋㄧ →「<b>你</b>」＝定案。' },
+      { keys: ['3'], screen: { comp: [['ㄋㄧˇ','p']] },
+        cap: '<kbd>3</kbd>＝三聲，套到剛完成的音節：ㄋㄧˇ。<b>調號出現了，但字還沒現形</b>——保持注音直到定案為止。' },
       { keys: ['h'], screen: { comp: [['你','s'],['ㄏ','p']] },
-        cap: '直接接著打下一個音節：<kbd>h</kbd>＝ㄏ。' },
+        cap: '直接接著打下一個音節：<kbd>h</kbd>＝ㄏ。<b>下一音節的首鍵會順便定案前一個音節</b>——ㄋㄧˇ 這時才變成「你」，不必特地按空白。' },
       { keys: ['k'], screen: { comp: [['你','s'],['ㄏㄠ','p']] },
         cap: '<kbd>k</kbd>＝ㄠ，「hao」完成，一樣先維持注音 ㄏㄠ，等聲調。' },
-      { keys: ['3'], screen: { comp: [['你','s'],['好','s']] },
-        cap: '補上三聲 →「好」。每定案一個音節就重跑整句轉換，前面的字會依上下文自動修正。' },
+      { keys: ['3'], screen: { comp: [['你','s'],['ㄏㄠˇ','p']] },
+        cap: '補上三聲 → ㄏㄠˇ。所以打整句話時，注音只會停在<b>最後一個</b>音節上，前面的字都已經定案。' },
+      { keys: ['Space'], screen: { comp: [['你','s'],['好','s']] },
+        cap: '句子打完了，用空白鍵把最後一個音節定案成「好」。每定案一個音節就重跑整句轉換，前面的字會依上下文自動修正。' },
       { keys: ['Enter'], screen: { text: '你好', comp: [] },
         cap: '<kbd>Enter</kbd> 整段上屏，底線消失。恭喜完成第一句！' }
     ]
@@ -89,8 +96,10 @@ const TUTORIALS = [
         cap: '試試打「我」。<kbd>w</kbd>＝ㄨ。' },
       { keys: ['o'], screen: { comp: [['ㄨㄛ','p']] },
         cap: '<kbd>o</kbd>＝ㄛ，音節完成，維持注音 ㄨㄛ。' },
-      { keys: ['3'], screen: { comp: [['我','s']] },
-        cap: '明打 <kbd>3</kbd> 才有「我」。<b>不打聲調＝只出一聲＋輕聲的字</b>，三聲的「我」不會自己跑出來——聲調是語意的一部分。' },
+      { keys: ['3'], screen: { comp: [['ㄨㄛˇ','p']] },
+        cap: '明打 <kbd>3</kbd> 才會有「我」。<b>不打聲調＝只出一聲＋輕聲的字</b>，三聲的「我」不會自己跑出來——聲調是語意的一部分。' },
+      { keys: ['Space'], screen: { comp: [['我','s']] },
+        cap: '空白鍵定案 → 我。打錯調怎麼辦？<b>再按一次聲調鍵沒有用</b>（第二個聲調鍵一律吃掉），要改調請按 <kbd>⌫</kbd> 退掉聲調，回到 ㄨㄛ 再重打。' },
       { keys: ['Enter'], screen: { text: '我', comp: [] },
         cap: '<kbd>Enter</kbd> 上屏。接著看輕聲的情況。' },
       { keys: ['d'], screen: { text: '我', comp: [['ㄉ','p']] },
@@ -99,8 +108,14 @@ const TUTORIALS = [
         cap: '<kbd>e</kbd>＝ㄜ。「de」完成，還沒定案。' },
       { keys: ['Space'], screen: { text: '我', comp: [['的','s']] },
         cap: '空白鍵＝用「不打數字」的預設定案：一聲與輕聲都在範圍內，最常用的輕聲「<b>的</b>」直接出現——高頻字不用多按一鍵。' },
-      { keys: ['Space'], screen: { text: '我的', comp: [] },
-        cap: '沒有待定的音了，這一下空白鍵才上屏。整理：不打數字＝一聲＋輕聲；<kbd>1</kbd>＝嚴格只出一聲；<kbd>2</kbd><kbd>3</kbd><kbd>4</kbd>＝精確聲調；<kbd>5</kbd>＝只出輕聲。' }
+      { keys: ['g','e'], screen: { text: '我', comp: [['的','s'],['ㄍㄜ','p']] },
+        cap: '再看一個左右手的對照。打 ge：<kbd>g</kbd>＝ㄍ、<kbd>e</kbd>＝ㄜ。' },
+      { keys: ['0'], screen: { comp: [['的','s'],['ㄍㄜˉ','p']] },
+        cap: '<b>聲調鍵可以用右手</b>：以 <kbd>5</kbd>/<kbd>6</kbd> 之間為軸鏡像，<kbd>0</kbd>＝一聲、<kbd>9</kbd>＝二聲、<kbd>8</kbd>＝三聲、<kbd>7</kbd>＝四聲、<kbd>6</kbd>＝輕聲。這裡的 <kbd>0</kbd> 與 <kbd>1</kbd> 完全等價，畫面標上一聲符號 <b>ˉ</b>。' },
+      { keys: ['Space'], screen: { comp: [['的','s'],['歌','s']] },
+        cap: '定案成「歌」——注意<b>明打一聲</b>與不打數字不一樣：不打數字會出輕聲的「個」，明打一聲嚴格只查一聲。' },
+      { keys: ['Space'], screen: { text: '我的歌', comp: [] },
+        cap: '沒有待定的音了，這一下空白鍵才上屏。整理：不打數字＝一聲＋輕聲；<kbd>1</kbd>/<kbd>0</kbd>＝嚴格只出一聲；<kbd>2</kbd><kbd>3</kbd><kbd>4</kbd>（或 <kbd>9</kbd><kbd>8</kbd><kbd>7</kbd>）＝精確聲調；<kbd>5</kbd>/<kbd>6</kbd>＝只出輕聲。' }
     ]
   },
   {
@@ -110,8 +125,10 @@ const TUTORIALS = [
         cap: '空白鍵不是「上屏鍵」，是「<b>定案鍵</b>」。先打 zhong：<kbd>v</kbd>＝ㄓ、<kbd>s</kbd>＝ㄨㄥ，維持注音。' },
       { keys: ['Space'], screen: { comp: [['中','s']] },
         cap: '空白鍵把它以預設的一聲／輕聲定案成「中」。<b>注意底線還在</b>——字只是定案，沒有上屏。' },
-      { keys: ['w','f','2'], screen: { comp: [['中','s'],['文','s']] },
-        cap: '接著打「文」（<kbd>w</kbd><kbd>f</kbd><kbd>2</kbd>）。有給聲調就直接定案，不必按空白。' },
+      { keys: ['w','f','2'], screen: { comp: [['中','s'],['ㄨㄣˊ','p']] },
+        cap: '接著打「文」（<kbd>w</kbd><kbd>f</kbd><kbd>2</kbd>）。給了聲調也<b>還是未定案</b>，畫面停在 ㄨㄣˊ。' },
+      { keys: ['Space'], screen: { comp: [['中','s'],['文','s']] },
+        cap: '空白鍵定案成「文」。底線仍在，整段還沒上屏。' },
       { keys: ['Space'], screen: { text: '中文', comp: [] },
         cap: '這時已經<b>沒有待定的音</b>，空白鍵才整段上屏（與 <kbd>Enter</kbd> 相同）。所以「連按兩下空白」＝定案＋上屏。' },
       { keys: ['n'], screen: { text: '中文', comp: [['ㄋ','p']] },
@@ -125,8 +142,10 @@ const TUTORIALS = [
   {
     id: 'menu', title: '選字：游標與選單',
     steps: [
-      { keys: ['n','i','3','h','k','3'], screen: { comp: [['你','s'],['好','s']] },
-        cap: '先打出「你好」（ni3hk3）。組字中<b>數字全是控制鍵</b>：<kbd>9</kbd>/<kbd>0</kbd> 移游標、<kbd>8</kbd> 開選單。' },
+      { keys: ['n','i','3','h','k','3'], screen: { comp: [['你','s'],['ㄏㄠˇ','p']] },
+        cap: '先打出「你好」（ni3hk3）。最後一個音節還是注音 ㄏㄠˇ——<b>未定案時所有數字都是聲調鍵</b>，這時按 <kbd>8</kbd> 只會被當成三聲。' },
+      { keys: ['Space'], screen: { comp: [['你','s'],['好','s']] },
+        cap: '所以先按空白定案。<b>定案之後數字才切換成控制鍵</b>：<kbd>9</kbd>/<kbd>0</kbd> 移游標、<kbd>8</kbd> 開選單、<kbd>-</kbd>/<kbd>=</kbd> 跳到頭／尾。' },
       { keys: ['9'], screen: { anchor: 1, cur: 1 },
         cap: '<kbd>9</kbd>＝游標左移。反白的「好」＝目前的選字對象（游標右邊那個字）。' },
       { keys: ['9'], screen: { anchor: 0, cur: 0 },
@@ -154,33 +173,42 @@ const TUTORIALS = [
     steps: [
       { keys: ['v','s','Space'], screen: { comp: [['中','s']] },
         cap: '打「中文」：<kbd>v</kbd>＝ㄓ、<kbd>s</kbd>＝ㄨㄥ，空白鍵定案成一聲的「中」。' },
-      { keys: ['w','f','2'], screen: { comp: [['中','s'],['文','s']] },
-        cap: '<kbd>w</kbd>＝ㄨ、<kbd>f</kbd>＝ㄣ、<kbd>2</kbd>＝二聲 →「文」。' },
+      { keys: ['w','f','2'], screen: { comp: [['中','s'],['ㄨㄣˊ','p']] },
+        cap: '<kbd>w</kbd>＝ㄨ、<kbd>f</kbd>＝ㄣ、<kbd>2</kbd>＝二聲 → ㄨㄣˊ（未定案）。' },
       { keys: ['ShiftL'], screen: { text: '中文 ', comp: [], mode: 'en' },
-        cap: '<b>單獨輕按 Shift</b>＝中英切換。組字中按下會先自動上屏，且左邊是中文字時自動補一個半形空白。狀態列變成「英」。' },
+        cap: '<b>單獨輕按 Shift</b>＝中英切換。組字中按下會先把整段定案並自動上屏（ㄨㄣˊ→文），且左邊是中文字時自動補一個半形空白。狀態列變成「英」。' },
       { keys: ['o','k'], screen: { text: '中文 OK', mode: 'en' },
         cap: '英文模式＝按鍵全數放行，直接輸入、沒有底線（畫面示範輸入 OK）。' },
       { keys: ['ShiftL'], screen: { text: '中文 OK ', mode: 'zh' },
         cap: '再輕按 Shift 切回中文：左邊是英文字母，同樣自動補空白。<b>Shift＋字母</b>照常輸出大寫，不會誤觸切換。' },
-      { keys: ['h','k','3'], screen: { text: '中文 OK ', comp: [['好','s']] },
-        cap: '無縫接回中文。要打數字？中文模式的數字排是控制鍵（閒置時按了無作用），先 Shift 切英文再打，分隔空白它替你管。' },
+      { keys: ['h','k','3'], screen: { text: '中文 OK ', comp: [['ㄏㄠˇ','p']] },
+        cap: '無縫接回中文。要打數字？中文模式的數字排是聲調／控制鍵（閒置時按了無作用），先 Shift 切英文再打，分隔空白它替你管。' },
       { keys: [], screen: {},
         cap: '最後一點：中／英模式是<b>每個應用程式各自記憶</b>的。剛開的程式一律從英文開始；你在某個程式切成中文，切到別的程式不會被帶過去，回到原程式時又是中文——和微軟注音的習慣一致。' }
     ]
   },
   {
-    id: 'punct', title: '標點符號',
+    id: 'punct', title: '標點符號（不上屏）',
     steps: [
-      { keys: ['n','i','3','h','k','3','Space'], screen: { text: '你好', comp: [] },
-        cap: '先上屏「你好」。' },
-      { keys: [','], screen: { text: '你好，' },
-        cap: '中文模式下 <kbd>,</kbd> 直接上屏全形「，」。' },
-      { keys: ['z','l','4','j','m','4'], screen: { text: '你好，', comp: [['再','s'],['見','s']] },
-        cap: '接著打「再見」：zai4＝<kbd>z</kbd><kbd>l</kbd><kbd>4</kbd>、jian4＝<kbd>j</kbd><kbd>m</kbd><kbd>4</kbd>。' },
-      { keys: ['Space'], screen: { text: '你好，再見', comp: [] },
-        cap: '上屏。' },
-      { keys: ['.'], screen: { text: '你好，再見。' },
-        cap: '<kbd>.</kbd>＝「。」。其他對應：<kbd>?</kbd>？　<kbd>!</kbd>！　<kbd>:</kbd>：　<kbd>\\</kbd>、　<kbd>[</kbd><kbd>]</kbd>「」　<kbd>{</kbd><kbd>}</kbd>『』　<kbd>(</kbd><kbd>)</kbd>（）　<kbd>&lt;</kbd><kbd>&gt;</kbd>《》；引號 <kbd>"</kbd>/<kbd>\'</kbd> 開閉交替。<kbd>;</kbd> 單獨按是「；」，組字中仍是 ing 韻母鍵。' }
+      { keys: ['n','i','3','h','k','3'], screen: { comp: [['你','s'],['ㄏㄠˇ','p']] },
+        cap: '打「你好」（ni3hk3），最後一個音節停在注音 ㄏㄠˇ。' },
+      { keys: [','], screen: { comp: [['你','s'],['好','s'],['，','s']] },
+        cap: '<kbd>,</kbd>＝全形「，」。標點會<b>順便定案</b>前面的音節（ㄏㄠˇ→好），而且<b>自己也留在組字串裡</b>——底線還在，整段都沒上屏。' },
+      { keys: ['z','l','4'], screen: { comp: [['你','s'],['好','s'],['，','s'],['ㄗㄞˋ','p']] },
+        cap: '直接接著打「再見」。zai4＝<kbd>z</kbd><kbd>l</kbd><kbd>4</kbd>（四聲也可以用右手的 <kbd>7</kbd>）。' },
+      { keys: ['j','m','4'], screen: { comp: [['你','s'],['好','s'],['，','s'],['再','s'],['ㄐㄧㄢˋ','p']] },
+        cap: 'jian4＝<kbd>j</kbd><kbd>m</kbd><kbd>4</kbd>。前一個音節被首鍵 <kbd>j</kbd> 定案成「再」。' },
+      { keys: ['.'], screen: { comp: [['你','s'],['好','s'],['，','s'],['再','s'],['見','s'],['。','s']] },
+        cap: '<kbd>.</kbd>＝「。」，同樣定案並加進組字串。整句「你好，再見。」<b>到現在一個字都還沒上屏</b>。' },
+      { keys: ['9','9','9'], screen: { anchor: 3, cur: 3 },
+        cap: '這正是重點：整段仍然可以改。<kbd>9</kbd> 連按三下，游標<b>走得過標點</b>，反白停在「再」。' },
+      { keys: ['8'], screen: { menu: { anchor: 3, page: '1/1', sel: null,
+          items: ['在','載','扗','爯','儎','洅'] } },
+        cap: '<kbd>8</kbd> 照樣開選單——標點沒有打斷組字，前後文都還在同一段裡可以選字。' },
+      { keys: ['Enter'], screen: { text: '你好，再見。', comp: [], anchor: null, cur: null, menu: null },
+        cap: '<kbd>Enter</kbd> 才整段上屏。<b>沒有任何自動上屏的界線</b>：想寫多長就多長，上屏時機完全由你決定（<kbd>Enter</kbd>、沒東西可定案時的空白鍵、Shift 切英文、或點到別的地方）。' },
+      { keys: [], screen: {},
+        cap: '其他對應：<kbd>?</kbd>？　<kbd>!</kbd>！　<kbd>:</kbd>：　<kbd>\\</kbd>、　<kbd>[</kbd><kbd>]</kbd>「」　<kbd>{</kbd><kbd>}</kbd>『』　<kbd>(</kbd><kbd>)</kbd>（）　<kbd>&lt;</kbd><kbd>&gt;</kbd>《》；引號 <kbd>"</kbd>/<kbd>\'</kbd> 開閉交替。<kbd>;</kbd> 單獨按是「；」，組字中仍是 ing 韻母鍵。閒置時打標點＝直接開一段新的組字串。' }
     ]
   },
   {
