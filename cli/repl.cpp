@@ -128,6 +128,7 @@ int wmain(int argc, wchar_t** argv) {
   SetConsoleOutputCP(CP_UTF8);
 
   std::string dataPath = "out/data.txt";
+  std::string userPhrasesPath;
   std::string keySequence;
   bool keyMode = false;
   bool showCandidates = false;
@@ -137,6 +138,8 @@ int wmain(int argc, wchar_t** argv) {
     std::string arg = Narrow(argv[i]);
     if (arg == "--data" && i + 1 < argc) {
       dataPath = Narrow(argv[++i]);
+    } else if (arg == "--user-phrases" && i + 1 < argc) {
+      userPhrasesPath = Narrow(argv[++i]);
     } else if (arg == "--keys" && i + 1 < argc) {
       keyMode = true;
       keySequence = Narrow(argv[++i]);
@@ -152,6 +155,12 @@ int wmain(int argc, wchar_t** argv) {
   if (!lm->isDataModelLoaded()) {
     std::cerr << "failed to load language model: " << dataPath << "\n";
     return 1;
+  }
+
+  // Same file the shell persists manual selections into (%APPDATA%\MspyIME\
+  // user-phrases.txt); loading it here reproduces the shell's ranking.
+  if (!userPhrasesPath.empty()) {
+    lm->loadUserPhrases(userPhrasesPath.c_str(), nullptr);
   }
 
   if (keyMode) {
