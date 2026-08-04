@@ -42,6 +42,7 @@ cli\    REPL 測試臺（日常開發主力，不碰 TSF）
 - 工具鏈：VS2022 Build Tools（v143 + Win11 SDK）、CMake、Python 3。
 - 詞庫：`scripts\build-data.ps1` → `out\data.txt`。
 - 註冊：`scripts\register-dev.ps1`（管理員）；之後重建只需 `scripts\deploy-dev.ps1` 換 DLL + 重開測試 app，**免重註冊**。
+- **日常使用走正式安裝** `scripts\install.ps1`（裝到 `C:\Program Files\ArtShuangpin`）；dev 註冊把註冊表綁死在專案資料夾上，搬動專案即失效。兩者共用同一 CLSID、**互斥**，詳見 docs/dev-loop.md。
 - 日常開發：`ctest` + `cli\repl` 為主，TSF 實測為輔。
 
 ## 工具使用注意
@@ -52,6 +53,7 @@ cli\    REPL 測試臺（日常開發主力，不碰 TSF）
 
 ## 狀態記錄
 
+- 2026-08-04：**開發機改為正式安裝**。專案資料夾從 `D:\Claude\Input` 搬到 `D:\Projects\art-shuangpin` 後輸入法失效＝這台機器一直只跑 dev 註冊（`InprocServer32` 指向 `out\deploy\` 絕對路徑），舊路徑消失 → COM 載不到 DLL。已解壓 `out\art-shuangpin-v0.3.zip` 以管理員跑 `install.ps1`，安裝到 `C:\Program Files\ArtShuangpin`（CLSID x64/x86 與 IconFile 皆已改指系統路徑）。互斥關係與診斷指令補進 docs/dev-loop.md。
 - 2026-08-02：**tag v0.3 並發佈 GitHub Release**（附 art-shuangpin-v0.3.zip）。內容＝第十輪四項互動調整（注音維持顯示、空白鍵定案、選字後游標右移、per-app 中英記憶）＋候選窗 DPI 縮放修正；教學網站已隨 push 自動重佈。
 - 2026-08-02：**候選窗 DPI 縮放修正＋教學網站同步更新**。(1) 候選窗在 150%／175% 縮放螢幕上特別小＝所有尺寸寫死 96 dpi、字型又吃行程層級的 `Global::defaultlFontHandle`（per-monitor aware 宿主如 LINE/Chrome 回報 96）。改為 `CCandidateWindow` 自己持有 per-DPI 字型與度量（`_UpdateMetricsForDpi`：`GetDpiForWindow` → 重建 10pt 字型、列高/頁碼列/邊框 `MulDiv(…, dpi, 96)`），在 WM_CREATE、每次 `_ResizeWindow`（＝presenter 定位後）與 `WM_DPICHANGED` 重算。(2) `web\` 教學腳本補齊到現行規格：組字改單色（移除藍色 `--pending`）、待定音節顯示注音、新增〈空白鍵：定案與上屏〉一課（共 8 課）、選字後游標右移並可連按 `8`、Shift 課補 per-app 模式記憶、Space 鍵帽標註「定案」；候選清單改用 REPL 實跑的真實候選。已用 Chrome 實測。
 - 2026-08-02：**M5 回饋第十輪（四項互動調整）**。(1) **中英模式改 per-app 記憶**：TIP 本來就跑在各應用程式行程內，改為新 app 一律英文（`InitializeSampleIMECompartment` 設 FALSE，原本設 TRUE）＋焦點回來時把記憶值寫回 OPENCLOSE compartment（ThreadMgr/KeyEvent 兩個 OnSetFocus），蓋掉系統的跨 app 同步；記憶只由 Shift 輕按更新（工具列點擊無法與系統寫入區分，故不納入）。(2) **選字後游標跳到該詞段之後**（`chosen.location + spanningLength`）——可連按 `8` 一路往右改完整句。(3) **最新音節維持注音顯示**：eager 進詞格照舊（整句轉換不變），但顯示層把該字蓋成注音（`lastBareDisplay_`），聲調／空白／下一音節首鍵／移游標／開選單才現字。(4) **空白鍵改「定案」不 commit**：完整音節以一聲/輕聲預設轉字、查無無聲調讀音的注音（`n`、ㄋㄧㄠ）定案成注音符號融入組字串（走 `` ` `` 同機制）；**沒東西可定案時才整段 commit**（使用者選擇保留舊習慣）。143 tests 全綠、x64/x86 已建置部署。規格見 docs/spec.md §6。
