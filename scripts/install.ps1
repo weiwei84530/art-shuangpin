@@ -106,6 +106,37 @@ function Copy-Payload([string]$srcDir, [string]$arch) {
     }
 }
 
+# The DLL links the shared CRT (MSVCP140 / VCRUNTIME140), so a machine
+# without the VC++ 2015-2022 redistributable cannot load it -- and the
+# failure is silent: the IME lists normally and simply never responds.
+# Check up front and say so, rather than leaving that to be debugged.
+function Test-VCRuntime {
+    $missing = @()
+    foreach ($name in @("VCRUNTIME140.dll", "VCRUNTIME140_1.dll", "MSVCP140.dll")) {
+        if (-not (Test-Path (Join-Path "$env:windir\System32" $name))) {
+            $missing += "x64: $name"
+        }
+    }
+    if ($is64) {
+        foreach ($name in @("VCRUNTIME140.dll", "MSVCP140.dll")) {
+            if (-not (Test-Path (Join-Path "$env:windir\SysWOW64" $name))) {
+                $missing += "x86: $name"
+            }
+        }
+    }
+    return $missing
+}
+
+$missingRuntime = Test-VCRuntime
+if ($missingRuntime.Count -gt 0) {
+    Write-Warning "Microsoft Visual C++ 2015-2022 Redistributable is missing or incomplete:"
+    foreach ($m in $missingRuntime) { Write-Warning "  $m" }
+    Write-Warning "Install it first, or the IME will appear in the input list and never respond:"
+    Write-Warning "  x64: https://aka.ms/vs/17/release/vc_redist.x64.exe"
+    Write-Warning "  x86: https://aka.ms/vs/17/release/vc_redist.x86.exe"
+    Write-Warning "Continuing with the installation anyway."
+}
+
 Remove-ParkedFiles
 Copy-Payload $srcX64 "x64"
 Copy-Payload $srcX86 "x86"
