@@ -76,6 +76,18 @@ function Remove-ParkedFiles {
     if ($removed -gt 0) { Write-Output "Cleaned up $removed parked file(s) from earlier upgrades." }
 }
 
+# True when the destination already holds exactly these bytes, so copying
+# it again would only park another locked copy. The dictionary is 7.5 MB and
+# changes far less often than the DLL, so this is most of the saving.
+function Test-SameFile([string]$src, [string]$dst) {
+    if (-not (Test-Path $dst)) { return $false }
+    $a = Get-Item $src
+    $b = Get-Item $dst
+    if ($a.Length -ne $b.Length) { return $false }
+    return (Get-FileHash $src -Algorithm SHA256).Hash -eq
+           (Get-FileHash $dst -Algorithm SHA256).Hash
+}
+
 # Upgrade path: a running TSF host may keep the old DLL mapped; renaming a
 # mapped DLL is allowed on Windows, so park it aside before copying.
 function Copy-Payload([string]$srcDir, [string]$arch) {
@@ -84,6 +96,7 @@ function Copy-Payload([string]$srcDir, [string]$arch) {
     New-Item -ItemType Directory -Force $dstDir | Out-Null
     foreach ($f in Get-ChildItem $srcDir -File) {
         $dst = Join-Path $dstDir $f.Name
+        if (Test-SameFile $f.FullName $dst) { continue }
         try { Copy-Item $f.FullName $dst -Force -ErrorAction Stop }
         catch {
             $old = "$dst.old." + [Guid]::NewGuid().ToString("N").Substring(0, 8)
