@@ -4,14 +4,23 @@
 //
 // Behavior contract: docs/spec.md §6.
 //
-// Key map while composing (digits are never typed literally mid-buffer):
-//   1-5  tone digits (pending syllable or retrofit)
-//   6,7  eaten, no-op
-//   8    open the candidate menu at the cursor
-//   9/0  move the cursor left/right, wrapping at both ends
-//   -/=  jump the cursor to the start/end of the composition
-//        (when idle, '-'/'=' pass through: the shell owns them as
-//        Home/End navigation keys)
+// Key map while composing (digits are never typed literally mid-buffer).
+// Digits have two meanings selected by whether a syllable is UNSETTLED --
+// i.e. still shown as bopomofo rather than as the character it converts to:
+//
+//   syllable unsettled, no tone yet -> every digit is a tone digit, the
+//     right hand reaching them mirrored around the 5/6 gap:
+//       1-5 = tones 1-5, and 0=1, 9=2, 8=3, 7=4, 6=5
+//   syllable unsettled, tone already given -> all digits (and '-'/'=')
+//     are eaten: a second tone digit never re-tones, and the control keys
+//     stay out of reach until the syllable is settled (Space settles it)
+//   nothing unsettled -> digits are control keys:
+//     6,7  eaten, no-op
+//     8    open the candidate menu at the cursor
+//     9/0  move the cursor left/right, wrapping at both ends
+//     -/=  jump the cursor to the start/end of the composition
+//          (when idle, '-'/'=' pass through: the shell owns them as
+//          Home/End navigation keys)
 // While the candidate menu is open:
 //   1-6  pick the numbered candidate on the current page
 //   7/8  previous/next page (no wrap; out-of-range is a no-op)
@@ -33,6 +42,13 @@
 // no reading of its own settles as symbols (ㄋ, ㄋㄧㄠ), all still inside
 // the composition. Only when there is nothing left to settle does Space
 // commit the whole buffer, like Enter (which still drops the residue).
+//
+// Full-width punctuation SETTLES and JOINS the composition (2026-08-04)
+// instead of committing it: 最, -> 最，still underlined and still
+// selectable. Punctuation lives in the grid as a literal reading, exactly
+// like '`'-settled bopomofo. Nothing auto-commits any more -- only Enter,
+// Space with nothing left to settle, a Shift language switch or losing
+// focus send text to the application.
 
 #pragma once
 
@@ -75,10 +91,13 @@ class Composer {
   // Display decomposition of composedText():
   //   before      tone-settled text left of the active area
   //   unconfirmed the pending syllable display plus, if the syllable just
-  //               inserted is still tone-retrofittable, ITS BOPOMOFO
-  //               (2026-08-02: the second key of a syllable no longer
-  //               flashes the tone-1 character — hk shows ㄏㄠ, and a tone
-  //               digit or Space turns it into 好/蒿)
+  //               inserted is still unsettled, ITS BOPOMOFO WITH THE TONE
+  //               MARK (2026-08-02: the second key of a syllable no longer
+  //               flashes the tone-1 character — hk shows ㄏㄠ; 2026-08-04:
+  //               a tone digit no longer settles it either — hk4 shows
+  //               ㄏㄠˋ, and Space/punctuation/the next syllable turns it
+  //               into 號. Explicit tone 1 shows the ˉ mark so "toned" and
+  //               "not toned yet" never look alike.)
   //   highlighted the single character right of the cursor (the selection
   //               anchor emphasized with a background color); empty when
   //               the cursor is at the right end
@@ -148,10 +167,25 @@ class Composer {
   // Returns false if no dictionary entry accepts the tone-less reading (the
   // syllable then stays pending, shown as bopomofo, awaiting a tone digit).
   bool finalizePendingBare();
-  // Applies a tone digit ('1'..'5') to the still-pending complete syllable.
+  // Applies a tone digit ('1'..'5') to the still-pending complete syllable
+  // (the path taken when no tone-less entry exists, e.g. ㄗㄨㄟˋ).
   bool applyToneToPending(char digit);
-  // Replaces the just-inserted bare syllable with its toned reading.
-  bool retrofitToneToLastSyllable(char digit);
+  // Replaces the unsettled bare syllable in the grid with its toned
+  // reading. A tone with no dictionary entry leaves the syllable bare and
+  // still untoned, so another tone digit can be tried.
+  bool applyToneToUnsettled(char digit);
+  // Backspace on a toned-but-unsettled syllable: drops just the tone,
+  // returning to the untoned unsettled state (which is how a mistyped tone
+  // gets corrected, since a second tone digit is ignored).
+  void undoUnsettledTone();
+  // Settles whatever is in progress: the pending syllable converts (or its
+  // bopomofo settles as symbols) and the unsettled syllable stops hiding
+  // behind its bopomofo. Idempotent; a no-op when nothing is unsettled.
+  void settlePending();
+  // True while a syllable is unsettled anywhere -- pending (half or whole)
+  // or in the grid. Digits are tone keys or eaten in this window, never
+  // control keys.
+  bool anythingUnsettled() const { return unsettled_.active || !pending_.empty(); }
   // Inserts a reading into the grid and re-walks.
   bool insertReading(const std::string& reading);
   // Settles UTF-8 text into the grid as literal readings, one per code
@@ -189,12 +223,28 @@ class Composer {
   // decay, McBopomofo's UserOverrideModel).
   McBopomofo::UserOverrideModel uom_;
 
-  // True when the most recent grid mutation was an eager bare insert, i.e.
-  // a tone digit may still retrofit it. Such a syllable displays as
-  // bopomofo (lastBareDisplay_) instead of as its converted character.
-  bool lastWasBare_ = false;
-  std::vector<std::string> lastBareSyllables_;
-  std::string lastBareDisplay_;
+  // The most recent syllable, already in the grid (so the sentence walk
+  // sees it and the preceding text keeps auto-correcting) but still shown
+  // as bopomofo rather than as the character it converts to. A tone digit
+  // refines it in place; Space, punctuation, the next syllable's first key,
+  // a cursor move or the candidate menu SETTLES it, which is when the
+  // character finally appears.
+  struct Unsettled {
+    bool active = false;
+    // Set once a tone digit has been applied: further tone digits are
+    // ignored (correcting a tone goes through Backspace).
+    bool toneGiven = false;
+    // Tone-less readings of the syllable, best first -- what a tone mark
+    // gets appended to, and what Backspace restores.
+    std::vector<std::string> syllables;
+    // The two double-pinyin keys, kept so Backspace can put the syllable
+    // back into pending_ when no tone-less reading exists (ㄗㄨㄟ).
+    std::string keys;
+    // Displayed bopomofo; identical to the reading now in the grid, tone
+    // mark included (ㄏㄠ, ㄏㄠˋ, ㄏㄠˉ, ㄏㄠ˙).
+    std::string display;
+  };
+  Unsettled unsettled_;
 
   // Paired-quote alternation (Rime-style): next " types “ or ”.
   bool doubleQuoteOpen_ = false;

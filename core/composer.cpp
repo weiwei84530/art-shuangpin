@@ -86,6 +86,22 @@ const char* ToneMark(char digit) {
   }
 }
 
+// Maps a digit key to the tone it types. Tones are reachable with either
+// hand (2026-08-04): the left hand uses 1-5 as always, and the right hand
+// uses 0-6 mirrored around the gap between 5 and 6, so tone 4 is '7' and
+// tone 1 is '0'. Returns 0 for a key that is not a digit.
+char ToneDigit(char c) {
+  if (c >= '1' && c <= '5') return c;
+  switch (c) {
+    case '0': return '1';
+    case '9': return '2';
+    case '8': return '3';
+    case '7': return '4';
+    case '6': return '5';
+    default: return 0;
+  }
+}
+
 }  // namespace
 
 Composer::Composer(std::shared_ptr<RelaxedToneLM> lm)
@@ -107,15 +123,15 @@ Composer::DisplaySegments Composer::displaySegments() const {
   std::string right;
   SplitAtCodePoints(walked, grid_.cursor(), &left, &right);
 
-  if (lastWasBare_ && !left.empty()) {
-    // The just-inserted bare syllable (left of the cursor) is still
-    // tone-retrofittable: show the bopomofo the user typed, not the
-    // tone-1/neutral character it would convert to. A tone digit, Space,
-    // the next syllable or any cursor move settles it into that character.
+  if (unsettled_.active && !left.empty()) {
+    // The just-inserted syllable (left of the cursor) is unsettled: show
+    // the bopomofo the user typed -- tone mark and all -- not the character
+    // it would convert to. Space, punctuation, the next syllable or any
+    // cursor move settles it into that character.
     size_t n = LastUtf8CharBytes(left);
-    segments.unconfirmed = lastBareDisplay_.empty()
+    segments.unconfirmed = unsettled_.display.empty()
                                ? left.substr(left.size() - n)
-                               : lastBareDisplay_;
+                               : unsettled_.display;
     left.resize(left.size() - n);
   }
   segments.before = std::move(left);
@@ -202,12 +218,12 @@ void Composer::insertLiteralText(const std::string& utf8) {
     i = j;
   }
   walk_ = grid_.walk();
-  lastWasBare_ = false;
+  unsettled_ = {};
   state_ = State::kComposing;
 }
 
 void Composer::moveCursor(int delta) {
-  lastWasBare_ = false;  // moving away ends the tone-retrofit window
+  unsettled_ = {};  // moving away settles the syllable
   const size_t cursor = grid_.cursor();
   const size_t length = grid_.length();
   if (length == 0) return;
@@ -219,7 +235,7 @@ void Composer::moveCursor(int delta) {
 }
 
 void Composer::jumpCursor(bool toStart) {
-  lastWasBare_ = false;  // moving away ends the tone-retrofit window
+  unsettled_ = {};  // moving away settles the syllable
   grid_.setCursor(toStart ? 0 : grid_.length());
 }
 
@@ -227,8 +243,11 @@ bool Composer::finalizePendingBare() {
   if (!pending_.complete()) return false;
   for (const auto& syllable : pending_.candidates()) {
     if (insertReading(syllable)) {  // bare reading = tone 1 or neutral
-      lastBareSyllables_ = pending_.candidates();
-      lastBareDisplay_ = syllable;
+      unsettled_.active = true;
+      unsettled_.toneGiven = false;
+      unsettled_.syllables = pending_.candidates();
+      unsettled_.keys = pending_.rawKeys();
+      unsettled_.display = syllable;
       pending_.clear();
       return true;
     }
@@ -241,6 +260,11 @@ bool Composer::applyToneToPending(char digit) {
   if (mark == nullptr || !pending_.complete()) return false;
   for (const auto& syllable : pending_.candidates()) {
     if (insertReading(syllable + mark)) {
+      unsettled_.active = true;
+      unsettled_.toneGiven = true;
+      unsettled_.syllables = pending_.candidates();
+      unsettled_.keys = pending_.rawKeys();
+      unsettled_.display = syllable + mark;
       pending_.clear();
       return true;
     }
@@ -248,22 +272,61 @@ bool Composer::applyToneToPending(char digit) {
   return false;
 }
 
-bool Composer::retrofitToneToLastSyllable(char digit) {
+bool Composer::applyToneToUnsettled(char digit) {
   const char* mark = ToneMark(digit);
   if (mark == nullptr || grid_.length() == 0) return false;
   grid_.deleteReadingBeforeCursor();
-  for (const auto& syllable : lastBareSyllables_) {
-    if (insertReading(syllable + mark)) return true;
+  for (const auto& syllable : unsettled_.syllables) {
+    if (insertReading(syllable + mark)) {
+      unsettled_.toneGiven = true;
+      unsettled_.display = syllable + mark;
+      return true;
+    }
   }
-  // No entry for that tone: restore the bare syllable and stay retrofittable.
-  for (const auto& syllable : lastBareSyllables_) {
+  // No entry for that tone: restore the bare syllable, still untoned, so
+  // the next tone digit gets its chance.
+  for (const auto& syllable : unsettled_.syllables) {
     if (insertReading(syllable)) {
-      lastBareDisplay_ = syllable;
+      unsettled_.display = syllable;
       return false;
     }
   }
   walk_ = grid_.walk();  // should be unreachable; keep the walk consistent
   return false;
+}
+
+void Composer::undoUnsettledTone() {
+  if (!unsettled_.active || !unsettled_.toneGiven) return;
+  grid_.deleteReadingBeforeCursor();
+  for (const auto& syllable : unsettled_.syllables) {
+    if (insertReading(syllable)) {
+      unsettled_.toneGiven = false;
+      unsettled_.display = syllable;
+      return;
+    }
+  }
+  // The syllable only exists with a tone (ㄗㄨㄟ has no tone-1 entry), so
+  // it cannot live in the grid untoned: put it back where it came from, in
+  // the pending slot, awaiting another tone digit.
+  walk_ = grid_.walk();
+  const std::string keys = unsettled_.keys;
+  unsettled_ = {};
+  for (char key : keys) pending_.feed(key);
+}
+
+void Composer::settlePending() {
+  if (!pending_.empty()) {
+    // A complete syllable with a tone-1/neutral entry converts; anything
+    // else (half syllable, or a syllable no toneless entry accepts)
+    // settles as its bopomofo symbols, exactly like '`'.
+    if (!(pending_.complete() && finalizePendingBare())) {
+      std::string symbols = pending_.displayText();
+      pending_.clear();
+      insertLiteralText(symbols);
+    }
+  }
+  // Whatever is in the grid now shows as its character, not its bopomofo.
+  unsettled_ = {};
 }
 
 std::string Composer::takeCommitText() {
@@ -282,9 +345,7 @@ void Composer::reset() {
   walk_ = {};
   pending_.clear();
   candidates_.clear();
-  lastBareSyllables_.clear();
-  lastBareDisplay_.clear();
-  lastWasBare_ = false;
+  unsettled_ = {};
   selectionLocation_ = 0;
   pageIndex_ = 0;
   hollowFinal_ = false;
@@ -353,20 +414,41 @@ Composer::Result Composer::feedChar(char c) {
     return {true, ""};
   }
 
-  // Tone digits: first choice is a pending syllable awaiting its tone;
-  // otherwise retrofit the tone onto the just-inserted bare syllable.
-  if (c >= '1' && c <= '5') {
-    if (pending_.complete()) {
-      if (applyToneToPending(c)) lastWasBare_ = false;
-      updateStateAfterMutation();
+  // Digits split cleanly on whether something is unsettled. While it is,
+  // they only ever type tones (mirrored, so either hand can reach them)
+  // and never act as control keys; the control meanings come back once the
+  // syllable is settled, which is what Space is for.
+  if (c >= '0' && c <= '9') {
+    if (anythingUnsettled()) {
+      if (!unsettled_.toneGiven) {
+        const char tone = ToneDigit(c);
+        if (pending_.complete()) {
+          // No tone-less entry accepted this syllable (ㄗㄨㄟ): it is still
+          // pending and the tone digit is what puts it in the grid.
+          applyToneToPending(tone);
+        } else if (pending_.empty() && unsettled_.active) {
+          applyToneToUnsettled(tone);
+        }
+        // A half syllable (ㄋ) has no tone to take: eaten.
+        updateStateAfterMutation();
+      }
+      // Tone already given: eaten, so a mistyped tone is corrected with
+      // Backspace rather than by a second digit.
       return {true, ""};
     }
-    if (pending_.empty() && lastWasBare_) {
-      if (retrofitToneToLastSyllable(c)) lastWasBare_ = false;
-      updateStateAfterMutation();
-      return {true, ""};
+    if (!composing) return {true, ""};  // idle: the digit row is disabled
+    switch (c) {
+      case '8':
+        return openCandidateMenu();
+      case '9':
+        moveCursor(-1);
+        return {true, ""};
+      case '0':
+        moveCursor(+1);
+        return {true, ""};
+      default:  // 1-7 have no control meaning
+        return {true, ""};
     }
-    // Not a tone position: fall through to the control-digit handling below.
   }
 
   // Letters and ';' build syllables. (';' doubles as the ing final key;
@@ -378,14 +460,14 @@ Composer::Result Composer::feedChar(char c) {
       return {true, ""};
     }
     if (pending_.feed(c)) {
-      lastWasBare_ = false;
+      unsettled_ = {};  // the previous syllable settles into its character
       if (pending_.complete()) {
-        // Eager finalize: show the converted character the moment the
-        // syllable completes; a following tone digit retrofits the tone.
-        if (finalizePendingBare()) {
-          lastWasBare_ = true;
-        }
-        // else: keep the pending syllable on screen awaiting its tone.
+        // Eager insert: the sentence walk sees the syllable at once (so the
+        // preceding text auto-corrects) while the display keeps showing its
+        // bopomofo. finalizePendingBare marks it unsettled; a failure means
+        // no tone-less entry exists, so the syllable stays pending on
+        // screen awaiting its tone digit.
+        finalizePendingBare();
       }
       state_ = State::kComposing;
       return {true, ""};
@@ -398,29 +480,13 @@ Composer::Result Composer::feedChar(char c) {
     // fall through: lone ';' becomes full-width punctuation
   }
 
-  // Digits are controls while composing (8 opens the menu, 9/0 move the
-  // cursor, the rest no-op) and DISABLED when idle: literal digits are
-  // typed in English mode, where the Shift separator spaces them off.
-  if (c >= '0' && c <= '9') {
-    if (!composing) return {true, ""};
-    switch (c) {
-      case '8':
-        return openCandidateMenu();
-      case '9':
-        moveCursor(-1);
-        return {true, ""};
-      case '0':
-        moveCursor(+1);
-        return {true, ""};
-      default:  // 6, 7 and non-tone-position 1-5
-        return {true, ""};
-    }
-  }
-
-  // '-'/'=' jump the cursor to the start/end of the composition. When idle
+  // '-'/'=' jump the cursor to the start/end of the composition. They are
+  // eaten while a syllable is unsettled, for the same reason 9/0 are: no
+  // cursor key moves until the syllable in progress is settled. When idle
   // they pass through: the shell owns them as Home/End navigation keys.
   if (c == '-' || c == '=') {
     if (!composing) return {false, ""};
+    if (anythingUnsettled()) return {true, ""};
     jumpCursor(c == '-');
     return {true, ""};
   }
@@ -431,18 +497,19 @@ Composer::Result Composer::feedChar(char c) {
     const char* symbol =
         (c == '"') ? (open ? "”" : "“") : (open ? "’" : "‘");
     open = !open;
-    std::string commit = composing ? takeCommitText() : "";
-    commit += symbol;
-    reset();
-    return {true, commit};
+    settlePending();
+    insertLiteralText(symbol);
+    return {true, ""};
   }
 
-  // Direct punctuation commits the buffer plus the full-width symbol.
+  // Full-width punctuation SETTLES the syllable in progress and joins the
+  // composition as a literal (2026-08-04) rather than committing it: 最,
+  // gives 最，still underlined, still selectable. With nothing composing
+  // it starts a fresh composition holding just the symbol.
   if (const char* punct = DirectPunctuation(c)) {
-    std::string commit = composing ? takeCommitText() : "";
-    commit += punct;
-    reset();
-    return {true, commit};
+    settlePending();
+    insertLiteralText(punct);
+    return {true, ""};
   }
 
   // Space settles the syllable in progress WITHOUT committing: the default
@@ -476,11 +543,18 @@ Composer::Result Composer::feedBackspace() {
 
   if (!pending_.empty()) {
     pending_.backspace();
+  } else if (unsettled_.active && unsettled_.toneGiven) {
+    // Take back just the tone digit, leaving the syllable unsettled and
+    // untoned: this is how a mistyped tone is fixed, since a second tone
+    // digit is ignored.
+    undoUnsettledTone();
+    updateStateAfterMutation();
+    return {true, ""};
   } else if (grid_.length() > 0) {
     grid_.deleteReadingBeforeCursor();
     walk_ = grid_.walk();
   }
-  lastWasBare_ = false;
+  unsettled_ = {};
   updateStateAfterMutation();
   return {true, ""};
 }
@@ -509,7 +583,10 @@ Composer::Result Composer::closeCandidateMenu() {
 }
 
 Composer::Result Composer::openCandidateMenu() {
-  if (pending_.complete() && !finalizePendingBare()) return {true, ""};
+  // Defensive: '8' is a tone digit while anything is unsettled, so the menu
+  // is only reachable with a settled buffer. Settle anyway rather than
+  // opening a menu over a syllable that is still showing bopomofo.
+  settlePending();
   if (grid_.length() == 0) return {true, ""};
 
   // Select at the cursor: candidatesAt targets the character right of the
@@ -532,7 +609,6 @@ Composer::Result Composer::openCandidateMenu() {
   candidates_ = std::move(filtered);
 
   if (candidates_.empty()) return {true, ""};  // nothing worth a menu
-  lastWasBare_ = false;
   pageIndex_ = 0;
   state_ = State::kSelecting;
   return {true, ""};
@@ -574,23 +650,9 @@ Composer::Result Composer::feedHollowFinal(char c) {
 }
 
 Composer::Result Composer::settleOrCommit() {
-  if (!pending_.empty()) {
-    // A complete syllable with a tone-1/neutral entry converts; anything
-    // else (half syllable, or a syllable no toneless entry accepts)
-    // settles as its bopomofo symbols, exactly like '`'.
-    if (!(pending_.complete() && finalizePendingBare())) {
-      std::string symbols = pending_.displayText();
-      pending_.clear();
-      insertLiteralText(symbols);
-    }
-    lastWasBare_ = false;  // settled: no tone digit may retrofit it
+  if (anythingUnsettled()) {
+    settlePending();
     updateStateAfterMutation();
-    return {true, ""};
-  }
-  if (lastWasBare_) {
-    // Already in the grid with its default reading; settling only ends the
-    // tone-retrofit window, which turns the bopomofo into the character.
-    lastWasBare_ = false;
     return {true, ""};
   }
   std::string commit = takeCommitText();
