@@ -30,7 +30,12 @@
 // A syllable normally takes two keys, but a first key whose bopomofo is
 // already a syllable (ㄓㄔㄕㄖㄗㄘㄙ, ㄧㄨ, ㄚㄜㄛ) converts on its own as
 // soon as a tone digit or Space arrives (2026-08-08): 字 = z4, 是 = u4,
-// 知 = v + Space. Those keys still accept a final instead (zh -> ㄗㄤ).
+// 知 = v + Space. Those keys still accept a final instead (zh -> ㄗㄤ) --
+// and when the next key spells NOTHING with them, they split off as a
+// syllable of their own and that key opens the next one, so 知情 is v q ;
+// with no separator at all. The lone syllable stays unsettled meanwhile,
+// which is why the display reads ㄓㄑ and only becomes 知ㄑㄧㄥ once the
+// second syllable is complete.
 //
 // Chinese/English switching is driven by the shell (a bare Shift tap toggles
 // the system keyboard-open state), but the composition SURVIVES it

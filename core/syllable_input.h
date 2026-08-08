@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -11,6 +12,21 @@ namespace mspy {
 
 class SyllableInput {
  public:
+  // Dictionary check every decoded syllable is filtered through: given a
+  // TONELESS bopomofo syllable, true if any tone of it exists.
+  //
+  // DecodeKeyPair is deliberately a structural superset -- the 'w' key is
+  // both ia and ua, so ㄏ + w yields ㄏㄧㄚ and ㄏㄨㄚ, and the 'y' key is
+  // both ü and uai, so ㄏ + y yields ㄏㄩ and ㄏㄨㄞ. Only the dictionary
+  // knows which of those is a real syllable (and that ㄉㄣ or ㄎㄟ are not
+  // syllables at all), so it is what decides both what the display shows
+  // and whether the key pair is accepted.
+  //
+  // Unset = accept everything, i.e. structural decoding only.
+  void setValidator(std::function<bool(const std::string&)> validator) {
+    validator_ = std::move(validator);
+  }
+
   bool empty() const { return len_ == 0; }
   // Both keys typed: the syllable can take no further letter.
   bool complete() const { return len_ == 2; }
@@ -43,9 +59,13 @@ class SyllableInput {
   std::string displayText() const;
 
  private:
+  // Drops the syllables the validator rejects (all of them when it is unset).
+  std::vector<std::string> accepted(std::vector<std::string> decoded) const;
+
   char keys_[2] = {0, 0};
   int len_ = 0;
   std::vector<std::string> candidates_;
+  std::function<bool(const std::string&)> validator_;
 };
 
 }  // namespace mspy

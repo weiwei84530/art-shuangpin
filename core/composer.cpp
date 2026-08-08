@@ -155,6 +155,18 @@ char ToneDigit(char c) {
   }
 }
 
+// True if any tone of this toneless bopomofo syllable exists. A bare key
+// already covers tone 1 and the neutral tone (RelaxedToneLM expands it), so
+// only 2/3/4 need asking for separately.
+bool SyllableExists(Formosa::Gramambular2::LanguageModel& lm,
+                    const std::string& syllable) {
+  if (lm.hasUnigrams(syllable)) return true;
+  for (const char* mark : {kTone2, kTone3, kTone4}) {
+    if (lm.hasUnigrams(syllable + mark)) return true;
+  }
+  return false;
+}
+
 }  // namespace
 
 Composer::Composer(
@@ -163,6 +175,15 @@ Composer::Composer(
       grid_(std::move(lm)),
       uom_(kUserOverrideModelCapacity, kObservedOverrideHalfLife) {
   grid_.setReadingSeparator("-");
+  // The double-pinyin decoder is a structural superset (the 'w' key is both
+  // ia and ua, the 'y' key both ü and uai); the dictionary is what says
+  // which reading a key pair actually has, so the pending syllable asks it
+  // before showing or accepting anything. Capturing the model rather than
+  // `this` keeps the callback valid however the composer is stored.
+  auto model = lm_;
+  pending_.setValidator([model](const std::string& syllable) {
+    return SyllableExists(*model, syllable);
+  });
 }
 
 Composer::DisplaySegments Composer::displaySegments() const {
@@ -503,8 +524,22 @@ Composer::Result Composer::feedChar(char c) {
       state_ = State::kComposing;
       return {true, ""};
     }
+    // The key does not extend the pending syllable. If what is pending is
+    // already a syllable by itself (ㄓ), the key can only be starting the
+    // NEXT one (2026-08-08): ㄓ goes into the grid untoned and STAYS
+    // unsettled, so the display shows both as bopomofo (ㄓㄑ) until the new
+    // syllable completes and pushes it into its character (知ㄑㄧㄥ).
+    // 知情 is therefore three keys. Note this only fires when the pair
+    // spells nothing at all -- v+s is ㄓㄨㄥ, so a lone ㄓ before ㄨㄥ still
+    // needs Space or a tone to separate it.
+    if (c != ';' && pending_.convertible() && finalizePendingBare()) {
+      pending_.feed(c);  // the previous syllable stays unsettled behind it
+      state_ = State::kComposing;
+      return {true, ""};
+    }
     if (c != ';') {
-      // Structurally impossible pair: reject the key while composing.
+      // The pair spells no syllable and nothing can be split off: reject
+      // the key while composing.
       if (composing) return {true, ""};
       return {false, ""};
     }
@@ -573,8 +608,13 @@ Composer::Result Composer::feedBackspace() {
   if (state_ == State::kEmpty) return {false, ""};
 
   if (!pending_.empty()) {
+    // Only the syllable being typed shrinks; one that is already in the
+    // grid keeps its unsettled bopomofo (ㄓㄑ backspaces to ㄓ, not to 之).
     pending_.backspace();
-  } else if (grid_.length() > 0) {
+    updateStateAfterMutation();
+    return {true, ""};
+  }
+  if (grid_.length() > 0) {
     grid_.deleteReadingBeforeCursor();
     walk_ = grid_.walk();
   }

@@ -45,6 +45,14 @@ class ComposerTest : public ::testing::Test {
     inner->add("ㄗˋ", "字", -3);
     inner->add("ㄕ", "師", -4);
     inner->add("ㄕˋ", "是", -2);
+    // 知情: a lone ㄓ in front of a two-key syllable (v q ;).
+    inner->add("ㄓ", "之", -3);
+    inner->add("ㄑㄧㄥˊ", "情", -3);
+    inner->add("ㄓ-ㄑㄧㄥˊ", "知情", -1);
+    // ㄏ + the 'w'/'y' keys decode to two candidates each; only one of them
+    // is a real syllable, and the dictionary is what says which.
+    inner->add("ㄏㄨㄞˊ", "懷", -3);
+    inner->add("ㄏㄨㄚ", "花", -3);
     lm_ = std::make_shared<RelaxedToneLM>(inner);
     composer_ = std::make_unique<Composer>(lm_);
   }
@@ -191,6 +199,68 @@ TEST_F(ComposerTest, LoneFirstKeyConvertsWithATone) {
   EXPECT_EQ(composer_->composedText(), "ㄋ");
   Type("i3");
   EXPECT_EQ(composer_->composedText(), "你");
+}
+
+TEST_F(ComposerTest, PendingSyllableShowsTheReadingThatExists) {
+  // The 'y' key is both ü and uai: ㄏ + y decodes to ㄏㄩ (impossible) and
+  // ㄏㄨㄞ (懷). The display must never show the impossible one.
+  Type("hy");
+  EXPECT_EQ(composer_->composedText(), "ㄏㄨㄞ");
+  Type("2");
+  EXPECT_EQ(composer_->composedText(), "懷");
+  composer_->feedEsc();
+
+  // Same for the 'w' key (ia vs ua): ㄏㄧㄚ is impossible, 花 is not.
+  Type("hw");
+  EXPECT_EQ(composer_->composedText(), "ㄏㄨㄚ");
+  Settle();
+  EXPECT_EQ(composer_->composedText(), "花");
+  composer_->feedEsc();
+
+  // A pair that spells no syllable at all is not our key: it is eaten and
+  // the first key keeps waiting for a final it can use.
+  Type("h");
+  auto r = composer_->feedChar('x');  // ㄏㄧㄝ: no such syllable
+  EXPECT_TRUE(r.consumed);
+  EXPECT_EQ(composer_->composedText(), "ㄏ");
+  Type("w");
+  EXPECT_EQ(composer_->composedText(), "ㄏㄨㄚ");
+}
+
+TEST_F(ComposerTest, LoneSyllableSplitsWhenTheNextKeyCannotJoinIt) {
+  // 知情 in three keys: ㄓ cannot take the 'q' final, so 'q' must be the
+  // next syllable's first key. ㄓ stays unsettled meanwhile.
+  Type("v");
+  EXPECT_EQ(composer_->composedText(), "ㄓ");
+  Type("q");
+  EXPECT_EQ(composer_->composedText(), "ㄓㄑ");
+  EXPECT_EQ(composer_->unconfirmedTail(), "ㄓㄑ");
+
+  Type(";");  // ㄑㄧㄥ completes: ㄓ settles into its character
+  EXPECT_EQ(composer_->composedText(), "之ㄑㄧㄥ");
+  Type("2");
+  EXPECT_EQ(composer_->composedText(), "知情");  // the walk corrects 之
+  EXPECT_EQ(composer_->feedEnter().commitText, "知情");
+
+  // Backspace inside the second syllable leaves the first one as bopomofo.
+  Type("vq");
+  composer_->feedBackspace();
+  EXPECT_EQ(composer_->composedText(), "ㄓ");
+  composer_->feedBackspace();
+  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
+
+  // A key that spells a syllable WITH the pending one still wins: v+s is
+  // ㄓㄨㄥ, so a lone ㄓ before it needs Space (or a tone) to separate.
+  Type("vs");
+  EXPECT_EQ(composer_->composedText(), "ㄓㄨㄥ");
+  composer_->feedEsc();
+
+  // A first key that is no syllable by itself has nothing to split off:
+  // the key is simply eaten (ㄋ + the 'q' final would be ㄋㄧㄡ, so use ㄅ).
+  Type("b");
+  auto r = composer_->feedChar('q');
+  EXPECT_TRUE(r.consumed);
+  EXPECT_EQ(composer_->composedText(), "ㄅ");
 }
 
 TEST_F(ComposerTest, SpecSyllables) {

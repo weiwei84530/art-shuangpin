@@ -24,6 +24,8 @@ cli\    REPL 測試臺（日常開發主力，不碰 TSF）
 
 - 每音節＝微軟雙拼 2 鍵（zh→v、ch→i、sh→u、ing→`;`）＋選擇性聲調數字。
 - **單鍵音節（2026-08-08）**：首鍵注音本身就是音節者（`z c s r v i u`＝ㄗㄘㄙㄖㄓㄔㄕ、`y w`＝ㄧㄨ、`a e o`＝ㄚㄜㄛ）省略韻母鍵，聲調鍵／空白直接成字（字＝`z4`、是＝`u4`、知＝`v`＋空白）；仍可接韻母鍵。`y` 維持 ㄧ（詞庫統計 ㄧ 系是 ㄩ 系的 4.1 倍），ㄩ 仍是 `yu`／`yy`＋調。
+- **單鍵音節自動分割（2026-08-08）**：單鍵後面的鍵若與它拼不出任何**存在的**音節，即視為下一音節首鍵，單鍵就地成音節（未定案，畫面 ㄓㄑ → 知ㄑㄧㄥ）。**知情＝`vq;`**、資訊＝`zxp`；`vs`＝ㄓㄨㄥ 有效故不分割（知識仍須 `v`＋空白＋`u4`）。
+- **候選注音由詞庫決定（2026-08-08）**：`DecodeKeyPair` 只做結構過濾，`SyllableInput` 的 validator 查詞庫決定顯示哪個候選、以及該鍵組是否成立（修 `hy` 顯示 ㄏㄩ 等 11 組錯誤＋102 組假注音）。
 - **聲調語意（嚴格，已拍板勿反覆）**：不打數字＝只出一聲+輕聲；明打 `1`＝只出一聲；`5`＝只輕聲；2/3/4 精確。
 - **聲調鍵左右手鏡像（2026-08-04）**：以 5／6 之間為軸，右手 `0`=一聲、`9`=二聲、`8`=三聲、`7`=四聲、`6`=輕聲，與左手 `1`-`5` 完全等價。
 - **未定案窗口（2026-08-08 收回）**：音節第 2 鍵落下不顯示轉換字（`hk`→ㄏㄠ）；**聲調鍵／空白／標點／下一音節首鍵／`` ` ``** 定案成字。**聲調鍵一按即成字**（`hk3`→好），打錯調＝Backspace 刪整個音節重打（無退調）。
@@ -57,6 +59,8 @@ cli\    REPL 測試臺（日常開發主力，不碰 TSF）
 - 程式註解一律英文；docs 與本檔繁體中文。
 
 ## 狀態記錄
+
+- 2026-08-08：**M5 回饋第十三輪（單鍵分割＋注音顯示修正）**。(1) **候選注音改由詞庫決定**（使用者回報「懷」顯示成不存在的 ㄏㄩ）。根因：`DecodeKeyPair` 是**結構超集**（`y` 鍵＝ü／uai、`w` 鍵＝ia／ua…），轉換時 `insertReading` 會依序試到有效的那個，**但顯示層直接取 `candidates_.front()`**，所以畫面顯示 ㄏㄩ、上屏卻是「懷」。改為 `SyllableInput::setValidator()`（`Composer` 建構時注入 `SyllableExists`：查裸讀音＋ˊˇˋ 四次 `hasUnigrams`；裸讀音經 RelaxedToneLM 已涵蓋一聲＋輕聲），`feed()` 用它過濾候選、**全被濾掉就回傳 false**（該鍵組不成立）。以 `decode_dump` 驅動程式對 26×27 鍵組全掃比對詞庫：11 組首候選錯誤（`gd gw gy hd hw hy kd kw ky` ㄍㄎㄏ 不接 ㄧ 介音／ㄩ、`lv nv` 應為 ㄌㄩㄝ/ㄋㄩㄝ）＋102 組兩候選皆不存在（`bb`=ㄅㄡ、`df`=ㄉㄣ、`kz`=ㄎㄟ、`ra`=ㄖㄚ…）全部修掉。**未改 `double_pinyin.cpp` 的結構規則**——原設計就是「結構超集＋詞庫裁決」（見 double_pinyin_test 的 `hw` 註解），手寫音韻表反而會漏掉 ㄉㄣ/ㄎㄟ 這類純詞彙缺口。(2) **單鍵音節自動分割**：單鍵後的鍵若拼不出任何存在音節，即為下一音節首鍵——`finalizePendingBare()` 把單鍵送進詞格後**不清 `unsettled_`**，接著 `pending_.feed(c)`，於是 `displaySegments()` 的 unconfirmed 天然變成「未定案注音＋pending 注音」（ㄓㄑ），新音節完成時才把前者推成字（知ㄑㄧㄥ）——零額外狀態。知情＝`vq;`、資訊＝`zxp`。Backspace 在 pending 內刪除時不再清 `unsettled_`（ㄓㄑ 退回 ㄓ 而非 之）。有效音節優先（`vs`＝ㄓㄨㄥ 不分割），故知識仍須 `v`＋空白＋`u4`。82 core／180 全部測試綠。規格見 docs/spec.md §1、§3.0。
 
 - 2026-08-08：**M5 回饋第十二輪（四項互動調整）**。(1) **聲調鍵按下即成字**（撤銷 2026-08-04 的「打了調仍維持注音」）：`Unsettled` 只剩「還沒給聲調」一種，`toneGiven`／`undoUnsettledTone`／`keys` 移除，打錯調改為 Backspace 刪整個音節；數字鍵規則因此簡化為兩態。(2) **單鍵音節**：`DecodeSingleKey()` 給 12 個「注音本身即音節」的首鍵，`SyllableInput::convertible()`（＝候選非空）取代 `complete()` 成為「可轉換」判準——`complete()` 仍決定能不能再吃一個字母，故 `u`＋`l`＝ㄕㄞ 不受影響；Enter 也一併轉換單鍵。`y` 維持 ㄧ（以 out\data.txt 統計：ㄧ 系音節總質量 0.0411 vs ㄩ 系 0.0100，單音節 ㄧ 0.0159 vs ㄩ 0.0039；且詞格節點只能有一個讀音，無法讓單鍵同時是 ㄧ 又是 ㄩ）。(3) **Tab ＝ Backspace**（閒置時走 `FUNCTION_NAV_INJECT` 注入 VK_BACK，注意 Backspace 不加 `KEYEVENTF_EXTENDEDKEY`；Shift+Tab 放行）。(4) **中英切換不再 commit**：關鍵發現＝`_IsKeyEaten` 在鍵盤關閉時是**我們自己**選擇不吃鍵，TSF 照樣送 key event，所以可以「工具列顯示英、同時繼續吃鍵維持組字」。新增 `IsVirtualKeyNeedMspyEnglish`（只在 composer 非 kEmpty 時吃可見 ASCII，保留大小寫）＋`FUNCTION_ENGLISH_INPUT` → `Composer::feedEnglishChar`（literal 讀音，與標點同機制）＋`Composer::switchLanguage(toEnglish)`（settle＋依游標左邊字元補半形空白）。v4 被動記憶整組刪除（`_lastCharClass`、`_ObserveBypassedKey`、commit 游標快照、執行緒 WH_MOUSE hook、TextEditSink 的純游標移動偵測）。順修 `RelaxedToneLM` 的 literal 判定：原本用「不含 `-`」排除跨節點鍵，導致 literal `-` 本身無法輸入，改為「前綴後恰好一個碼位」。80 core tests 全綠、x64/x86 已建置。規格見 docs/spec.md §1、§5、§6。
 

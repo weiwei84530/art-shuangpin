@@ -107,6 +107,16 @@ const TUTORIALS = [
         cap: '接著打「道」（<kbd>d</kbd><kbd>k</kbd><kbd>4</kbd>）：整句轉換一跑，前面的「之」<b>自動修正成「知」</b>。' },
       { keys: [], screen: {},
         cap: '注意：這些鍵<b>仍然可以接韻母鍵</b>（<kbd>u</kbd>＋<kbd>l</kbd>＝ㄕㄞ），只有聲調鍵和空白鍵會把單鍵當成一個音節收掉。其他首鍵（ㄅㄆㄇㄈ…）的注音不是音節，單獨按聲調鍵不會有反應。' },
+      { keys: ['v'], screen: { text: '', comp: [['ㄓ','p']] },
+        cap: '還有一種情況不用按任何分隔鍵。打「知情」：先按 <kbd>v</kbd>＝ㄓ。' },
+      { keys: ['q'], screen: { comp: [['ㄓㄑ','p']] },
+        cap: '再按 <kbd>q</kbd>。ㄓ 配 <kbd>q</kbd> 的韻母<b>拼不出任何音節</b>，所以它只可能是下一個字的聲母——輸入法自動分成兩個音節，畫面是 ㄓㄑ。' },
+      { keys: [';'], screen: { comp: [['知','s'],['ㄑㄧㄥ','p']] },
+        cap: '<kbd>;</kbd>＝ㄥ，第二個音節完成，前面的 ㄓ 這時才變成「知」。<b>「知情」總共三鍵</b>，中間不必按空白。' },
+      { keys: ['2'], screen: { comp: [['知','s'],['情','s']] },
+        cap: '補上二聲 → 知情。' },
+      { keys: ['Enter'], screen: { text: '知情', comp: [] },
+        cap: '<kbd>Enter</kbd> 上屏。但要小心：<b>只有「拼不出來」時才會自動分割</b>。<kbd>v</kbd>＋<kbd>s</kbd> 是 ㄓㄨㄥ（有效音節），所以「知識」不能直接打 <kbd>v</kbd><kbd>u</kbd>（那是 ㄓㄨ），要用 <kbd>v</kbd>＋空白＋<kbd>u</kbd><kbd>4</kbd> 隔開。' },
       { keys: [], screen: {},
         cap: '<kbd>y</kbd> 維持 ㄧ 而不是 ㄩ：詞庫統計 ㄧ 系音節的使用頻率是 ㄩ 系的 <b>4 倍</b>，所以一／以／意可以兩鍵打完（<kbd>y</kbd>＋空白、<kbd>y</kbd><kbd>3</kbd>、<kbd>y</kbd><kbd>4</kbd>）；ㄩ 仍是 <kbd>y</kbd><kbd>u</kbd> 加聲調。' }
     ]

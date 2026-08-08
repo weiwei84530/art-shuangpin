@@ -5,7 +5,10 @@
 // tone-less bopomofo syllable candidates; a final key can map to several
 // pinyin finals (e.g. 's' = ong/iong), and structurally impossible
 // combinations are filtered here while dictionary-level validity (does any
-// tone of this syllable exist?) is the caller's job.
+// tone of this syllable exist?) is the caller's job -- SyllableInput's
+// validator, which is also what picks WHICH candidate the display shows
+// (ㄏ + the 'y' key decodes to ㄏㄩ and ㄏㄨㄞ; only the dictionary knows
+// that 懷 is the one that exists).
 
 #pragma once
 
