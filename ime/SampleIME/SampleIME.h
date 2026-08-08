@@ -120,49 +120,15 @@ public:
     HRESULT _HandleCompositionArrowKey(TfEditCookie ec, _In_ ITfContext *pContext, KEYSTROKE_FUNCTION keyFunction);
     HRESULT _HandleCompositionPunctuation(TfEditCookie ec, _In_ ITfContext *pContext, WCHAR wch);
     HRESULT _HandleCompositionDoubleSingleByte(TfEditCookie ec, _In_ ITfContext *pContext, WCHAR wch);
-    // [MspyIME] Bare Shift tap: Chinese/English toggle (with mid-composition
-    // space insertion handled by the composer).
+    // [MspyIME] Bare Shift tap: Chinese/English toggle. A live composition
+    // is NOT committed (2026-08-08) — it keeps its underline and the
+    // composer inserts the half-width separator space where the scripts
+    // meet, so one uncommitted buffer can hold both.
     HRESULT _HandleShiftTap(TfEditCookie ec, _In_ ITfContext *pContext);
+    // [MspyIME] A key typed in English mode while that composition is live:
+    // it joins the buffer as literal text.
+    HRESULT _HandleEnglishInput(TfEditCookie ec, _In_ ITfContext *pContext, WCHAR wch);
 
-    // [MspyIME] Passive last-character-class memory for the Shift separator
-    // space. Most hosts never let an IME read the document (only full TSF
-    // apps like Notepad/Word expose it), so the decision uses only what the
-    // IME itself knows: the tail of its own commits and the keys it watched
-    // pass through to the application. Unknown never adds a space.
-    enum LastCharClass
-    {
-        LASTCHAR_UNKNOWN = 0,   // caret may have moved: never add a space
-        LASTCHAR_CHINESE,       // Han ideograph or bopomofo
-        LASTCHAR_ENGLISH,       // A-Z a-z 0-9
-        LASTCHAR_OTHER,         // space, punctuation, anything else
-    };
-    // Classifies the tail of text this IME just committed.
-    void _RememberCommittedTail(const std::wstring& text);
-    // Classifies a key that was passed through to the application.
-    void _ObserveBypassedKey(UINT code);
-    // Saves the caret position right after a commit; _IsCaretAtLastCommit
-    // later verifies the caret has not been repositioned (the last line of
-    // defense in hosts that never report caret moves through OnEndEdit).
-    void _SaveLastCommitCaret(TfEditCookie ec, _In_ ITfContext *pContext);
-    BOOL _IsCaretAtLastCommit(TfEditCookie ec, _In_ ITfContext *pContext);
-    void _ClearLastCommitCaret()
-    {
-        if (_pLastCommitCaret)
-        {
-            _pLastCommitCaret->Release();
-            _pLastCommitCaret = nullptr;
-        }
-        if (_pLastCommitContext)
-        {
-            _pLastCommitContext->Release();
-            _pLastCommitContext = nullptr;
-        }
-    }
-    void _ResetLastCharClass()
-    {
-        _lastCharClass = LASTCHAR_UNKNOWN;
-        _ClearLastCommitCaret();
-    }
     // [MspyIME] Per-application Chinese/English memory (spec §6). The TIP
     // runs inside the application's own process, so this instance IS the
     // per-app slot: whatever the system does with the shared keyboard
@@ -302,12 +268,6 @@ private:
     CANDIDATE_MODE _candidateMode;
     CCandidateListUIPresenter *_pCandidateListUIPresenter;
     BOOL _isCandidateWithWildcard : 1;
-
-    // [MspyIME] See LastCharClass above. The caret snapshot taken at the
-    // last commit backs _IsCaretAtLastCommit.
-    LastCharClass _lastCharClass = LASTCHAR_UNKNOWN;
-    ITfRange* _pLastCommitCaret = nullptr;
-    ITfContext* _pLastCommitContext = nullptr;
 
     // [MspyIME] Chinese/English mode remembered for this application; see
     // _RestoreKeyboardOpenForApp. FALSE = English, the state every

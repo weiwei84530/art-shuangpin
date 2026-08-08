@@ -41,6 +41,21 @@ std::vector<std::string> ExpandSyllable(const std::string& syl) {
   return {syl, syl + kTone5};
 }
 
+// True if `key` is one literal reading: the marker plus exactly one UTF-8
+// code point. Testing the code point instead of scanning for the '-'
+// separator is what lets a literal '-' (or any ASCII punctuation typed in
+// English mode) be a reading of its own, while a joined key that merely
+// spans a literal stays unmatched.
+bool IsSingleLiteral(const std::string& key) {
+  if (key.size() < 2 || key[0] != kLiteralPrefix) return false;
+  size_t i = 2;
+  while (i < key.size() &&
+         (static_cast<unsigned char>(key[i]) & 0xC0) == 0x80) {
+    ++i;
+  }
+  return i == key.size();
+}
+
 }  // namespace
 
 RelaxedToneLM::RelaxedToneLM(std::shared_ptr<LanguageModel> inner)
@@ -51,10 +66,7 @@ std::vector<LanguageModel::Unigram> RelaxedToneLM::getUnigrams(
   // Literal readings: one fixed candidate; any joined key containing the
   // literal marker (a would-be phrase spanning a literal) never matches.
   if (key.find(kLiteralPrefix) != std::string::npos) {
-    if (key.size() > 1 && key[0] == kLiteralPrefix &&
-        key.find('-') == std::string::npos) {
-      return {Unigram(key.substr(1), 0.0)};
-    }
+    if (IsSingleLiteral(key)) return {Unigram(key.substr(1), 0.0)};
     return {};
   }
 
@@ -97,8 +109,7 @@ std::vector<LanguageModel::Unigram> RelaxedToneLM::getUnigrams(
 
 bool RelaxedToneLM::hasUnigrams(const std::string& key) {
   if (key.find(kLiteralPrefix) != std::string::npos) {
-    return key.size() > 1 && key[0] == kLiteralPrefix &&
-           key.find('-') == std::string::npos;
+    return IsSingleLiteral(key);
   }
   const auto syllables = SplitKey(key);
   // Fast path for single syllables (the common case during typing).

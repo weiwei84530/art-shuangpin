@@ -103,6 +103,9 @@ protected:
     // [MspyIME] HandleKeyNumpadCommit
     virtual HRESULT HandleKeyNumpadCommit(KeyHandlerEditSessionDTO dto);
 
+    // [MspyIME] HandleKeyEnglishInput
+    virtual HRESULT HandleKeyEnglishInput(KeyHandlerEditSessionDTO dto);
+
 protected:
     CSampleIME* _pTextService;
 };
@@ -154,6 +157,9 @@ protected:
 
     // [MspyIME] HandleKeyNumpadCommit
     HRESULT HandleKeyNumpadCommit(KeyHandlerEditSessionDTO dto);
+
+    // [MspyIME] HandleKeyEnglishInput
+    HRESULT HandleKeyEnglishInput(KeyHandlerEditSessionDTO dto);
 };
 
 class CKeyStateCandidate : public CKeyStateCategory

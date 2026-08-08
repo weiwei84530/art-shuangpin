@@ -1630,6 +1630,17 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeedMspy(UINT uCode, _In_reads_(1)
     {
     case VK_BACK:
         return active ? eat(CATEGORY_COMPOSING, FUNCTION_BACKSPACE) : FALSE;
+    case VK_TAB:
+        // [MspyIME] Tab is a second Backspace (2026-08-08), so deleting
+        // never takes a hand off the main block. Shift+Tab is left alone so
+        // reverse focus navigation stays reachable; idle it is replayed as
+        // a real Backspace, the way 9/0 are replayed as arrows.
+        if (Global::ModifiersValue & (TF_MOD_SHIFT | TF_MOD_LSHIFT | TF_MOD_RSHIFT))
+        {
+            return FALSE;
+        }
+        return active ? eat(CATEGORY_COMPOSING, FUNCTION_BACKSPACE)
+                      : eat(CATEGORY_COMPOSING, FUNCTION_NAV_INJECT);
     case VK_RETURN:
         return active ? eat(CATEGORY_COMPOSING, FUNCTION_FINALIZE_TEXTSTORE) : FALSE;
     case VK_ESCAPE:
@@ -1694,6 +1705,76 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeedMspy(UINT uCode, _In_reads_(1)
         return eat(CATEGORY_COMPOSING, FUNCTION_INPUT);
     }
 
+    return FALSE;
+}
+
+// [MspyIME] Key routing in ENGLISH mode (2026-08-08). The system keyboard
+// is closed, so this only runs while a composition is still live: those keys
+// keep coming to us and join the buffer literally instead of going to the
+// application, which is what lets one uncommitted string hold Chinese and
+// English at once. With nothing composing every key passes through and plain
+// English typing behaves exactly as if the IME were not loaded.
+BOOL CCompositionProcessorEngine::IsVirtualKeyNeedMspyEnglish(UINT uCode, _In_reads_(1) WCHAR *pwch, _Out_opt_ _KEYSTROKE_STATE *pKeyState)
+{
+    if (pKeyState)
+    {
+        pKeyState->Category = CATEGORY_NONE;
+        pKeyState->Function = FUNCTION_NONE;
+    }
+    if (_pMspyBridge == nullptr || !_pMspyBridge->IsReady())
+    {
+        return FALSE;
+    }
+    if (_pMspyBridge->Composer()->state() == mspy::Composer::State::kEmpty)
+    {
+        return FALSE;
+    }
+
+    auto eat = [pKeyState](KEYSTROKE_CATEGORY cat, KEYSTROKE_FUNCTION fn) -> BOOL
+    {
+        if (pKeyState)
+        {
+            pKeyState->Category = cat;
+            pKeyState->Function = fn;
+        }
+        return TRUE;
+    };
+
+    switch (uCode)
+    {
+    case VK_BACK:
+        return eat(CATEGORY_COMPOSING, FUNCTION_BACKSPACE);
+    case VK_TAB:
+        if (Global::ModifiersValue & (TF_MOD_SHIFT | TF_MOD_LSHIFT | TF_MOD_RSHIFT))
+        {
+            return FALSE;
+        }
+        return eat(CATEGORY_COMPOSING, FUNCTION_BACKSPACE);
+    case VK_RETURN:
+        return eat(CATEGORY_COMPOSING, FUNCTION_FINALIZE_TEXTSTORE);
+    case VK_ESCAPE:
+        return eat(CATEGORY_COMPOSING, FUNCTION_CANCEL);
+    case VK_DOWN:
+    case VK_UP:
+    case VK_LEFT:
+    case VK_RIGHT:
+    case VK_PRIOR:
+    case VK_NEXT:
+        // Eaten as no-ops, as in Chinese mode: the caret must not wander
+        // out of the composition.
+        return eat(CATEGORY_NONE, FUNCTION_NONE);
+    default:
+        break;
+    }
+
+    // Printable ASCII only: everything else (Ctrl/Alt chords, function keys)
+    // belongs to the application. The character keeps its case -- English
+    // mode types what was pressed.
+    const WCHAR wch = pwch ? *pwch : L'\0';
+    if (wch >= 0x20 && wch < 0x7F)
+    {
+        return eat(CATEGORY_COMPOSING, FUNCTION_ENGLISH_INPUT);
+    }
     return FALSE;
 }
 

@@ -194,6 +194,23 @@ std::string FirstKeyDisplay(char c) {
   return std::string(1, c);
 }
 
+std::vector<std::string> DecodeSingleKey(char first) {
+  // The bopomofo of these keys IS a syllable, so the final key is optional.
+  // 'y' stays ㄧ rather than ㄩ: the ㄧ-family syllables outweigh the
+  // ㄩ-family ones by about 4:1 in the dictionary, and a grid node can only
+  // carry one reading, so the lone key has to pick the common side (ㄩ
+  // remains yu/yy plus a tone).
+  switch (first) {
+    case 'z': case 'c': case 's': case 'r':  // ㄗ ㄘ ㄙ ㄖ
+    case 'v': case 'i': case 'u':            // ㄓ ㄔ ㄕ
+    case 'y': case 'w':                      // ㄧ ㄨ
+    case 'a': case 'e': case 'o':            // ㄚ ㄜ ㄛ
+      return {FirstKeyDisplay(first)};
+    default:
+      return {};
+  }
+}
+
 bool IsSecondKey(char c) { return (c >= 'a' && c <= 'z') || c == ';'; }
 
 std::string HollowFinalDisplay(char c) {

@@ -8,12 +8,13 @@
 // Digits have two meanings selected by whether a syllable is UNSETTLED --
 // i.e. still shown as bopomofo rather than as the character it converts to:
 //
-//   syllable unsettled, no tone yet -> every digit is a tone digit, the
-//     right hand reaching them mirrored around the 5/6 gap:
+//   syllable unsettled -> every digit is a tone digit, the right hand
+//     reaching them mirrored around the 5/6 gap:
 //       1-5 = tones 1-5, and 0=1, 9=2, 8=3, 7=4, 6=5
-//   syllable unsettled, tone already given -> all digits (and '-'/'=')
-//     are eaten: a second tone digit never re-tones, and the control keys
-//     stay out of reach until the syllable is settled (Space settles it)
+//     The tone digit SETTLES the syllable (2026-08-08), so the character
+//     appears at once and the control keys are usable again immediately; a
+//     mistyped tone is corrected by deleting the syllable (Backspace) and
+//     retyping it.
 //   nothing unsettled -> digits are control keys:
 //     6,7  eaten, no-op
 //     8    open the candidate menu at the cursor
@@ -25,9 +26,18 @@
 //   1-6  pick the numbered candidate on the current page
 //   7/8  previous/next page (no wrap; out-of-range is a no-op)
 //   any other key closes the menu AND performs its normal function.
-// Chinese/English switching lives entirely in the shell (a bare Shift tap
-// commits the buffer and toggles the system keyboard-open state); the
-// composer itself is Chinese-only.
+//
+// A syllable normally takes two keys, but a first key whose bopomofo is
+// already a syllable (ㄓㄔㄕㄖㄗㄘㄙ, ㄧㄨ, ㄚㄜㄛ) converts on its own as
+// soon as a tone digit or Space arrives (2026-08-08): 字 = z4, 是 = u4,
+// 知 = v + Space. Those keys still accept a final instead (zh -> ㄗㄤ).
+//
+// Chinese/English switching is driven by the shell (a bare Shift tap toggles
+// the system keyboard-open state), but the composition SURVIVES it
+// (2026-08-08): switchLanguage() only settles what is in progress and drops
+// in the half-width separator space, and while English mode is on the shell
+// feeds letters through feedEnglishChar so they join the same underlined,
+// uncommitted buffer as literal text.
 //
 // Raw bopomofo symbols (勿轉換): '`' SETTLES bopomofo into the composition
 // as fixed black text (still underlined/uncommitted). With a pending
@@ -95,13 +105,10 @@ class Composer {
   // Display decomposition of composedText():
   //   before      tone-settled text left of the active area
   //   unconfirmed the pending syllable display plus, if the syllable just
-  //               inserted is still unsettled, ITS BOPOMOFO WITH THE TONE
-  //               MARK (2026-08-02: the second key of a syllable no longer
-  //               flashes the tone-1 character — hk shows ㄏㄠ; 2026-08-04:
-  //               a tone digit no longer settles it either — hk4 shows
-  //               ㄏㄠˋ, and Space/punctuation/the next syllable turns it
-  //               into 號. Explicit tone 1 shows the ˉ mark so "toned" and
-  //               "not toned yet" never look alike.)
+  //               inserted is still unsettled, ITS BOPOMOFO (2026-08-02: the
+  //               second key of a syllable no longer flashes the tone-1
+  //               character — hk shows ㄏㄠ, and Space, a tone digit,
+  //               punctuation or the next syllable turns it into 蒿/好)
   //   highlighted the single character right of the cursor (the selection
   //               anchor emphasized with a background color); empty when
   //               the cursor is at the right end
@@ -147,6 +154,20 @@ class Composer {
   // Esc cancels the whole composition (closing the menu first if open).
   Result feedEsc();
 
+  // Feeds a character typed in ENGLISH mode. It settles whatever Chinese is
+  // in progress and joins the composition as literal text, keeping one
+  // uncommitted buffer for both scripts. Returns consumed=false when nothing
+  // is composing (the shell then lets the key through to the application).
+  Result feedEnglishChar(char c);
+
+  // Bare-Shift language switch with a live composition: settles what is in
+  // progress and inserts the half-width separator space when the character
+  // before the cursor calls for one (Chinese before English, an English word
+  // character before Chinese). Never commits. Returns consumed=false when
+  // there is no composition to keep, which is the shell's cue that the
+  // switch is nothing but a mode flip.
+  Result switchLanguage(bool toEnglish);
+
   // Closes the candidate menu without touching the composition (used by the
   // shell for window-only teardown, e.g. mouse dismissal).
   Result closeCandidateMenu();
@@ -176,25 +197,22 @@ class Composer {
   std::function<void(const std::string&, const std::string&)> onPhraseUsed;
 
  private:
-  // Finalizes the pending complete syllable as tone-less (tone 1/neutral).
-  // This happens EAGERLY the moment the second key completes a syllable so
-  // the sentence walk sees it (the character itself stays hidden behind
-  // its bopomofo until settled); a following tone digit then *retrofits*
-  // the tone onto that syllable.
+  // Finalizes the pending syllable as tone-less (tone 1/neutral). This
+  // happens EAGERLY the moment the second key completes a syllable so the
+  // sentence walk sees it (the character itself stays hidden behind its
+  // bopomofo until settled); a following tone digit then *retrofits* the
+  // tone onto that syllable.
   // Returns false if no dictionary entry accepts the tone-less reading (the
   // syllable then stays pending, shown as bopomofo, awaiting a tone digit).
   bool finalizePendingBare();
-  // Applies a tone digit ('1'..'5') to the still-pending complete syllable
-  // (the path taken when no tone-less entry exists, e.g. ㄗㄨㄟˋ).
+  // Applies a tone digit ('1'..'5') to the still-pending syllable: the path
+  // taken when no tone-less entry exists (ㄗㄨㄟˋ) and the path a lone first
+  // key takes (ㄗ -> 字), since those never enter the grid on their own.
   bool applyToneToPending(char digit);
   // Replaces the unsettled bare syllable in the grid with its toned
-  // reading. A tone with no dictionary entry leaves the syllable bare and
-  // still untoned, so another tone digit can be tried.
+  // reading, settling it. A tone with no dictionary entry leaves the
+  // syllable bare and still unsettled, so another tone digit can be tried.
   bool applyToneToUnsettled(char digit);
-  // Backspace on a toned-but-unsettled syllable: drops just the tone,
-  // returning to the untoned unsettled state (which is how a mistyped tone
-  // gets corrected, since a second tone digit is ignored).
-  void undoUnsettledTone();
   // Settles whatever is in progress: the pending syllable converts (or its
   // bopomofo settles as symbols) and the unsettled syllable stops hiding
   // behind its bopomofo. Idempotent; a no-op when nothing is unsettled.
@@ -248,23 +266,16 @@ class Composer {
 
   // The most recent syllable, already in the grid (so the sentence walk
   // sees it and the preceding text keeps auto-correcting) but still shown
-  // as bopomofo rather than as the character it converts to. A tone digit
-  // refines it in place; Space, punctuation, the next syllable's first key,
-  // a cursor move or the candidate menu SETTLES it, which is when the
-  // character finally appears.
+  // as bopomofo rather than as the character it converts to. A tone digit,
+  // Space, punctuation, the next syllable's first key, a cursor move or the
+  // candidate menu SETTLES it, which is when the character finally appears.
   struct Unsettled {
     bool active = false;
-    // Set once a tone digit has been applied: further tone digits are
-    // ignored (correcting a tone goes through Backspace).
-    bool toneGiven = false;
     // Tone-less readings of the syllable, best first -- what a tone mark
-    // gets appended to, and what Backspace restores.
+    // gets appended to.
     std::vector<std::string> syllables;
-    // The two double-pinyin keys, kept so Backspace can put the syllable
-    // back into pending_ when no tone-less reading exists (ㄗㄨㄟ).
-    std::string keys;
-    // Displayed bopomofo; identical to the reading now in the grid, tone
-    // mark included (ㄏㄠ, ㄏㄠˋ, ㄏㄠˉ, ㄏㄠ˙).
+    // Displayed bopomofo; identical to the tone-less reading now in the
+    // grid (ㄏㄠ).
     std::string display;
   };
   Unsettled unsettled_;

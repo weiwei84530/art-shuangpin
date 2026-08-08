@@ -52,11 +52,11 @@ __inline UINT VKeyFromVKPacketAndWchar(UINT vk, WCHAR wch)
     return vkRet;
 }
 
-// [MspyIME] Replays an idle navigation key (9/0/-/=) as the arrow/Home/End
-// keystroke it stands for. SendInput only appends to the input queue, so the
-// injected key is processed after the current one and re-enters our key sink
-// in the idle state, where these VKs always pass through to the app. A
-// physically held Shift modifies the injected key into a selection.
+// [MspyIME] Replays an idle navigation key (9/0/-/=, and Tab as Backspace)
+// as the keystroke it stands for. SendInput only appends to the input queue,
+// so the injected key is processed after the current one and re-enters our
+// key sink in the idle state, where these VKs always pass through to the
+// app. A physically held Shift modifies the injected key into a selection.
 static void InjectNavigationKey(UINT code)
 {
     WORD vk = 0;
@@ -66,16 +66,21 @@ static void InjectNavigationKey(UINT code)
     case '0':          vk = VK_RIGHT; break;
     case VK_OEM_MINUS: vk = VK_HOME;  break;
     case VK_OEM_PLUS:  vk = VK_END;   break;
+    case VK_TAB:       vk = VK_BACK;  break;
     default:           return;
     }
+
+    // Backspace lives on the main block; only the navigation keys are the
+    // extended (grey-block) variants.
+    const DWORD extended = (vk == VK_BACK) ? 0 : KEYEVENTF_EXTENDEDKEY;
 
     INPUT inputs[2] = {};
     inputs[0].type = INPUT_KEYBOARD;
     inputs[0].ki.wVk = vk;
-    inputs[0].ki.dwFlags = KEYEVENTF_EXTENDEDKEY;
+    inputs[0].ki.dwFlags = extended;
     inputs[1].type = INPUT_KEYBOARD;
     inputs[1].ki.wVk = vk;
-    inputs[1].ki.dwFlags = KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP;
+    inputs[1].ki.dwFlags = extended | KEYEVENTF_KEYUP;
     SendInput(ARRAYSIZE(inputs), inputs, sizeof(INPUT));
 }
 
@@ -135,12 +140,6 @@ BOOL CSampleIME::_IsKeyEaten(_In_ ITfContext *pContext, UINT codeIn, _Out_ UINT 
         }
     }
 
-    // if the keyboard is closed, we don't eat keys, with the exception of the touch keyboard specials keys
-    if (!isOpen && !isDoubleSingleByte && !isPunctuation)
-    {
-        return isTouchKeyboardSpecialKeys;
-    }
-
     if (pwch)
     {
         *pwch = wch;
@@ -151,6 +150,24 @@ BOOL CSampleIME::_IsKeyEaten(_In_ ITfContext *pContext, UINT codeIn, _Out_ UINT 
     //
     CCompositionProcessorEngine *pCompositionProcessorEngine;
     pCompositionProcessorEngine = _pCompositionProcessorEngine;
+
+    // if the keyboard is closed, we don't eat keys, with the exception of the touch keyboard specials keys
+    if (!isOpen && !isDoubleSingleByte && !isPunctuation)
+    {
+        // [MspyIME] ...and with the exception of a composition that is still
+        // live (2026-08-08): English mode keeps typing into it instead of
+        // committing, so one uncommitted buffer holds both scripts. With
+        // nothing composing this still eats nothing at all.
+        if (pCompositionProcessorEngine->IsVirtualKeyNeedMspyEnglish(*pCodeOut, pwch, pKeyState))
+        {
+            return TRUE;
+        }
+        if (pwch)
+        {
+            *pwch = isTouchKeyboardSpecialKeys ? wch : L'\0';
+        }
+        return isTouchKeyboardSpecialKeys;
+    }
 
     if (isOpen)
     {
@@ -291,9 +308,6 @@ BOOL CSampleIME::_IsKeyboardDisabled()
 
 STDAPI CSampleIME::OnSetFocus(BOOL fForeground)
 {
-    // [MspyIME] Keyboard focus moved: the caret position is unknown now.
-    _ResetLastCharClass();
-
     // [MspyIME] Taking the keystroke focus is the other half of the
     // per-application Chinese/English memory (see ThreadMgrEventSink).
     if (fForeground)
@@ -319,15 +333,6 @@ STDAPI CSampleIME::OnTestKeyDown(ITfContext *pContext, WPARAM wParam, LPARAM lPa
     WCHAR wch = '\0';
     UINT code = 0;
     *pIsEaten = _IsKeyEaten(pContext, (UINT)wParam, &code, &wch, &KeystrokeState);
-
-    if (!*pIsEaten)
-    {
-        // [MspyIME] For keys we do not eat, most hosts never call OnKeyDown
-        // (only this test) — so the last-character-class observation for the
-        // Shift separator space must happen HERE. Classification is a pure
-        // assignment, so a host that calls both hooks is harmless.
-        _ObserveBypassedKey(code);
-    }
 
     if (KeystrokeState.Category == CATEGORY_INVOKE_COMPOSITION_EDIT_SESSION)
     {
@@ -359,13 +364,6 @@ STDAPI CSampleIME::OnKeyDown(ITfContext *pContext, WPARAM wParam, LPARAM lParam,
     UINT code = 0;
 
     *pIsEaten = _IsKeyEaten(pContext, (UINT)wParam, &code, &wch, &KeystrokeState);
-
-    if (!*pIsEaten)
-    {
-        // [MspyIME] The key goes to the application: watch it to keep the
-        // last-character-class memory (Shift separator space) current.
-        _ObserveBypassedKey(code);
-    }
 
     if (*pIsEaten)
     {
@@ -463,8 +461,8 @@ STDAPI CSampleIME::OnPreservedKey(ITfContext *pContext, REFGUID rguid, BOOL *pIs
     // [MspyIME] The sample registers "bare Shift, fired on key-up" as the
     // IME-mode preserved key; TSF intercepts it BEFORE the key event sink.
     // Take it over: instead of the sample's raw open/close toggle, run the
-    // Shift-tap flow (commit + separator space + keyboard-open toggle) so
-    // the taskbar 中/英 indicator follows along.
+    // Shift-tap flow (separator space + keyboard-open toggle, composition
+    // preserved) so the taskbar 中/英 indicator follows along.
     if (IsEqualGUID(rguid, Global::SampleIMEGuidImeModePreserveKey))
     {
         if (!Global::IsShiftKeyDownOnly)

@@ -9,6 +9,9 @@ bool SyllableInput::feed(char c) {
     if (!IsFirstKey(c)) return false;
     keys_[0] = c;
     len_ = 1;
+    // Keys that already spell a syllable can be converted right away; the
+    // rest keep an empty candidate list until their final arrives.
+    candidates_ = DecodeSingleKey(c);
     return true;
   }
   if (len_ == 1) {
@@ -26,7 +29,7 @@ bool SyllableInput::feed(char c) {
 bool SyllableInput::backspace() {
   if (len_ == 0) return false;
   --len_;
-  candidates_.clear();
+  candidates_ = len_ == 1 ? DecodeSingleKey(keys_[0]) : std::vector<std::string>{};
   return true;
 }
 

@@ -33,31 +33,6 @@ STDAPI CSampleIME::OnEndEdit(__RPC__in_opt ITfContext *pContext, TfEditCookie ec
     if (SUCCEEDED(pEditRecord->GetSelectionStatus(&isSelectionChanged)) &&
         isSelectionChanged)
     {
-        // [MspyIME] The selection moved. A PURE caret move (no text edit in
-        // the same record) means the user or the app repositioned the caret
-        // — mouse click, programmatic jump — so the last-character class is
-        // stale: forget it, the Shift separator space must not fire at an
-        // unknown position. Typing and our own commits always change text
-        // together with the selection and therefore keep the memory.
-        BOOL textChanged = FALSE;
-        IEnumTfRanges* pEnumTextChanges = nullptr;
-        if (SUCCEEDED(pEditRecord->GetTextAndPropertyUpdates(TF_GTP_INCL_TEXT, nullptr, 0, &pEnumTextChanges)) &&
-            pEnumTextChanges != nullptr)
-        {
-            ITfRange* pChangedRange = nullptr;
-            ULONG cFetched = 0;
-            if (pEnumTextChanges->Next(1, &pChangedRange, &cFetched) == S_OK && cFetched != 0)
-            {
-                textChanged = TRUE;
-                pChangedRange->Release();
-            }
-            pEnumTextChanges->Release();
-        }
-        if (!textChanged && !_IsComposing())
-        {
-            _ResetLastCharClass();
-        }
-
         // If the selection is moved to out side of the current composition,
         // we terminate the composition. This TextService supports only one
         // composition in one context object.

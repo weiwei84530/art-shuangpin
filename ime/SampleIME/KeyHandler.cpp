@@ -169,8 +169,6 @@ HRESULT CSampleIME::_SyncComposer(TfEditCookie ec, _In_ ITfContext *pContext, co
         _DestroyCandidatePresenter();
         _TerminateComposition(ec, pContext);
         // The composer is Empty after producing commit text.
-        _RememberCommittedTail(commitText);
-        _SaveLastCommitCaret(ec, pContext);
     }
 
     const mspy::Composer::State state = pComposer->state();
@@ -503,53 +501,20 @@ HRESULT CSampleIME::_HandleCompositionPunctuation(TfEditCookie ec, _In_ ITfConte
 
 //+---------------------------------------------------------------------------
 //
-// _HandleShiftTap    [MspyIME]
+// _HandleShiftTap / _HandleEnglishInput    [MspyIME]
 //
 //----------------------------------------------------------------------------
 
-namespace
-{
-
-// True if the code point reads as Chinese for separator purposes: Han
-// ideographs (incl. extensions/compat) and bopomofo symbols.
-bool IsCjkCodePoint(UINT32 cp)
-{
-    return (cp >= 0x4E00 && cp <= 0x9FFF) ||    // CJK Unified
-           (cp >= 0x3400 && cp <= 0x4DBF) ||    // Ext A
-           (cp >= 0xF900 && cp <= 0xFAFF) ||    // compat ideographs
-           (cp >= 0x3105 && cp <= 0x312F) ||    // bopomofo
-           (cp >= 0x20000 && cp <= 0x3FFFF);    // Ext B..F
-}
-
-// Decodes the LAST code point of a UTF-16 tail (cch valid units in buf).
-UINT32 LastCodePoint(const WCHAR* buf, ULONG cch)
-{
-    if (cch == 0)
-    {
-        return 0;
-    }
-    WCHAR last = buf[cch - 1];
-    if (last >= 0xDC00 && last <= 0xDFFF && cch >= 2 &&
-        buf[cch - 2] >= 0xD800 && buf[cch - 2] <= 0xDBFF)
-    {
-        return 0x10000 + (((UINT32)(buf[cch - 2] - 0xD800)) << 10) +
-               (last - 0xDC00);
-    }
-    return last;
-}
-
-}  // namespace
-
 HRESULT CSampleIME::_HandleShiftTap(TfEditCookie ec, _In_ ITfContext *pContext)
 {
-    // Separator space, v4 (2026-07-29, passive memory): most hosts never
-    // let an IME read the document (only full TSF apps do), so the decision
-    // uses only what the IME itself knows — _lastCharClass, maintained from
-    // our own commits and from keys watched passing through to the app:
-    //   switching to English: last known char is Chinese     -> one space
-    //   switching to Chinese: last known char is A-Z/a-z/0-9 -> one space
-    //   anything else (space, punctuation, Unknown): none.
-    // A live composition commits first; its tail then plays that role.
+    // Chinese/English switch, v5 (2026-08-08): the tap NEVER commits. A live
+    // composition keeps its underline across the boundary, English joins it
+    // as literal text (see _HandleEnglishInput) and the composer inserts the
+    // half-width separator space where the two scripts meet -- both sides of
+    // that junction are its own text, so the decision needs no guesswork
+    // about the document. Earlier versions committed here and then tried to
+    // remember what the caret was sitting next to; nothing outside a live
+    // composition gets a separator space any more.
     CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
     if (pBridge == nullptr || !pBridge->IsReady())
     {
@@ -560,41 +525,9 @@ HRESULT CSampleIME::_HandleShiftTap(TfEditCookie ec, _In_ ITfContext *pContext)
     CCompartment CompartmentKeyboardOpen(_pThreadMgr, _tfClientId, GUID_COMPARTMENT_KEYBOARD_OPENCLOSE);
     CompartmentKeyboardOpen._GetCompartmentBOOL(isOpen);
 
-    std::string commit;
-    bool addSpace = false;
-    if (isOpen)
-    {
-        // Chinese -> English. feedEnter also closes the candidate menu.
-        mspy::Composer::Result result = pBridge->Composer()->feedEnter();
-        commit = result.commitText;
-        if (!commit.empty())
-        {
-            std::wstring wide = CMspyBridge::ToWide(commit);
-            addSpace = IsCjkCodePoint(LastCodePoint(wide.c_str(), (ULONG)wide.length()));
-        }
-        else
-        {
-            // The memory is only trustworthy while the caret still sits
-            // where our last commit left it; in hosts that never report
-            // caret moves (no selection-changed OnEndEdit), this compare is
-            // the only way to notice a mouse repositioning.
-            addSpace = (_lastCharClass == LASTCHAR_CHINESE) &&
-                       _IsCaretAtLastCommit(ec, pContext);
-        }
-    }
-    else
-    {
-        // English -> Chinese. Digits belong to the English class.
-        addSpace = (_lastCharClass == LASTCHAR_ENGLISH);
-    }
-
-    if (addSpace)
-    {
-        commit += " ";
-    }
-    // The commit path also refreshes _lastCharClass from the commit tail
-    // (a lone separator space classifies as Other, which is correct).
-    _SyncComposer(ec, pContext, commit.c_str());
+    // isOpen means Chinese mode, so this tap is the switch TO English.
+    pBridge->Composer()->switchLanguage(isOpen ? true : false);
+    _SyncComposer(ec, pContext, nullptr);
 
     const BOOL nowOpen = isOpen ? FALSE : TRUE;
     CompartmentKeyboardOpen._SetCompartmentBOOL(nowOpen);
@@ -603,152 +536,23 @@ HRESULT CSampleIME::_HandleShiftTap(TfEditCookie ec, _In_ ITfContext *pContext)
     return S_OK;
 }
 
-//+---------------------------------------------------------------------------
-//
-// _RememberCommittedTail / _ObserveBypassedKey    [MspyIME]
-//
-// The two feeders of _lastCharClass (see SampleIME.h).
-//
-//----------------------------------------------------------------------------
-
-void CSampleIME::_SaveLastCommitCaret(TfEditCookie ec, _In_ ITfContext *pContext)
+HRESULT CSampleIME::_HandleEnglishInput(TfEditCookie ec, _In_ ITfContext *pContext, WCHAR wch)
 {
-    _ClearLastCommitCaret();
-
-    ULONG fetched = 0;
-    TF_SELECTION tfSelection;
-    if (pContext->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &tfSelection, &fetched) != S_OK || fetched == 0)
+    // English mode with a live composition: the character joins the buffer
+    // literally. (With no composition the key never reaches us -- see
+    // _IsKeyEaten -- so plain English typing is untouched.)
+    CMspyBridge* pBridge = _pCompositionProcessorEngine->GetBridge();
+    if (pBridge == nullptr || !pBridge->IsReady())
     {
-        return;
+        return S_OK;
     }
-    ITfRange* pClone = nullptr;
-    if (SUCCEEDED(tfSelection.range->Clone(&pClone)))
+    mspy::Composer::Result result =
+        pBridge->Composer()->feedEnglishChar(static_cast<char>(wch));
+    if (!result.consumed)
     {
-        pClone->Collapse(ec, TF_ANCHOR_END);
-        _pLastCommitCaret = pClone;
-        pContext->AddRef();
-        _pLastCommitContext = pContext;
+        return S_OK;
     }
-    tfSelection.range->Release();
-}
-
-BOOL CSampleIME::_IsCaretAtLastCommit(TfEditCookie ec, _In_ ITfContext *pContext)
-{
-    // Conservative: any doubt (no snapshot, other context, non-empty
-    // selection, failed compare) counts as "moved".
-    if (_pLastCommitCaret == nullptr || _pLastCommitContext != pContext)
-    {
-        return FALSE;
-    }
-
-    ULONG fetched = 0;
-    TF_SELECTION tfSelection;
-    if (pContext->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &tfSelection, &fetched) != S_OK || fetched == 0)
-    {
-        return FALSE;
-    }
-
-    BOOL isEmpty = FALSE;
-    LONG cmp = 1;
-    HRESULT hr = tfSelection.range->IsEmpty(ec, &isEmpty);
-    if (SUCCEEDED(hr) && isEmpty)
-    {
-        hr = tfSelection.range->CompareStart(ec, _pLastCommitCaret, TF_ANCHOR_START, &cmp);
-    }
-    tfSelection.range->Release();
-    return SUCCEEDED(hr) && isEmpty && cmp == 0;
-}
-
-void CSampleIME::_RememberCommittedTail(const std::wstring& text)
-{
-    if (text.empty())
-    {
-        return;
-    }
-    UINT32 cp = LastCodePoint(text.c_str(), (ULONG)text.length());
-    if (IsCjkCodePoint(cp))
-    {
-        _lastCharClass = LASTCHAR_CHINESE;
-    }
-    else if ((cp >= L'A' && cp <= L'Z') || (cp >= L'a' && cp <= L'z') ||
-             (cp >= L'0' && cp <= L'9'))
-    {
-        _lastCharClass = LASTCHAR_ENGLISH;
-    }
-    else
-    {
-        _lastCharClass = LASTCHAR_OTHER;
-    }
-}
-
-void CSampleIME::_ObserveBypassedKey(UINT code)
-{
-    // Bare modifiers say nothing (a bare Shift IS the toggle trigger).
-    switch (code)
-    {
-    case VK_SHIFT: case VK_LSHIFT: case VK_RSHIFT:
-    case VK_CONTROL: case VK_LCONTROL: case VK_RCONTROL:
-    case VK_MENU: case VK_LMENU: case VK_RMENU:
-    case VK_LWIN: case VK_RWIN: case VK_CAPITAL:
-        return;
-    default:
-        break;
-    }
-
-    // Ctrl/Alt chords (paste, undo, app shortcuts) can put anything at the
-    // caret: forget.
-    if (Global::ModifiersValue & (TF_MOD_CONTROL | TF_MOD_LCONTROL | TF_MOD_RCONTROL |
-                                  TF_MOD_ALT | TF_MOD_LALT | TF_MOD_RALT))
-    {
-        _lastCharClass = LASTCHAR_UNKNOWN;
-        return;
-    }
-
-    const bool shiftHeld =
-        (Global::ModifiersValue & (TF_MOD_SHIFT | TF_MOD_LSHIFT | TF_MOD_RSHIFT)) != 0;
-
-    if ((code >= 'A' && code <= 'Z') || (code >= VK_NUMPAD0 && code <= VK_NUMPAD9))
-    {
-        _lastCharClass = LASTCHAR_ENGLISH;
-        return;
-    }
-    if (code >= '0' && code <= '9')
-    {
-        // Shift+digit types punctuation ("!", "@", ...), not a digit.
-        _lastCharClass = shiftHeld ? LASTCHAR_OTHER : LASTCHAR_ENGLISH;
-        return;
-    }
-
-    switch (code)
-    {
-    case VK_SPACE:
-        _lastCharClass = LASTCHAR_OTHER;
-        return;
-
-    // Caret moves, or edits whose result we cannot see: forget.
-    case VK_RETURN: case VK_TAB: case VK_BACK: case VK_DELETE:
-    case VK_LEFT: case VK_RIGHT: case VK_UP: case VK_DOWN:
-    case VK_HOME: case VK_END: case VK_PRIOR: case VK_NEXT:
-    case VK_ESCAPE:
-        _lastCharClass = LASTCHAR_UNKNOWN;
-        return;
-
-    default:
-        break;
-    }
-
-    // Non-typing keys (F1-F24, browser/media/IME keys) change nothing.
-    if ((code >= VK_F1 && code <= VK_F24) ||
-        (code >= VK_BROWSER_BACK && code <= VK_LAUNCH_APP2) ||
-        code == VK_INSERT || code == VK_SNAPSHOT || code == VK_APPS ||
-        code == VK_NUMLOCK || code == VK_SCROLL)
-    {
-        return;
-    }
-
-    // Everything else that reaches the app is punctuation-like output
-    // (OEM keys and their Shift variants).
-    _lastCharClass = LASTCHAR_OTHER;
+    return _SyncComposer(ec, pContext, result.commitText.c_str());
 }
 
 //+---------------------------------------------------------------------------

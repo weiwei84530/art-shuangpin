@@ -78,7 +78,12 @@ enum KEYSTROKE_FUNCTION
     // [MspyIME] Numpad key while composing: commit the whole buffer first,
     // then emit the numpad character literally (like the punctuation
     // commit-and-append idiom). Idle numpad keys pass through untouched.
-    FUNCTION_NUMPAD_COMMIT
+    FUNCTION_NUMPAD_COMMIT,
+
+    // [MspyIME] A key typed in English mode while a composition is live: it
+    // joins the buffer as literal text instead of going to the application,
+    // so one uncommitted string can hold Chinese and English together.
+    FUNCTION_ENGLISH_INPUT
 };
 
 //---------------------------------------------------------------------

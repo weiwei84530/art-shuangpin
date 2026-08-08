@@ -8,7 +8,7 @@
 //                 (8 opens the menu, 9/0 move the cursor, 1-6 select,
 //                 7/8 page). Control tokens:
 //                   <  Backspace                !  Esc
-//                   \n (in piped key mode)      Enter
+//                   #  bare Shift tap (中/英)    \n Enter
 // Piped mode:     each stdin line = whitespace-separated bopomofo readings.
 
 #include <windows.h>
@@ -123,13 +123,22 @@ void RunKeyMode(std::shared_ptr<McBopomofo::McBopomofoLM> lm,
     preferences->record(reading, value, preferred->clock());
     std::cout << "  LEARNED: \"" << value << "\" " << reading << "\n";
   };
+  // '#' stands for the bare Shift tap, so a key sequence can cross the
+  // Chinese/English boundary the way the shell does.
+  bool english = false;
   for (char c : keys) {
     mspy::Composer::Result r;
     switch (c) {
       case '<': r = composer.feedBackspace(); break;
       case '!': r = composer.feedEsc(); break;
       case '\n': r = composer.feedEnter(); break;
-      default: r = composer.feedChar(c); break;
+      case '#':
+        english = !english;
+        r = composer.switchLanguage(english);
+        break;
+      default:
+        r = english ? composer.feedEnglishChar(c) : composer.feedChar(c);
+        break;
     }
     PrintComposerState(composer, r, c);
   }

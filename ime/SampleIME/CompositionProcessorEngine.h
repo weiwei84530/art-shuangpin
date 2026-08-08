@@ -44,6 +44,9 @@ public:
     BOOL IsVirtualKeyNeed(UINT uCode, _In_reads_(1) WCHAR *pwch, BOOL fComposing, CANDIDATE_MODE candidateMode, BOOL hasCandidateWithWildcard, _Out_opt_ _KEYSTROKE_STATE *pKeyState);
     // [MspyIME] Composer-driven replacement for IsVirtualKeyNeed.
     BOOL IsVirtualKeyNeedMspy(UINT uCode, _In_reads_(1) WCHAR *pwch, _Out_opt_ _KEYSTROKE_STATE *pKeyState);
+    // [MspyIME] Routing while the keyboard is closed (English mode): only a
+    // live composition takes keys, so they can join it as literal text.
+    BOOL IsVirtualKeyNeedMspyEnglish(UINT uCode, _In_reads_(1) WCHAR *pwch, _Out_opt_ _KEYSTROKE_STATE *pKeyState);
 
     BOOL AddVirtualKey(WCHAR wch);
     void RemoveVirtualKey(DWORD_PTR dwIndex);

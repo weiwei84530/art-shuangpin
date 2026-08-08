@@ -1,6 +1,7 @@
 #include "composer.h"
 
 #include <chrono>
+#include <cstdint>
 #include <utility>
 
 #include "double_pinyin.h"
@@ -65,6 +66,47 @@ size_t LastUtf8CharBytes(const std::string& s) {
   size_t i = s.size();
   while (i > 0 && (static_cast<unsigned char>(s[i - 1]) & 0xC0) == 0x80) --i;
   return s.size() - (i > 0 ? i - 1 : 0);
+}
+
+// Decodes the LAST UTF-8 code point of `s` (0 when empty or malformed).
+uint32_t LastCodePoint(const std::string& s) {
+  if (s.empty()) return 0;
+  size_t i = s.size();
+  while (i > 0 && (static_cast<unsigned char>(s[i - 1]) & 0xC0) == 0x80) --i;
+  if (i == 0) return 0;
+  --i;
+  const unsigned char lead = static_cast<unsigned char>(s[i]);
+  uint32_t cp = 0;
+  if (lead < 0x80) {
+    return lead;
+  } else if ((lead & 0xE0) == 0xC0) {
+    cp = lead & 0x1Fu;
+  } else if ((lead & 0xF0) == 0xE0) {
+    cp = lead & 0x0Fu;
+  } else if ((lead & 0xF8) == 0xF0) {
+    cp = lead & 0x07u;
+  } else {
+    return 0;
+  }
+  for (size_t k = i + 1; k < s.size(); ++k) {
+    cp = (cp << 6) | (static_cast<unsigned char>(s[k]) & 0x3Fu);
+  }
+  return cp;
+}
+
+// Code points the separator space applies to: Han ideographs and bopomofo
+// on one side, ASCII word characters on the other.
+bool IsChineseCodePoint(uint32_t cp) {
+  return (cp >= 0x4E00 && cp <= 0x9FFF) ||    // CJK Unified
+         (cp >= 0x3400 && cp <= 0x4DBF) ||    // Ext A
+         (cp >= 0xF900 && cp <= 0xFAFF) ||    // compat ideographs
+         (cp >= 0x3105 && cp <= 0x312F) ||    // bopomofo
+         (cp >= 0x20000 && cp <= 0x3FFFF);    // Ext B..F
+}
+
+bool IsAsciiWordCodePoint(uint32_t cp) {
+  return (cp >= 'A' && cp <= 'Z') || (cp >= 'a' && cp <= 'z') ||
+         (cp >= '0' && cp <= '9');
 }
 
 // Returns the number of bytes of the first UTF-8 code point in `s`.
@@ -252,13 +294,11 @@ void Composer::jumpCursor(bool toStart) {
 }
 
 bool Composer::finalizePendingBare() {
-  if (!pending_.complete()) return false;
+  if (!pending_.convertible()) return false;
   for (const auto& syllable : pending_.candidates()) {
     if (insertReading(syllable)) {  // bare reading = tone 1 or neutral
       unsettled_.active = true;
-      unsettled_.toneGiven = false;
       unsettled_.syllables = pending_.candidates();
-      unsettled_.keys = pending_.rawKeys();
       unsettled_.display = syllable;
       pending_.clear();
       return true;
@@ -269,14 +309,11 @@ bool Composer::finalizePendingBare() {
 
 bool Composer::applyToneToPending(char digit) {
   const char* mark = ToneMark(digit);
-  if (mark == nullptr || !pending_.complete()) return false;
+  if (mark == nullptr || !pending_.convertible()) return false;
   for (const auto& syllable : pending_.candidates()) {
     if (insertReading(syllable + mark)) {
-      unsettled_.active = true;
-      unsettled_.toneGiven = true;
-      unsettled_.syllables = pending_.candidates();
-      unsettled_.keys = pending_.rawKeys();
-      unsettled_.display = syllable + mark;
+      // A toned syllable is settled at once: the character appears now.
+      unsettled_ = {};
       pending_.clear();
       return true;
     }
@@ -287,17 +324,17 @@ bool Composer::applyToneToPending(char digit) {
 bool Composer::applyToneToUnsettled(char digit) {
   const char* mark = ToneMark(digit);
   if (mark == nullptr || grid_.length() == 0) return false;
+  const std::vector<std::string> syllables = unsettled_.syllables;
   grid_.deleteReadingBeforeCursor();
-  for (const auto& syllable : unsettled_.syllables) {
+  for (const auto& syllable : syllables) {
     if (insertReading(syllable + mark)) {
-      unsettled_.toneGiven = true;
-      unsettled_.display = syllable + mark;
+      unsettled_ = {};  // toned means settled: show the character
       return true;
     }
   }
   // No entry for that tone: restore the bare syllable, still untoned, so
   // the next tone digit gets its chance.
-  for (const auto& syllable : unsettled_.syllables) {
+  for (const auto& syllable : syllables) {
     if (insertReading(syllable)) {
       unsettled_.display = syllable;
       return false;
@@ -307,31 +344,12 @@ bool Composer::applyToneToUnsettled(char digit) {
   return false;
 }
 
-void Composer::undoUnsettledTone() {
-  if (!unsettled_.active || !unsettled_.toneGiven) return;
-  grid_.deleteReadingBeforeCursor();
-  for (const auto& syllable : unsettled_.syllables) {
-    if (insertReading(syllable)) {
-      unsettled_.toneGiven = false;
-      unsettled_.display = syllable;
-      return;
-    }
-  }
-  // The syllable only exists with a tone (ㄗㄨㄟ has no tone-1 entry), so
-  // it cannot live in the grid untoned: put it back where it came from, in
-  // the pending slot, awaiting another tone digit.
-  walk_ = grid_.walk();
-  const std::string keys = unsettled_.keys;
-  unsettled_ = {};
-  for (char key : keys) pending_.feed(key);
-}
-
 void Composer::settlePending() {
   if (!pending_.empty()) {
-    // A complete syllable with a tone-1/neutral entry converts; anything
-    // else (half syllable, or a syllable no toneless entry accepts)
-    // settles as its bopomofo symbols, exactly like '`'.
-    if (!(pending_.complete() && finalizePendingBare())) {
+    // A syllable with a tone-1/neutral entry converts; anything else (a
+    // lone ㄅ, or a syllable no toneless entry accepts) settles as its
+    // bopomofo symbols, exactly like '`'.
+    if (!finalizePendingBare()) {
       std::string symbols = pending_.displayText();
       pending_.clear();
       insertLiteralText(symbols);
@@ -342,10 +360,10 @@ void Composer::settlePending() {
 }
 
 std::string Composer::takeCommitText() {
-  // A complete-but-toneless syllable joins the commit; a half-typed or
-  // tone-awaiting-only syllable is dropped (as Windows Bopomofo drops
-  // trailing unconverted bopomofo).
-  if (pending_.complete()) finalizePendingBare();
+  // A toneless syllable joins the commit; a half-typed or tone-awaiting-only
+  // syllable is dropped (as Windows Bopomofo drops trailing unconverted
+  // bopomofo).
+  if (pending_.convertible()) finalizePendingBare();
   std::string text;
   for (const auto& v : walk_.valuesAsStrings()) text += v;
   // Phrases that reach the application without needing a correction are the
@@ -431,25 +449,22 @@ Composer::Result Composer::feedChar(char c) {
   }
 
   // Digits split cleanly on whether something is unsettled. While it is,
-  // they only ever type tones (mirrored, so either hand can reach them)
-  // and never act as control keys; the control meanings come back once the
-  // syllable is settled, which is what Space is for.
+  // they only ever type tones (mirrored, so either hand can reach them) and
+  // never act as control keys; the control meanings come back the moment the
+  // syllable settles -- which the tone digit itself does.
   if (c >= '0' && c <= '9') {
     if (anythingUnsettled()) {
-      if (!unsettled_.toneGiven) {
-        const char tone = ToneDigit(c);
-        if (pending_.complete()) {
-          // No tone-less entry accepted this syllable (ㄗㄨㄟ): it is still
-          // pending and the tone digit is what puts it in the grid.
-          applyToneToPending(tone);
-        } else if (pending_.empty() && unsettled_.active) {
-          applyToneToUnsettled(tone);
-        }
-        // A half syllable (ㄋ) has no tone to take: eaten.
-        updateStateAfterMutation();
+      const char tone = ToneDigit(c);
+      if (pending_.convertible()) {
+        // Either no tone-less entry accepted this syllable (ㄗㄨㄟ) or only
+        // the first key is typed (ㄗ): the tone digit is what puts it in
+        // the grid.
+        applyToneToPending(tone);
+      } else if (pending_.empty() && unsettled_.active) {
+        applyToneToUnsettled(tone);
       }
-      // Tone already given: eaten, so a mistyped tone is corrected with
-      // Backspace rather than by a second digit.
+      // A key that spells no syllable yet (ㄅ) has no tone to take: eaten.
+      updateStateAfterMutation();
       return {true, ""};
     }
     if (!composing) return {true, ""};  // idle: the digit row is disabled
@@ -559,13 +574,6 @@ Composer::Result Composer::feedBackspace() {
 
   if (!pending_.empty()) {
     pending_.backspace();
-  } else if (unsettled_.active && unsettled_.toneGiven) {
-    // Take back just the tone digit, leaving the syllable unsettled and
-    // untoned: this is how a mistyped tone is fixed, since a second tone
-    // digit is ignored.
-    undoUnsettledTone();
-    updateStateAfterMutation();
-    return {true, ""};
   } else if (grid_.length() > 0) {
     grid_.deleteReadingBeforeCursor();
     walk_ = grid_.walk();
@@ -589,6 +597,36 @@ Composer::Result Composer::feedEsc() {
   // Selecting or Composing: cancel the whole composition (the menu, if
   // open, closes as part of the reset).
   reset();
+  return {true, ""};
+}
+
+Composer::Result Composer::feedEnglishChar(char c) {
+  // English mode only reaches the composer while a composition is live: the
+  // character joins it as literal text so one uncommitted buffer can hold
+  // both scripts. With nothing composing the shell never calls us and the
+  // key goes straight to the application.
+  if (state_ == State::kEmpty) return {false, ""};
+  if (state_ == State::kSelecting) dismissMenu();
+  hollowFinal_ = false;
+  settlePending();
+  insertLiteralText(std::string(1, c));
+  updateStateAfterMutation();
+  return {true, ""};
+}
+
+Composer::Result Composer::switchLanguage(bool toEnglish) {
+  if (state_ == State::kEmpty) return {false, ""};
+  if (state_ == State::kSelecting) dismissMenu();
+  hollowFinal_ = false;
+  settlePending();
+  // Both sides of the junction are inside our own buffer, so the separator
+  // decision is exact: Chinese before an English run, an English word
+  // character before Chinese. Punctuation and an existing space add nothing.
+  const uint32_t cp = LastCodePoint(displaySegments().before);
+  if (toEnglish ? IsChineseCodePoint(cp) : IsAsciiWordCodePoint(cp)) {
+    insertLiteralText(" ");
+  }
+  updateStateAfterMutation();
   return {true, ""};
 }
 

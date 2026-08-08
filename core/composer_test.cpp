@@ -40,6 +40,11 @@ class ComposerTest : public ::testing::Test {
     inner->add("ㄏㄠˇ", "郝", -7);
     inner->add("ㄋㄧˇ-ㄏㄠˇ", "你好", -1);
     inner->add("ㄋㄧˇ-ㄏㄠˇ", "妳好", -4);
+    // Syllables a LONE first key spells by itself (z -> ㄗ, u -> ㄕ...).
+    inner->add("ㄗ", "資", -4);
+    inner->add("ㄗˋ", "字", -3);
+    inner->add("ㄕ", "師", -4);
+    inner->add("ㄕˋ", "是", -2);
     lm_ = std::make_shared<RelaxedToneLM>(inner);
     composer_ = std::make_unique<Composer>(lm_);
   }
@@ -49,10 +54,10 @@ class ComposerTest : public ::testing::Test {
     for (char c : keys) composer_->feedChar(c);
   }
 
-  // Space with a syllable in progress: settles it into its character
-  // without committing. Most tests need this before they can see converted
-  // text or use the control digits (2026-08-04: a tone digit alone leaves
-  // the syllable unsettled, and digits are tone keys until it settles).
+  // Space with a TONELESS syllable in progress: settles it into its
+  // character without committing. A toned syllable settles itself, so this
+  // is only for the tone-1/neutral default — with nothing left to settle
+  // Space would commit the buffer instead.
   void Settle() { composer_->feedChar(' '); }
 
   std::shared_ptr<RelaxedToneLM> lm_;
@@ -77,21 +82,20 @@ TEST_F(ComposerTest, SecondKeyKeepsBopomofoUntilSettled) {
   EXPECT_EQ(composer_->composedText(), "中");
 }
 
-TEST_F(ComposerTest, ToneDigitKeepsBopomofoUntilSettled) {
-  // 2026-08-04: a tone digit no longer settles the syllable either — the
-  // bopomofo stays, now carrying its tone mark.
+TEST_F(ComposerTest, ToneDigitSettlesTheSyllable) {
+  // 2026-08-08: the tone digit turns the bopomofo into its character right
+  // away, exactly like Space does for the toneless default.
   Type("vs3");
-  EXPECT_EQ(composer_->composedText(), "ㄓㄨㄥˇ");
-  EXPECT_EQ(composer_->unconfirmedTail(), "ㄓㄨㄥˇ");
+  EXPECT_EQ(composer_->composedText(), "種");
+  EXPECT_EQ(composer_->unconfirmedTail(), "");
 
-  // A second tone digit is eaten: tones are corrected with Backspace.
-  auto r = composer_->feedChar('2');
+  // Settled means the digits are control keys again: 9 moves the cursor
+  // instead of typing tone 2.
+  auto r = composer_->feedChar('9');
   EXPECT_TRUE(r.consumed);
   EXPECT_EQ(r.commitText, "");
-  EXPECT_EQ(composer_->composedText(), "ㄓㄨㄥˇ");
-
-  Settle();
   EXPECT_EQ(composer_->composedText(), "種");
+  EXPECT_EQ(composer_->displaySegments().highlighted, "種");
 }
 
 TEST_F(ComposerTest, MirroredToneDigits) {
@@ -99,82 +103,101 @@ TEST_F(ComposerTest, MirroredToneDigits) {
   // mirrored around the 5/6 gap on the right (0=1, 9=2, 8=3, 7=4, 6=5).
   const struct {
     const char* keys;
-    const char* display;
     const char* settled;
   } kCases[] = {
-      {"de0", "ㄉㄜˉ", "得"},  // explicit tone 1
-      {"de9", "ㄉㄜˊ", "德"},
-      {"vs8", "ㄓㄨㄥˇ", "種"},
-      {"ul7", "ㄕㄞˋ", "曬"},
-      {"de6", "ㄉㄜ˙", "的"},
+      {"de0", "得"},  // explicit tone 1
+      {"de9", "德"},
+      {"vs8", "種"},
+      {"ul7", "曬"},
+      {"de6", "的"},
   };
   for (const auto& c : kCases) {
     composer_->feedEsc();
     Type(c.keys);
-    EXPECT_EQ(composer_->composedText(), c.display) << c.keys;
-    Settle();
     EXPECT_EQ(composer_->composedText(), c.settled) << c.keys;
   }
 }
 
-TEST_F(ComposerTest, ControlDigitsAreEatenWhileUnsettled) {
-  // With a tone already given, every digit and '-'/'=' is eaten: the
-  // control keys only come back once the syllable is settled.
-  Type("ni3hk3");
-  EXPECT_EQ(composer_->composedText(), "你ㄏㄠˇ");
-  for (const char* key : {"8", "9", "0", "-", "="}) {
+TEST_F(ComposerTest, DigitsAreTonesUntilTheSyllableSettles) {
+  // While the syllable shows bopomofo every digit is a tone digit, so the
+  // cursor keys are out of reach; '-'/'=' are eaten for the same reason.
+  Type("ni3hk");
+  EXPECT_EQ(composer_->composedText(), "你ㄏㄠ");
+  for (const char* key : {"-", "="}) {
     auto r = composer_->feedChar(key[0]);
     EXPECT_TRUE(r.consumed) << key;
     EXPECT_EQ(r.commitText, "") << key;
-    EXPECT_EQ(composer_->state(), Composer::State::kComposing) << key;
-    EXPECT_EQ(composer_->composedText(), "你ㄏㄠˇ") << key;
+    EXPECT_EQ(composer_->composedText(), "你ㄏㄠ") << key;
   }
 
-  // Settled: 8 opens the menu again.
-  Settle();
+  // 8 is tone 3 here, not the menu key — and it settles the syllable.
+  Type("8");
   EXPECT_EQ(composer_->composedText(), "你好");
+
+  // Settled: the same 8 opens the menu.
   Type("8");
   EXPECT_EQ(composer_->state(), Composer::State::kSelecting);
 }
 
-TEST_F(ComposerTest, BackspaceTakesBackOnlyTheTone) {
-  // The syllable is in the grid untoned (ㄓㄨㄥ exists), so Backspace
-  // returns it to the untoned unsettled state and another tone can be typed.
+TEST_F(ComposerTest, BackspaceDeletesTheTonedSyllable) {
+  // A tone digit settles its syllable, so there is no tone left to take
+  // back: Backspace removes the character and the syllable is retyped.
   Type("vs3");
-  EXPECT_EQ(composer_->composedText(), "ㄓㄨㄥˇ");
-  composer_->feedBackspace();
-  EXPECT_EQ(composer_->composedText(), "ㄓㄨㄥ");
-  Type("3");  // the tone window reopened
-  EXPECT_EQ(composer_->composedText(), "ㄓㄨㄥˇ");
-  Settle();
   EXPECT_EQ(composer_->composedText(), "種");
-  composer_->feedEsc();
+  composer_->feedBackspace();
+  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
 
-  // ㄕㄞ has no toneless entry, so it cannot sit in the grid untoned:
-  // Backspace puts it back in the pending slot, still awaiting a tone.
+  // Same for a syllable that only exists with a tone (ㄕㄞ).
   Type("ul4");
-  EXPECT_EQ(composer_->composedText(), "ㄕㄞˋ");
-  composer_->feedBackspace();
-  EXPECT_EQ(composer_->composedText(), "ㄕㄞ");
-  Type("4");
-  Settle();
   EXPECT_EQ(composer_->composedText(), "曬");
-
-  // One more Backspace past the untoned syllable deletes it outright.
-  composer_->feedEsc();
-  Type("vs3");
   composer_->feedBackspace();
+  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
+
+  // An untoned syllable is still in the grid, and goes the same way.
+  Type("vs");
+  EXPECT_EQ(composer_->composedText(), "ㄓㄨㄥ");
   composer_->feedBackspace();
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
 }
 
+TEST_F(ComposerTest, LoneFirstKeyConvertsWithATone) {
+  // A first key whose bopomofo is already a syllable needs no final: 字 is
+  // two keystrokes (z, tone 4).
+  Type("z4");
+  EXPECT_EQ(composer_->composedText(), "字");
+  EXPECT_EQ(composer_->feedEnter().commitText, "字");
+
+  // Space takes the tone-1/neutral default, as everywhere else.
+  Type("z");
+  EXPECT_EQ(composer_->composedText(), "ㄗ");
+  Settle();
+  EXPECT_EQ(composer_->composedText(), "資");
+  composer_->feedEsc();
+
+  // Enter converts it too, rather than dropping it as unfinished input.
+  Type("u4");
+  EXPECT_EQ(composer_->feedEnter().commitText, "是");
+
+  // The key still takes a final instead when one follows (ㄕ -> ㄕㄞ).
+  Type("ul4");
+  EXPECT_EQ(composer_->composedText(), "曬");
+  composer_->feedEsc();
+
+  // A key that spells no syllable on its own (ㄋ) ignores the tone digit
+  // and keeps waiting for its final.
+  Type("n");
+  auto r = composer_->feedChar('4');
+  EXPECT_TRUE(r.consumed);
+  EXPECT_EQ(composer_->composedText(), "ㄋ");
+  Type("i3");
+  EXPECT_EQ(composer_->composedText(), "你");
+}
+
 TEST_F(ComposerTest, SpecSyllables) {
   Type("ul4");
-  Settle();
   EXPECT_EQ(composer_->composedText(), "曬");
   composer_->feedEsc();
   Type("oj3");
-  Settle();
   EXPECT_EQ(composer_->composedText(), "俺");
   composer_->feedEsc();
   Type("x;");
@@ -190,17 +213,14 @@ TEST_F(ComposerTest, StrictToneSemantics) {
   composer_->feedEsc();
 
   Type("de1");
-  Settle();
   EXPECT_EQ(composer_->composedText(), "得");  // explicit 1: strictly tone 1
   composer_->feedEsc();
 
   Type("de2");
-  Settle();
   EXPECT_EQ(composer_->composedText(), "德");
   composer_->feedEsc();
 
   Type("de5");
-  Settle();
   EXPECT_EQ(composer_->composedText(), "的");
   composer_->feedEsc();
 
@@ -209,13 +229,11 @@ TEST_F(ComposerTest, StrictToneSemantics) {
   EXPECT_EQ(composer_->composedText(), "窝");  // 我 requires wo3
   composer_->feedEsc();
   Type("wo3");
-  Settle();
   EXPECT_EQ(composer_->composedText(), "我");
 }
 
 TEST_F(ComposerTest, PhraseConversion) {
   Type("ni3hk3");
-  Settle();
   EXPECT_EQ(composer_->composedText(), "你好");
 }
 
@@ -227,8 +245,6 @@ TEST_F(ComposerTest, HalfSyllableDisplaysInitial) {
   Type("l");
   EXPECT_EQ(composer_->composedText(), "ㄕㄞ");
   Type("4");
-  EXPECT_EQ(composer_->composedText(), "ㄕㄞˋ");
-  Settle();
   EXPECT_EQ(composer_->composedText(), "曬");
 }
 
@@ -260,10 +276,8 @@ TEST_F(ComposerTest, SpacePassesThroughWhenIdleAndCommitsOnceSettled) {
   EXPECT_EQ(r.commitText, "中");
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
 
-  // A toned syllable is unsettled too, so it takes the same two Spaces.
+  // A toned syllable settled itself, so one Space commits it.
   Type("vs3");
-  r = composer_->feedChar(' ');
-  EXPECT_EQ(r.commitText, "");
   EXPECT_EQ(composer_->composedText(), "種");
   r = composer_->feedChar(' ');
   EXPECT_EQ(r.commitText, "種");
@@ -272,7 +286,6 @@ TEST_F(ComposerTest, SpacePassesThroughWhenIdleAndCommitsOnceSettled) {
 
 TEST_F(ComposerTest, CursorMovementAndMidBufferEditing) {
   Type("ni3hk3");  // 你好
-  Settle();
   EXPECT_EQ(composer_->composedText(), "你好");
 
   // 9 moves left: cursor between 你 and 好; 8 opens the menu there. The
@@ -293,7 +306,6 @@ TEST_F(ComposerTest, CursorMovementAndMidBufferEditing) {
   // Move to the very front and insert 我 there.
   Type("9");
   Type("wo3");
-  Settle();
   EXPECT_EQ(composer_->composedText(), "我你好");
 
   // Segments: caret after 我, tone settled everywhere; 你 (right of the
@@ -311,7 +323,6 @@ TEST_F(ComposerTest, CursorMovementAndMidBufferEditing) {
 
 TEST_F(ComposerTest, CursorWrapsAtBothEnds) {
   Type("ni3hk3");  // 你好, cursor at the right end (2)
-  Settle();
   auto segments = composer_->displaySegments();
   EXPECT_EQ(segments.highlighted, "");  // nothing right of the cursor
 
@@ -333,7 +344,6 @@ TEST_F(ComposerTest, CursorWrapsAtBothEnds) {
 
 TEST_F(ComposerTest, MinusJumpsCursorToStart) {
   Type("ni3hk3");  // 你好, cursor at the right end
-  Settle();
   Type("-");
   auto segments = composer_->displaySegments();
   EXPECT_EQ(segments.before, "");
@@ -343,7 +353,6 @@ TEST_F(ComposerTest, MinusJumpsCursorToStart) {
 
 TEST_F(ComposerTest, EqualsJumpsCursorToEnd) {
   Type("ni3hk3");
-  Settle();
   Type("-");  // cursor jumped to the front
   Type("=");
   auto segments = composer_->displaySegments();
@@ -354,7 +363,6 @@ TEST_F(ComposerTest, EqualsJumpsCursorToEnd) {
 
 TEST_F(ComposerTest, MinusWhileSelectingDismissesMenuAndJumps) {
   Type("ni3hk3");
-  Settle();
   Type("9");  // cursor between 你 and 好
   Type("8");
   ASSERT_EQ(composer_->state(), Composer::State::kSelecting);
@@ -386,10 +394,11 @@ TEST_F(ComposerTest, PunctuationSettlesAndJoinsTheComposition) {
   EXPECT_EQ(composer_->composedText(), "，");
   composer_->feedEsc();
 
-  // With a syllable in progress it settles it — even one that has been
-  // given a tone but not yet settled — and appends itself.
-  Type("ul4");
-  EXPECT_EQ(composer_->composedText(), "ㄕㄞˋ");
+  // With a syllable in progress it settles it and appends itself.
+  Type("ul");
+  EXPECT_EQ(composer_->composedText(), "ㄕㄞ");
+  Type("4");
+  EXPECT_EQ(composer_->composedText(), "曬");
   r = composer_->feedChar('.');
   EXPECT_EQ(r.commitText, "");
   EXPECT_EQ(composer_->composedText(), "曬。");
@@ -397,7 +406,6 @@ TEST_F(ComposerTest, PunctuationSettlesAndJoinsTheComposition) {
   // The sentence keeps composing across the punctuation, and it all
   // commits together on Enter.
   Type("vs3");
-  Settle();
   EXPECT_EQ(composer_->composedText(), "曬。種");
   EXPECT_EQ(composer_->feedEnter().commitText, "曬。種");
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
@@ -454,11 +462,7 @@ TEST_F(ComposerTest, UnconfirmedTailTracksToneSettlement) {
   EXPECT_EQ(composer_->composedText(), "ㄨㄛ");
   EXPECT_EQ(composer_->unconfirmedTail(), "ㄨㄛ");
 
-  Type("3");  // toned, still unsettled: the tone mark joins the bopomofo
-  EXPECT_EQ(composer_->composedText(), "ㄨㄛˇ");
-  EXPECT_EQ(composer_->unconfirmedTail(), "ㄨㄛˇ");
-
-  Settle();  // settled -> everything confirmed
+  Type("3");  // the tone settles it: character out, nothing unconfirmed
   EXPECT_EQ(composer_->composedText(), "我");
   EXPECT_EQ(composer_->unconfirmedTail(), "");
   composer_->feedEsc();
@@ -517,7 +521,6 @@ TEST_F(ComposerTest, SelectionFlow) {
 TEST_F(ComposerTest, SelectionMovesCursorPastTheFixedSpan) {
   // 你好你好 with the cursor jumped back to the front.
   Type("ni3hk3ni3hk3");
-  Settle();
   Type("-");
   ASSERT_EQ(composer_->displaySegments().highlighted, "你");
 
@@ -615,7 +618,6 @@ TEST_F(ComposerTest, MenuPagingNoWrap) {
 TEST_F(ComposerTest, AnyOtherKeyClosesMenuAndActs) {
   // 9/0 close the menu and move the cursor.
   Type("ni3hk3");
-  Settle();
   Type("8");
   ASSERT_EQ(composer_->state(), Composer::State::kSelecting);
   Type("9");
@@ -626,7 +628,6 @@ TEST_F(ComposerTest, AnyOtherKeyClosesMenuAndActs) {
   Type("8");
   ASSERT_EQ(composer_->state(), Composer::State::kSelecting);
   Type("wo3");
-  Settle();
   EXPECT_EQ(composer_->state(), Composer::State::kComposing);
   EXPECT_EQ(composer_->composedText(), "你我好");
 
@@ -647,7 +648,6 @@ TEST_F(ComposerTest, AnyOtherKeyClosesMenuAndActs) {
 
 TEST_F(ComposerTest, MenuOpensAtLastCharWhenCursorAtEnd) {
   Type("ni3hk3");  // cursor at the right end
-  Settle();
   Type("8");
   ASSERT_EQ(composer_->state(), Composer::State::kSelecting);
   bool foundAlternative = false;
@@ -677,8 +677,6 @@ TEST_F(ComposerTest, ToneWithNoDictionaryEntryLeavesTheWindowOpen) {
   Type("vs2");
   EXPECT_EQ(composer_->composedText(), "ㄓㄨㄥ");
   Type("3");
-  EXPECT_EQ(composer_->composedText(), "ㄓㄨㄥˇ");
-  Settle();
   EXPECT_EQ(composer_->composedText(), "種");
 }
 
@@ -724,7 +722,6 @@ TEST_F(ComposerTest, BacktickSettlesPendingBopomofo) {
 
   // Chinese continues around the settled symbol; Enter commits both.
   Type("vs3");
-  Settle();
   EXPECT_EQ(composer_->composedText(), "ㄋ種");
   EXPECT_EQ(composer_->feedEnter().commitText, "ㄋ種");
 
@@ -815,7 +812,6 @@ class ComposerLearningTest : public ComposerTest {
 
 TEST_F(ComposerLearningTest, MultiCharacterPickIsLearnedAsItself) {
   Type("ni3hk3");
-  Settle();
   Type("-");  // anchor the first character
   PickByValue("妳好");
   ASSERT_EQ(learned.size(), 1u);
@@ -827,7 +823,6 @@ TEST_F(ComposerLearningTest, SingleCharacterPickLearnsItsLeftContext) {
   // Picking 郝 on its own would be a global preference for ㄏㄠˇ, which
   // says nothing about when the user wants it. The phrase does.
   Type("ni3hk3");
-  Settle();
   Type("9");  // anchor the second character
   ASSERT_EQ(composer_->displaySegments().highlighted, "好");
   PickByValue("郝");
@@ -839,7 +834,6 @@ TEST_F(ComposerLearningTest, SingleCharacterPickLearnsItsLeftContext) {
 TEST_F(ComposerLearningTest, SingleCharacterPickFallsBackToTheRightContext) {
   // Nothing to the left of the first character, so pair rightwards.
   Type("hk3ni3");
-  Settle();
   Type("-");  // anchor the first character
   ASSERT_EQ(composer_->displaySegments().highlighted, "好");
   PickByValue("郝");
@@ -854,7 +848,6 @@ TEST_F(ComposerLearningTest, NoPhraseIsLearnedAcrossPunctuation) {
   Type("ni3hk3");
   composer_->feedChar(',');
   Type("hk3");
-  Settle();
   Type("9");
   ASSERT_EQ(composer_->displaySegments().highlighted, "好");
   PickByValue("郝");
@@ -865,7 +858,6 @@ TEST_F(ComposerLearningTest, CommitReportsThePhrasesItUsed) {
   // Phrases that reach the application unaided are the working vocabulary
   // the shell refreshes so they do not decay out of the store.
   Type("ni3hk3");
-  Settle();
   EXPECT_EQ(composer_->feedEnter().commitText, "你好");
   ASSERT_EQ(used.size(), 1u);
   EXPECT_EQ(used[0].first, "ㄋㄧˇ-ㄏㄠˇ");
@@ -874,9 +866,80 @@ TEST_F(ComposerLearningTest, CommitReportsThePhrasesItUsed) {
   // Single characters are not phrases and are not reported.
   used.clear();
   Type("wo3");
-  Settle();
   composer_->feedEnter();
   EXPECT_TRUE(used.empty());
+}
+
+// English mode inside a live composition: the buffer survives the switch
+// and holds both scripts until it commits (2026-08-08).
+TEST_F(ComposerTest, EnglishJoinsTheUncommittedComposition) {
+  Type("ni3hk3");
+  EXPECT_EQ(composer_->composedText(), "你好");
+
+  // Switching to English settles what is in progress and drops in the
+  // separator space; nothing is committed.
+  auto r = composer_->switchLanguage(/*toEnglish=*/true);
+  EXPECT_TRUE(r.consumed);
+  EXPECT_EQ(r.commitText, "");
+  EXPECT_EQ(composer_->composedText(), "你好 ");
+
+  for (char c : std::string("a Test")) composer_->feedEnglishChar(c);
+  EXPECT_EQ(composer_->composedText(), "你好 a Test");
+  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
+
+  // Switching back adds the closing separator, and Chinese carries on in
+  // the same buffer.
+  composer_->switchLanguage(/*toEnglish=*/false);
+  EXPECT_EQ(composer_->composedText(), "你好 a Test ");
+  Type("vs3");
+  EXPECT_EQ(composer_->composedText(), "你好 a Test 種");
+
+  // One commit, one string.
+  EXPECT_EQ(composer_->feedEnter().commitText, "你好 a Test 種");
+  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
+}
+
+TEST_F(ComposerTest, EnglishIsDeletableAndSelectableLikeAnyLiteral) {
+  Type("ni3hk3");
+  composer_->switchLanguage(true);
+  for (char c : std::string("ab")) composer_->feedEnglishChar(c);
+  EXPECT_EQ(composer_->composedText(), "你好 ab");
+
+  composer_->feedBackspace();
+  EXPECT_EQ(composer_->composedText(), "你好 a");
+  composer_->feedBackspace();
+  composer_->feedBackspace();  // the separator space
+  EXPECT_EQ(composer_->composedText(), "你好");
+}
+
+TEST_F(ComposerTest, SeparatorSpaceOnlyWhereTheScriptsMeet) {
+  // Punctuation on the boundary needs no space.
+  composer_->feedChar(',');
+  composer_->switchLanguage(true);
+  EXPECT_EQ(composer_->composedText(), "，");
+  composer_->feedEnglishChar('a');
+  EXPECT_EQ(composer_->composedText(), "，a");
+
+  // ...and neither does a space that is already there.
+  composer_->feedEnglishChar(' ');
+  composer_->switchLanguage(false);
+  EXPECT_EQ(composer_->composedText(), "，a ");
+  composer_->feedEsc();
+
+  // A bopomofo symbol counts as Chinese.
+  Type("n`");
+  composer_->switchLanguage(true);
+  EXPECT_EQ(composer_->composedText(), "ㄋ ");
+}
+
+TEST_F(ComposerTest, LanguageSwitchWithNothingComposingIsNotConsumed) {
+  // With an empty buffer the switch is a pure mode flip for the shell, and
+  // English keys go straight to the application.
+  auto r = composer_->switchLanguage(true);
+  EXPECT_FALSE(r.consumed);
+  r = composer_->feedEnglishChar('a');
+  EXPECT_FALSE(r.consumed);
+  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
 }
 
 TEST_F(ComposerTest, EscCancelsSelectionAndComposition) {
