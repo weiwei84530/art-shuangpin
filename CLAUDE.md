@@ -39,10 +39,17 @@ cli\    REPL 測試臺（日常開發主力，不碰 TSF）
 
 ## Git 約定（覆寫全域規則）
 
-- 純本地 repo，**無 remote、不 push**。
+- **有 remote**：`origin` = https://github.com/weiwei84530/art-shuangpin （公開）。
+  **commit 自動；push 與發佈 Release 一律等使用者明確指示。**
 - **自動 commit**：使用者授權 agent 全權保管版本，做完一組有意義的修改就 commit，不需徵求同意。
 - 直接在當前分支操作，不開分支/worktree。
 - Commit message 英文、一行摘要＋必要時補充；**訊息要具體**（使用者靠它回溯，例如 "Port MemoryMappedFile to Win32 file mapping" 而非 "update engine"）。
+- **語言分工（覆寫全域「Git 相關描述一律英文」）**：
+  - **英文**：commit message、tag 註解、分支名、程式碼與註解。
+  - **繁體中文**：`README.md`、**GitHub Release 的標題與內文**、`docs/` 底下所有文件、本檔。
+    理由：這些是寫給使用者看的說明，性質與 docs 相同；且 v0.2 起每一版 Release 內文都是中文，
+    版本頁的語言必須前後一致。
+  - Release 內文沿用前一版的結構（安裝步驟 → 執行階段需求 → 本次改變），可用 `gh release view v0.4` 對照。
 
 ## 建置與開發迴圈（詳見 docs/dev-loop.md）
 
