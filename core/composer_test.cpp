@@ -227,40 +227,23 @@ TEST_F(ComposerTest, PendingSyllableShowsTheReadingThatExists) {
   EXPECT_EQ(composer_->composedText(), "ㄏㄨㄚ");
 }
 
-TEST_F(ComposerTest, LoneSyllableSplitsWhenTheNextKeyCannotJoinIt) {
-  // 知情 in three keys: ㄓ cannot take the 'q' final, so 'q' must be the
-  // next syllable's first key. ㄓ stays unsettled meanwhile.
+TEST_F(ComposerTest, ALoneSyllableNeverSplitsImplicitly) {
+  // Decision record (2026-08-08, implemented and reverted the same day):
+  // ㄓ cannot take the 'q' final, so 'q' COULD be read as the next
+  // syllable's first key and make 知情 three keys. It is not: 知識 (v+u =
+  // ㄓㄨ, a real syllable) can never work that way, so the two words would
+  // train opposite habits and the rule would be "sometimes". The key is
+  // eaten instead, and the separator is always Space or a tone digit.
   Type("v");
-  EXPECT_EQ(composer_->composedText(), "ㄓ");
-  Type("q");
-  EXPECT_EQ(composer_->composedText(), "ㄓㄑ");
-  EXPECT_EQ(composer_->unconfirmedTail(), "ㄓㄑ");
-
-  Type(";");  // ㄑㄧㄥ completes: ㄓ settles into its character
-  EXPECT_EQ(composer_->composedText(), "之ㄑㄧㄥ");
-  Type("2");
-  EXPECT_EQ(composer_->composedText(), "知情");  // the walk corrects 之
-  EXPECT_EQ(composer_->feedEnter().commitText, "知情");
-
-  // Backspace inside the second syllable leaves the first one as bopomofo.
-  Type("vq");
-  composer_->feedBackspace();
-  EXPECT_EQ(composer_->composedText(), "ㄓ");
-  composer_->feedBackspace();
-  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
-
-  // A key that spells a syllable WITH the pending one still wins: v+s is
-  // ㄓㄨㄥ, so a lone ㄓ before it needs Space (or a tone) to separate.
-  Type("vs");
-  EXPECT_EQ(composer_->composedText(), "ㄓㄨㄥ");
-  composer_->feedEsc();
-
-  // A first key that is no syllable by itself has nothing to split off:
-  // the key is simply eaten (ㄋ + the 'q' final would be ㄋㄧㄡ, so use ㄅ).
-  Type("b");
   auto r = composer_->feedChar('q');
   EXPECT_TRUE(r.consumed);
-  EXPECT_EQ(composer_->composedText(), "ㄅ");
+  EXPECT_EQ(composer_->composedText(), "ㄓ");
+
+  // With the separator the same three-key sequence works as everywhere.
+  Settle();
+  Type("q;2");
+  EXPECT_EQ(composer_->composedText(), "知情");  // the walk corrects 之
+  EXPECT_EQ(composer_->feedEnter().commitText, "知情");
 }
 
 TEST_F(ComposerTest, SpecSyllables) {

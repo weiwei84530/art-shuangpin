@@ -524,22 +524,14 @@ Composer::Result Composer::feedChar(char c) {
       state_ = State::kComposing;
       return {true, ""};
     }
-    // The key does not extend the pending syllable. If what is pending is
-    // already a syllable by itself (ㄓ), the key can only be starting the
-    // NEXT one (2026-08-08): ㄓ goes into the grid untoned and STAYS
-    // unsettled, so the display shows both as bopomofo (ㄓㄑ) until the new
-    // syllable completes and pushes it into its character (知ㄑㄧㄥ).
-    // 知情 is therefore three keys. Note this only fires when the pair
-    // spells nothing at all -- v+s is ㄓㄨㄥ, so a lone ㄓ before ㄨㄥ still
-    // needs Space or a tone to separate it.
-    if (c != ';' && pending_.convertible() && finalizePendingBare()) {
-      pending_.feed(c);  // the previous syllable stays unsettled behind it
-      state_ = State::kComposing;
-      return {true, ""};
-    }
     if (c != ';') {
-      // The pair spells no syllable and nothing can be split off: reject
-      // the key while composing.
+      // The pair spells no syllable: reject the key while composing.
+      // (2026-08-08, reverted the same day: a lone first key does NOT split
+      // off here to let the key open the next syllable. It works -- 知情
+      // would be v q ; -- but only when the pair happens to spell nothing,
+      // so 知識 (v+u = ㄓㄨ) still needs its separator and the two words
+      // train opposite habits. A lone syllable always takes Space or a tone
+      // digit, with no exceptions to remember.)
       if (composing) return {true, ""};
       return {false, ""};
     }
@@ -608,13 +600,8 @@ Composer::Result Composer::feedBackspace() {
   if (state_ == State::kEmpty) return {false, ""};
 
   if (!pending_.empty()) {
-    // Only the syllable being typed shrinks; one that is already in the
-    // grid keeps its unsettled bopomofo (ㄓㄑ backspaces to ㄓ, not to 之).
     pending_.backspace();
-    updateStateAfterMutation();
-    return {true, ""};
-  }
-  if (grid_.length() > 0) {
+  } else if (grid_.length() > 0) {
     grid_.deleteReadingBeforeCursor();
     walk_ = grid_.walk();
   }
