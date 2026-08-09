@@ -260,6 +260,9 @@ const drill = {
     this.di = i;
     this.si = 0;
     this.chars = CP(DRILLS[i].text);
+    // Whatever button started the drill keeps keyboard focus, and Space or
+    // Enter would then press it again instead of reaching the drill.
+    if (document.activeElement) document.activeElement.blur();
     player.pause();
     $('#captionBar').hidden = true;
     $('#drillBar').hidden = false;
@@ -421,7 +424,13 @@ $('#btnDrillRestart').addEventListener('click', () => drill.restart());
 // on Space, Enter and the like -- but only for the key it actually wanted.
 window.addEventListener('keydown', e => {
   if (e.ctrlKey || e.altKey || e.metaKey) return;
-  if (drill.handle(e)) e.preventDefault();
+  if (drill.handle(e)) {
+    e.preventDefault();
+  } else if (drill.di >= 0 && (e.key === ' ' || e.key === 'Enter')) {
+    // Even when it is the wrong key, these two must not scroll the page or
+    // activate whatever happens to be focused.
+    e.preventDefault();
+  }
 });
 
 buildKeyboard();
