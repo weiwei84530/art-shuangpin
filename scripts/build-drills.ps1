@@ -1,18 +1,22 @@
 # Rebuilds web\drills.js from drills\lessons.txt.
 #
-# Two passes: the first tells us which syllables the hand-written lessons
-# already reach, make-filler-lessons.py picks dictionary words to cover the
-# rest, and the second pass generates the data the tutorial site plays back.
+# The drill never corrects anything, so every line has to come out of the
+# sentence walk exactly as written. Hand-written lines that do not are a
+# hard error (reword them); generated filler lines are dropped, their word
+# is banned, and the filler is re-picked -- which is why this loops.
 #
 #   scripts\build-drills.ps1 [-Data out\data.txt] [-Build build]
 
 [CmdletBinding()]
 param(
     [string]$Data = "out\data.txt",
-    [string]$Build = "build"
+    [string]$Build = "build",
+    [int]$MaxRounds = 8
 )
 
-$ErrorActionPreference = "Stop"
+# Native tools report progress on stdout and failures through the exit
+# code; "Stop" would turn any stderr line into a terminating error.
+$ErrorActionPreference = "Continue"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
@@ -25,21 +29,45 @@ if (-not (Test-Path $Data)) {
     throw "$Data not found -- run scripts\build-data.ps1 first"
 }
 
+$quiet = { $_ -notmatch '^\s*note:' }
 $syllables = "out\drill-syllables.txt"
+$dropped = "out\drill-dropped.txt"
+$banned = "out\drill-banned.txt"
+Remove-Item $banned -ErrorAction SilentlyContinue
+
 Write-Host "pass 1: what the graded lessons already cover"
 & $gen --data $Data --lessons drills\lessons.txt --out out\drills-pass1.js `
-       --syllables $syllables | Where-Object { $_ -notmatch '^  note' }
-if ($LASTEXITCODE -ne 0) { throw "drill_gen failed" }
+       --syllables $syllables | Where-Object $quiet
+if ($LASTEXITCODE -ne 0) { throw "a hand-written line does not convert cleanly" }
 
-Write-Host "`nfilling in the rest"
-python scripts\make-filler-lessons.py --data $Data --covered $syllables `
-       --out drills\filler.txt
-if ($LASTEXITCODE -ne 0) { throw "make-filler-lessons.py failed" }
+for ($round = 1; $round -le $MaxRounds; $round++) {
+    Write-Host "`nround ${round}: filling in the rest"
+    python scripts\make-filler-lessons.py --data $Data --covered $syllables `
+           --exclude $banned --out drills\filler.txt
+    if ($LASTEXITCODE -ne 0) { throw "make-filler-lessons.py failed" }
 
-Write-Host "`npass 2: the real thing"
-& $gen --data $Data --lessons drills\lessons.txt --lessons drills\filler.txt `
-       --out web\drills.js --coverage |
-    Where-Object { $_ -notmatch '^  note' }
-if ($LASTEXITCODE -ne 0) { throw "drill_gen failed" }
+    & $gen --data $Data --lessons drills\lessons.txt --filler drills\filler.txt `
+           --out web\drills.js --dropped $dropped --coverage |
+        Where-Object $quiet
+    if ($LASTEXITCODE -ne 0) { throw "drill_gen failed" }
+
+    # -Encoding UTF8 is not optional: the default in 5.1 is the ANSI
+    # codepage, which turns every Chinese word into question marks.
+    $bad = @(Get-Content $dropped -Encoding UTF8 -ErrorAction SilentlyContinue |
+             Where-Object { $_.Trim() })
+    if ($bad.Count -eq 0) {
+        Write-Host "`nevery line converts cleanly."
+        break
+    }
+    Write-Host "banning: $($bad -join ' ')"
+    # Plain UTF-8 with no BOM: Add-Content -Encoding utf8 writes one on
+    # every append, and the reader would take it as part of the word.
+    [System.IO.File]::AppendAllLines(
+        (Join-Path $root $banned), [string[]]$bad,
+        (New-Object System.Text.UTF8Encoding($false)))
+    if ($round -eq $MaxRounds) {
+        Write-Warning "still dropping lines after $MaxRounds rounds"
+    }
+}
 
 Remove-Item out\drills-pass1.js -ErrorAction SilentlyContinue

@@ -86,9 +86,24 @@ def main():
     parser.add_argument("--data", default="out/data.txt")
     parser.add_argument("--covered", default="out/drill-syllables.txt")
     parser.add_argument("--out", default="drills/filler.txt")
+    parser.add_argument("--exclude", default=None,
+                        help="words the walk gets wrong; never pick these")
     args = parser.parse_args()
 
     mass, words = load(args.data)
+
+    # Words the generator has already caught the sentence walk getting
+    # wrong. The drill never corrects anything, so a word that does not
+    # convert cleanly simply cannot be used.
+    banned = set()
+    if args.exclude and os.path.exists(args.exclude):
+        # utf-8-sig, and strip stray marks: the file is appended to round by
+        # round and Windows tools like to prepend a BOM each time.
+        with io.open(args.exclude, encoding="utf-8-sig") as handle:
+            banned = {line.replace("﻿", "").strip() for line in handle}
+        banned.discard("")
+    if banned:
+        words = [w for w in words if w[0] not in banned]
 
     covered = set()
     if os.path.exists(args.covered):
@@ -162,6 +177,8 @@ def main():
           (len(reached & set(mass)), len(mass), 100.0 * usage))
     if todo:
         print("still uncovered (%d): %s" % (len(todo), " ".join(sorted(todo))))
+    if banned:
+        print("excluded %d word(s) the walk gets wrong" % len(banned))
     print("wrote %s" % args.out)
 
 

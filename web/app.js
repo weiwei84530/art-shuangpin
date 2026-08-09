@@ -245,10 +245,11 @@ const CP = s => Array.from(s);
 
 // A friendly name for the key being asked for.
 const KEY_LABEL = { Space: '空白', Enter: 'Enter' };
+// Only 2, 3 and 4 ever appear: no digit at all already means tone 1 or
+// neutral, so the drill never asks for those two.
 const TONE_NOTE = {
-  '1': '一聲', '2': '二聲', '3': '三聲', '4': '四聲', '5': '輕聲',
-  '0': '一聲（右手）', '9': '二聲（右手）', '8': '三聲（右手）',
-  '7': '四聲（右手）', '6': '輕聲（右手）'
+  '2': '二聲', '3': '三聲', '4': '四聲',
+  '9': '二聲（右手）', '8': '三聲（右手）', '7': '四聲（右手）'
 };
 
 const drill = {
@@ -322,24 +323,16 @@ const drill = {
     const key = steps[this.si].k;
     showHint(key);
     const label = KEY_LABEL[key] || key.toUpperCase();
-    // What the key is FOR, read off the screen that is currently up: the
-    // menu is open on the step before the digit that picks from it.
-    const menuOpen = this.si > 0 && !!steps[this.si - 1].m;
+    // Every key in a drill is a letter, a tone digit, Space, Enter or
+    // punctuation -- the lessons are chosen so nothing ever needs
+    // correcting, so there are no cursor or candidate-menu keys to explain.
     let note = '';
-    if (menuOpen) {
-      note = key === '8' ? '　（翻到下一頁）' : '　（在候選單裡選這一個）';
-    } else if (TONE_NOTE[key] && this.si > 0 && /^[a-z;]$/.test(steps[this.si - 1].k)) {
+    if (TONE_NOTE[key] && this.si > 0 && /^[a-z;]$/.test(steps[this.si - 1].k)) {
       note = `　（${TONE_NOTE[key]}）`;
     } else if (key === 'Space') {
       note = '　（單鍵音節要用空白或聲調收尾）';
     } else if (key === 'Enter') {
       note = '　（整段上屏）';
-    } else if (key === '8') {
-      note = '　（開候選單）';
-    } else if (key === '9' || key === '0') {
-      note = key === '9' ? '　（游標往左）' : '　（游標往右）';
-    } else if (key === '-' || key === '=') {
-      note = key === '-' ? '　（游標跳到最前面）' : '　（游標跳回最後面）';
     } else if (key === ',') {
       note = '　（逗號，同一段繼續打）';
     }

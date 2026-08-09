@@ -19,8 +19,15 @@
 //   - tones 1 and 5 are never typed: no digit already means "tone 1 or
 //     neutral", so the next syllable settles a two-key syllable and a
 //     single-key one takes Space (的 = d + Space, not d + 6);
-//   - each sentence ends with its punctuation, then any character the walk
-//     got wrong is corrected through the candidate menu, then Enter.
+//   - a comma settles what precedes it and carries on; Enter comes only at
+//     。！？.
+//
+// The drill NEVER corrects anything (2026-08-10). Sending the learner
+// through the candidate menu meant long runs of cursor keys whose behaviour
+// surprises more than it teaches, so a line the sentence walk gets wrong is
+// a hard error for a hand-written lesson and a dropped line for generated
+// filler -- see scripts/build-drills.ps1, which bans the offending word and
+// re-picks until every line converts cleanly.
 
 #include <windows.h>
 
@@ -252,6 +259,8 @@ bool IsSentenceEnd(const std::string& symbol) {
 struct Sentence {
   std::string text;                     // including the trailing punctuation
   std::vector<std::string> readings;    // one per character; empty = literal
+  std::vector<std::string> words;       // as written in the lesson file
+  std::vector<size_t> wordOfChar;       // which word each character came from
 };
 
 struct Lesson {
@@ -259,6 +268,10 @@ struct Lesson {
   std::string title;
   std::string intro;
   std::vector<Sentence> sentences;
+  // Generated filler: a line that does not convert cleanly is dropped and
+  // reported so the next round can pick different words. Hand-written
+  // lessons are a hard error instead -- they are meant to be reworded.
+  bool droppable = false;
   std::string text() const {
     std::string all;
     for (const auto& s : sentences) all += s.text;
@@ -380,77 +393,38 @@ class Runner {
     error_ = "cursor would not reach position " + std::to_string(target);
   }
 
-  // Corrects the composition until it reads `target`, through the candidate
-  // menu, exactly as a user would. Returns false (and sets error()) when a
-  // character cannot be reached that way.
-  bool CorrectTo(const std::string& target) {
-    for (int round = 0; round < 40; ++round) {
-      const auto current = SplitCodePoints(ComposedText());
-      const auto wanted = SplitCodePoints(target);
-      if (current == wanted) {
-        // Picking a candidate parks the cursor just past the span it
-        // fixed, so typing would carry on in the MIDDLE of the sentence.
-        // '=' puts it back at the end, which is what a user does too.
-        if (CursorPosition() != GridLength()) Press('=');
-        return true;
-      }
-      if (current.size() != wanted.size()) {
-        error_ = "composed " + ComposedText() + " has a different length from "
-                 + target;
-        return false;
-      }
-      size_t at = 0;
-      while (at < wanted.size() && current[at] == wanted[at]) ++at;
-
-      MoveCursorTo(at);
-      if (!error_.empty()) return false;
-      Press('8');
-      if (composer_.state() != mspy::Composer::State::kSelecting) {
-        error_ = "no candidate menu at " + std::to_string(at) + " of " + target;
-        return false;
-      }
-      if (!PickCandidateFor(wanted, at)) return false;
+  // Index of the first character the walk got wrong, or npos when the
+  // composition already reads `target`.
+  //
+  // The drill never corrects anything (2026-08-10). Sending the learner
+  // through the candidate menu meant long runs of cursor keys whose
+  // behaviour -- wrapping, parking past the chosen span -- surprises more
+  // than it teaches, so a line that does not convert cleanly is a line to
+  // reword or drop, not to patch at run time.
+  size_t FirstMismatch(const std::string& target) const {
+    const auto current = SplitCodePoints(ComposedText());
+    const auto wanted = SplitCodePoints(target);
+    for (size_t i = 0; i < wanted.size(); ++i) {
+      if (i >= current.size() || current[i] != wanted[i]) return i;
     }
-    error_ = "gave up correcting towards " + target;
-    return false;
+    return current.size() > wanted.size() ? wanted.size() : std::string::npos;
   }
+
+  // Everything typed so far, for the mismatch report.
+  std::string ComposedSoFar() const { return ComposedText(); }
+
+  // Winds back to a mark taken before a line, so a line that does not
+  // convert can be dropped without disturbing the rest of the lesson.
+  // Lines are independent: Enter resets the composer.
+  size_t Mark() const { return steps_.size(); }
+  void Rollback(size_t mark, const std::string& committed) {
+    steps_.resize(mark);
+    committed_ = committed;
+    composer_.cancel();
+  }
+  const std::string& committed() const { return committed_; }
 
  private:
-  // Finds the candidate that makes the text from `at` match, pages to it and
-  // presses its digit.
-  bool PickCandidateFor(const std::vector<std::string>& wanted, size_t at) {
-    const auto& candidates = composer_.candidates();
-    size_t chosen = candidates.size();
-    for (size_t i = 0; i < candidates.size(); ++i) {
-      const auto& candidate = candidates[i];
-      if (candidate.location > at) continue;
-      const size_t end = candidate.location + candidate.spanningLength;
-      if (end > wanted.size()) continue;
-      std::string expected;
-      for (size_t k = candidate.location; k < end; ++k) expected += wanted[k];
-      if (candidate.value != expected) continue;
-      if (end <= at) continue;  // fixes nothing at the mismatch
-      chosen = i;
-      break;
-    }
-    if (chosen == candidates.size()) {
-      std::string offered;
-      for (size_t i = 0; i < candidates.size() && i < 12; ++i) {
-        offered += " " + candidates[i].value;
-      }
-      error_ = "no candidate for " + wanted[at] + " at " + std::to_string(at) +
-               "; offered" + offered;
-      composer_.feedEsc();
-      return false;
-    }
-
-    const size_t page = chosen / mspy::Composer::kCandidatePageSize;
-    while (composer_.candidatePageIndex() < page) Press('8');
-    Press(static_cast<char>(
-        '1' + (chosen % mspy::Composer::kCandidatePageSize)));
-    return true;
-  }
-
   void Record(const std::string& key) {
     Step step;
     step.key = key;
@@ -508,7 +482,8 @@ class Runner {
 // A word may carry an explicit reading after a slash (麼/ㄇㄜ˙) when the
 // dictionary knows more than one.
 bool LoadLessons(const std::string& path, const ReadingIndex& index,
-                 std::vector<Lesson>* lessons, std::string* error) {
+                 bool droppable, std::vector<Lesson>* lessons,
+                 std::string* error) {
   std::ifstream in(path, std::ios::binary);
   if (!in.is_open()) {
     *error = "cannot open " + path;
@@ -530,6 +505,7 @@ bool LoadLessons(const std::string& path, const ReadingIndex& index,
       if (field == "id") {
         lessons->push_back(Lesson{});
         lessons->back().id = value;
+        lessons->back().droppable = droppable;
       } else if (lessons->empty()) {
         *error = path + ":" + std::to_string(lineNo) + ": " + field +
                  " before any #id";
@@ -556,9 +532,10 @@ bool LoadLessons(const std::string& path, const ReadingIndex& index,
         forced = token.substr(slash + 1);
       }
       const auto characters = SplitCodePoints(word);
+      std::vector<std::string> readings;
 
       if (!forced.empty()) {
-        const auto readings = Split(forced, '-');
+        readings = Split(forced, '-');
         if (readings.size() != characters.size()) {
           *error = path + ":" + std::to_string(lineNo) + ": " + word +
                    " has " + std::to_string(characters.size()) +
@@ -566,38 +543,39 @@ bool LoadLessons(const std::string& path, const ReadingIndex& index,
                    " readings";
           return false;
         }
-        sentence.text += word;
-        for (const auto& reading : readings) sentence.readings.push_back(reading);
-        continue;
+      } else {
+        auto it = index.find(word);
+        if (it == index.end()) {
+          // Punctuation and any other literal: typed as itself.
+          if (characters.size() != 1) {
+            *error = path + ":" + std::to_string(lineNo) + ": no reading for " +
+                     word + " (add one after a slash)";
+            return false;
+          }
+          readings.push_back("");
+        } else {
+          if (it->second.size() > 1) {
+            // Several readings: take the one the dictionary scores highest
+            // and say so, since only the author can tell whether it is the
+            // one the sentence means.
+            std::string options;
+            for (size_t k = 1; k < it->second.size() && k < 4; ++k) {
+              options += " " + it->second[k].reading;
+            }
+            std::cout << "  note: " << word << " read as "
+                      << it->second.front().reading << " (also" << options
+                      << ")\n";
+          }
+          readings = Split(it->second.front().reading, '-');
+        }
       }
 
-      auto it = index.find(word);
-      if (it == index.end()) {
-        // Punctuation and any other literal: typed as itself.
-        if (characters.size() == 1) {
-          sentence.text += word;
-          sentence.readings.push_back("");
-          continue;
-        }
-        *error = path + ":" + std::to_string(lineNo) + ": no reading for " +
-                 word + " (add one after a slash)";
-        return false;
-      }
-      if (it->second.size() > 1) {
-        // Several readings: take the one the dictionary scores highest and
-        // say so, since only the author can tell whether it is the one the
-        // sentence means.
-        std::string options;
-        for (size_t k = 1; k < it->second.size() && k < 4; ++k) {
-          options += " " + it->second[k].reading;
-        }
-        std::cout << "  note: " << word << " read as "
-                  << it->second.front().reading << " (also" << options
-                  << ")\n";
-      }
+      const size_t wordIndex = sentence.words.size();
+      sentence.words.push_back(word);
       sentence.text += word;
-      for (const auto& reading : Split(it->second.front().reading, '-')) {
+      for (const auto& reading : readings) {
         sentence.readings.push_back(reading);
+        sentence.wordOfChar.push_back(wordIndex);
       }
     }
     // One line is one sentence: it has to end with 。！？ so the run can
@@ -627,6 +605,62 @@ char PunctuationKey(const std::string& symbol) {
   return it == map.end() ? 0 : it->second;
 }
 
+// Types one line into `runner`, checking the walk at every punctuation mark
+// (a comma settles what precedes it just as well as a full stop does) and
+// pressing Enter at the end. Returns npos when the line came out exactly as
+// written, otherwise the index of the first character that did not.
+size_t TypeSentence(Runner& runner, const Sentence& sentence,
+                    Formosa::Gramambular2::LanguageModel& lm,
+                    std::set<std::string>* keysUsed,
+                    std::set<std::string>* syllablesUsed,
+                    std::string* fatal) {
+  const auto characters = SplitCodePoints(sentence.text);
+  std::string pending;  // the line so far, which is what the walk must match
+  for (size_t i = 0; i < characters.size(); ++i) {
+    const std::string& reading = sentence.readings[i];
+
+    if (reading.empty()) {
+      const char key = PunctuationKey(characters[i]);
+      if (key == 0) {
+        *fatal = "no key types " + characters[i];
+        return i;
+      }
+      runner.Press(key);
+      pending += characters[i];
+      const size_t bad = runner.FirstMismatch(pending);
+      if (bad != std::string::npos) return bad;
+      // Only a sentence ending sends the buffer to the application; a comma
+      // just carries on in the same composition.
+      if (IsSentenceEnd(characters[i])) runner.Press('\n');
+      continue;
+    }
+
+    std::string bare;
+    char tone = '1';
+    SplitTone(reading, &bare, &tone);
+    std::string keys;
+    if (!KeysForSyllable(bare, lm, &keys)) {
+      *fatal = "no key pair spells " + bare;
+      return i;
+    }
+    if (keysUsed != nullptr) keysUsed->insert(keys);
+    if (syllablesUsed != nullptr) syllablesUsed->insert(bare);
+    for (char key : keys) runner.Press(key);
+    // Tones 1 and 5 are never typed: no digit at all already means "tone 1
+    // or neutral" (docs/spec.md §5), so 的 is d + Space, not d + 6. The
+    // explicit digits exist only to EXCLUDE the other one, which a drill
+    // never needs.
+    if (tone != '1' && tone != '5') {
+      runner.Press(ToneKeyFor(tone, keys.back()));
+    } else if (keys.size() == 1) {
+      // A lone key is never settled implicitly (docs/spec.md §1).
+      runner.Press(' ');
+    }
+    pending += characters[i];
+  }
+  return std::string::npos;
+}
+
 }  // namespace
 
 int wmain(int argc, wchar_t** argv) {
@@ -635,7 +669,9 @@ int wmain(int argc, wchar_t** argv) {
   std::string dataPath = "out/data.txt";
   std::vector<std::string> lessonPaths;
   std::string outPath = "web/drills.js";
+  std::vector<std::string> fillerPaths;
   std::string syllablesPath;
+  std::string droppedPath;
   bool coverage = false;
   for (int i = 1; i < argc; ++i) {
     const std::string arg = Narrow(argv[i]);
@@ -647,6 +683,10 @@ int wmain(int argc, wchar_t** argv) {
       outPath = Narrow(argv[++i]);
     } else if (arg == "--syllables" && i + 1 < argc) {
       syllablesPath = Narrow(argv[++i]);
+    } else if (arg == "--filler" && i + 1 < argc) {
+      fillerPaths.push_back(Narrow(argv[++i]));
+    } else if (arg == "--dropped" && i + 1 < argc) {
+      droppedPath = Narrow(argv[++i]);
     } else if (arg == "--coverage") {
       coverage = true;
     }
@@ -667,7 +707,13 @@ int wmain(int argc, wchar_t** argv) {
   std::vector<Lesson> lessons;
   std::string error;
   for (const auto& path : lessonPaths) {
-    if (!LoadLessons(path, index, &lessons, &error)) {
+    if (!LoadLessons(path, index, /*droppable=*/false, &lessons, &error)) {
+      std::cerr << error << "\n";
+      return 1;
+    }
+  }
+  for (const auto& path : fillerPaths) {
+    if (!LoadLessons(path, index, /*droppable=*/true, &lessons, &error)) {
       std::cerr << error << "\n";
       return 1;
     }
@@ -675,78 +721,63 @@ int wmain(int argc, wchar_t** argv) {
 
   std::set<std::string> coveredKeys;    // key sequences exercised
   std::set<std::string> coveredSyllables;
+  std::set<std::string> droppedWords;   // filler words the walk gets wrong
   std::string json = "// Generated by cli/drill_gen.cpp -- do not edit.\n";
   json += "const DRILLS = [\n";
 
   for (const auto& lesson : lessons) {
-    Runner runner(relaxed);
-    runner.SetTarget(lesson.text());
-    // Everything typed since the last Enter. Punctuation settles the
-    // syllable in front of it, so that is where the run can compare what
-    // the walk produced against the lesson -- and a comma does that just as
-    // well as a full stop, which keeps corrections local instead of piling
-    // them up at the end of a long line.
-    std::string pending;
+    // Pass 1: which lines does the walk get right? A line is independent
+    // of the rest -- Enter resets the composer -- so a throwaway run
+    // answers this exactly. Lines that come out wrong are not patched up
+    // through the candidate menu any more; a hand-written one is an error
+    // to reword, a generated one is dropped and its word reported so the
+    // next round picks something else.
+    std::vector<const Sentence*> accepted;
     for (const auto& sentence : lesson.sentences) {
-      const auto characters = SplitCodePoints(sentence.text);
-      if (characters.size() != sentence.readings.size()) {
+      if (SplitCodePoints(sentence.text).size() != sentence.readings.size()) {
         std::cerr << lesson.id << ": " << sentence.text
                   << " has a reading count mismatch\n";
         return 1;
       }
-      for (size_t i = 0; i < characters.size(); ++i) {
-        const std::string& reading = sentence.readings[i];
-        if (reading.empty()) {
-          const char key = PunctuationKey(characters[i]);
-          if (key == 0) {
-            std::cerr << lesson.id << ": no key types " << characters[i]
-                      << "\n";
-            return 1;
-          }
-          runner.Press(key);
-          pending += characters[i];
-          if (!runner.CorrectTo(pending)) {
-            std::cerr << lesson.id << ": " << runner.error() << "\n";
-            return 1;
-          }
-          // Only a sentence ending sends the buffer to the application; a
-          // comma just carries on in the same composition.
-          if (IsSentenceEnd(characters[i])) {
-            runner.Press('\n');
-            pending.clear();
-          }
-          continue;
-        }
-        std::string bare;
-        char tone = '1';
-        SplitTone(reading, &bare, &tone);
-        std::string keys;
-        if (!KeysForSyllable(bare, *relaxed, &keys)) {
-          std::cerr << lesson.id << ": no key pair spells " << bare << "\n";
-          return 1;
-        }
-        coveredKeys.insert(keys);
-        coveredSyllables.insert(bare);
-        for (char key : keys) runner.Press(key);
-        // Tones 1 and 5 are never typed: no digit at all already means
-        // "tone 1 or neutral" (docs/spec.md §5), so 的 is d + Space, not
-        // d + 6. The explicit digits exist only to EXCLUDE the other one,
-        // which a drill never needs.
-        if (tone != '1' && tone != '5') {
-          runner.Press(ToneKeyFor(tone, keys.back()));
-        } else if (keys.size() == 1) {
-          // A lone key is never settled implicitly (docs/spec.md §1).
-          runner.Press(' ');
-        }
-        pending += characters[i];
+      Runner probe(relaxed);
+      std::string fatal;
+      const size_t bad =
+          TypeSentence(probe, sentence, *relaxed, nullptr, nullptr, &fatal);
+      if (!fatal.empty()) {
+        std::cerr << lesson.id << ": " << fatal << "\n";
+        return 1;
       }
+      if (bad == std::string::npos) {
+        accepted.push_back(&sentence);
+        continue;
+      }
+      const std::string culprit = sentence.words[sentence.wordOfChar[bad]];
+      // stdout, not stderr: a dropped filler line is routine, and PowerShell
+      // turns any stderr from a native command into a terminating error.
+      std::cout << lesson.id << ": " << sentence.text << " came out as "
+                << probe.ComposedSoFar() << " (" << culprit << ")\n";
+      if (!lesson.droppable) return 1;
+      droppedWords.insert(culprit);
+    }
+    if (accepted.empty()) continue;
+
+    std::string lessonText;
+    for (const auto* sentence : accepted) lessonText += sentence->text;
+
+    // Pass 2: the real run, over the lines that survived.
+    Runner runner(relaxed);
+    runner.SetTarget(lessonText);
+    for (const auto* sentence : accepted) {
+      std::string fatal;
+      TypeSentence(runner, *sentence, *relaxed, &coveredKeys,
+                   &coveredSyllables, &fatal);
     }
 
     json += "  {\n";
     json += "    id: " + JsonString(lesson.id) + ",\n";
     json += "    title: " + JsonString(lesson.title) + ",\n";
     json += "    intro: " + JsonString(lesson.intro) + ",\n";
-    json += "    text: " + JsonString(lesson.text()) + ",\n";
+    json += "    text: " + JsonString(lessonText) + ",\n";
     json += "    steps: [\n";
     for (const auto& step : runner.steps()) {
       json += "      {k:" + JsonString(step.key);
@@ -786,6 +817,15 @@ int wmain(int argc, wchar_t** argv) {
   out << json;
   out.close();
   std::cout << "wrote " << outPath << "\n";
+
+  if (!droppedPath.empty()) {
+    std::ofstream dump(droppedPath, std::ios::binary | std::ios::trunc);
+    for (const auto& word : droppedWords) dump << word << "\n";
+  }
+  if (!droppedWords.empty()) {
+    std::cout << "dropped " << droppedWords.size()
+              << " filler word(s) the walk gets wrong\n";
+  }
 
   if (!syllablesPath.empty()) {
     std::ofstream dump(syllablesPath, std::ios::binary | std::ios::trunc);
