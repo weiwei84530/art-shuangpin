@@ -10,14 +10,10 @@ namespace mspy {
 
 namespace {
 
-// UserOverrideModel parameters, same as McBopomofo's.
-constexpr size_t kUserOverrideModelCapacity = 500;
-constexpr double kObservedOverrideHalfLife = 5400.0;  // 90 minutes
-
-double NowSeconds() {
-  using namespace std::chrono;
-  return duration<double>(system_clock::now().time_since_epoch()).count();
-}
+// Longest learned phrase the walk is checked against. Records longer than
+// this are still stored; they simply never fire, which no real correction
+// runs into.
+constexpr size_t kMaxLearnedSpan = 4;
 
 // Punctuation committed directly as full-width symbols, following the
 // user's Rime (rime-ice default) habits. Quotes are handled separately
@@ -170,22 +166,78 @@ std::vector<std::string> SplitCodePoints(const std::string& s) {
   return out;
 }
 
-// One entry per reading position: the character the walk shows there. A
-// node's value has one code point per reading it spans; a node where that
-// does not hold contributes empty strings so callers skip those positions
-// rather than pin the wrong character to them.
-std::vector<std::string> WalkCharacters(
+// Splits a node reading on the '-' the grid joins syllables with.
+std::vector<std::string> SplitReading(const std::string& reading) {
+  std::vector<std::string> parts;
+  size_t start = 0;
+  while (true) {
+    const size_t dash = reading.find('-', start);
+    if (dash == std::string::npos) {
+      parts.push_back(reading.substr(start));
+      return parts;
+    }
+    parts.push_back(reading.substr(start, dash - start));
+    start = dash + 1;
+  }
+}
+
+// One entry per reading position, as the current walk shows it. A node's
+// value has one code point per reading it spans; a node where that does not
+// hold contributes empty entries, which every caller skips rather than act
+// on the wrong character.
+struct WalkChar {
+  std::string value;    // the character displayed here
+  std::string reading;  // its reading, sentinel-free
+  bool literal = false;  // punctuation, settled bopomofo or English
+};
+
+std::vector<WalkChar> WalkChars(
     const Formosa::Gramambular2::ReadingGrid::WalkResult& walk) {
-  std::vector<std::string> chars;
+  std::vector<WalkChar> chars;
   for (const auto& node : walk.nodes) {
-    auto points = SplitCodePoints(node->value());
-    if (points.size() == node->spanningLength()) {
-      for (auto& point : points) chars.push_back(std::move(point));
-    } else {
-      chars.insert(chars.end(), node->spanningLength(), std::string());
+    const size_t span = node->spanningLength();
+    auto values = SplitCodePoints(node->value());
+    auto readings = SplitReading(node->reading());
+    if (values.size() != span || readings.size() != span) {
+      chars.insert(chars.end(), span, WalkChar{});
+      continue;
+    }
+    for (size_t i = 0; i < span; ++i) {
+      WalkChar c;
+      c.value = std::move(values[i]);
+      c.reading = NormalizeReading(readings[i]);
+      c.literal = c.reading.find(kLiteralPrefix) != std::string::npos;
+      chars.push_back(std::move(c));
     }
   }
   return chars;
+}
+
+// Just the displayed characters, for the pin-and-repair pass.
+std::vector<std::string> ValuesOf(const std::vector<WalkChar>& chars) {
+  std::vector<std::string> values;
+  values.reserve(chars.size());
+  for (const auto& c : chars) values.push_back(c.value);
+  return values;
+}
+
+// The contexts a span at `loc` is learned and looked up under, most
+// specific first: the two characters in front of it, then the one in front
+// of it, then the start marker. Punctuation, settled bopomofo and English
+// end a context the way the start of the composition does -- what precedes
+// them says nothing about what follows.
+std::vector<std::string> ContextsAt(const std::vector<WalkChar>& chars,
+                                    size_t loc) {
+  const auto usable = [&](size_t i) {
+    return i < chars.size() && !chars[i].literal && !chars[i].value.empty();
+  };
+  if (loc == 0 || !usable(loc - 1)) return {UserPreferences::kStartContext};
+  std::vector<std::string> contexts;
+  if (loc >= 2 && usable(loc - 2)) {
+    contexts.push_back(chars[loc - 2].value + chars[loc - 1].value);
+  }
+  contexts.push_back(chars[loc - 1].value);
+  return contexts;
 }
 
 // True if any tone of this toneless bopomofo syllable exists. A bare key
@@ -204,9 +256,7 @@ bool SyllableExists(Formosa::Gramambular2::LanguageModel& lm,
 
 Composer::Composer(
     std::shared_ptr<Formosa::Gramambular2::LanguageModel> lm)
-    : lm_(lm),
-      grid_(std::move(lm)),
-      uom_(kUserOverrideModelCapacity, kObservedOverrideHalfLife) {
+    : lm_(lm), grid_(std::move(lm)) {
   grid_.setReadingSeparator("-");
   // The double-pinyin decoder is a structural superset (the 'w' key is both
   // ia and ua, the 'y' key both ü and uai); the dictionary is what says
@@ -286,25 +336,7 @@ bool Composer::insertReading(const std::string& reading) {
   if (!grid_.insertReading(reading)) return false;
   walk_ = grid_.walk();
 
-  // Re-apply learned preferences around the just-inserted reading
-  // (mirrors McBopomofo's KeyHandler pattern).
-  const double now = NowSeconds();
-  auto suggestion = uom_.suggest(walk_, grid_.cursor(), now);
-  if (!suggestion.empty()) {
-    for (const auto& candidate : grid_.candidatesAt(grid_.cursor())) {
-      if (candidate.value == suggestion.candidate) {
-        grid_.overrideCandidate(
-            grid_.cursor(), candidate,
-            suggestion.forceHighScoreOverride
-                ? Formosa::Gramambular2::ReadingGrid::Node::OverrideType::
-                      kOverrideValueWithHighScore
-                : Formosa::Gramambular2::ReadingGrid::Node::OverrideType::
-                      kOverrideValueWithScoreFromTopUnigram);
-        walk_ = grid_.walk();
-        break;
-      }
-    }
-  }
+  applyLearnedOverrides();
   return true;
 }
 
@@ -326,6 +358,7 @@ void Composer::insertLiteralText(const std::string& utf8) {
     i = j;
   }
   walk_ = grid_.walk();
+  applyLearnedOverrides();
   unsettled_ = {};
   state_ = State::kComposing;
 }
@@ -420,10 +453,6 @@ std::string Composer::takeCommitText() {
   if (pending_.convertible()) finalizePendingBare();
   std::string text;
   for (const auto& v : walk_.valuesAsStrings()) text += v;
-  // Phrases that reach the application without needing a correction are the
-  // user's working vocabulary; refreshing them here is what keeps daily
-  // words from decaying out of the preference store.
-  reportPhrasesUsed();
   reset();
   return text;
 }
@@ -637,6 +666,7 @@ Composer::Result Composer::feedBackspace() {
   } else if (grid_.length() > 0) {
     grid_.deleteReadingBeforeCursor();
     walk_ = grid_.walk();
+    applyLearnedOverrides();
   }
   unsettled_ = {};
   updateStateAfterMutation();
@@ -784,7 +814,7 @@ Composer::Result Composer::selectCandidate(size_t index) {
   }
   const auto& chosen = candidates_[index];
   const auto walkBefore = walk_;
-  const auto charactersBefore = WalkCharacters(walkBefore);
+  const auto charactersBefore = ValuesOf(WalkChars(walkBefore));
   grid_.overrideCandidate(selectionLocation_, chosen);
   walk_ = grid_.walk();
   // Correcting one word must never rewrite another. overrideCandidate
@@ -793,7 +823,6 @@ Composer::Result Composer::selectCandidate(size_t index) {
   // into 不秀. Put back whatever the re-walk moved outside the chosen span.
   restoreCharactersOutside(charactersBefore, chosen.location,
                            chosen.location + chosen.spanningLength);
-  uom_.observe(walkBefore, walk_, selectionLocation_, NowSeconds());
 
   // Park the cursor just past the span that was fixed, so its anchor is
   // the next character: repeated 8s walk through the sentence without
@@ -802,7 +831,7 @@ Composer::Result Composer::selectCandidate(size_t index) {
   const size_t next = chosen.location + chosen.spanningLength;
   grid_.setCursor(next > grid_.length() ? grid_.length() : next);
 
-  reportManualSelection(chosen);
+  learnFromSelection(chosen);
 
   dismissMenu();
   return {true, ""};
@@ -814,7 +843,7 @@ void Composer::restoreCharactersOutside(
   // nodes overlapping the span it writes, so pinning one position can never
   // un-pin another one: the loop converges. The guard is belt-and-braces.
   for (size_t guard = 0; guard <= before.size(); ++guard) {
-    const auto now = WalkCharacters(walk_);
+    const auto now = ValuesOf(WalkChars(walk_));
     bool repaired = false;
     for (size_t i = 0; i < before.size() && i < now.size(); ++i) {
       if (i >= from && i < to) continue;  // the span the user just chose
@@ -830,73 +859,95 @@ void Composer::restoreCharactersOutside(
   }
 }
 
-void Composer::reportManualSelection(
+void Composer::learnFromSelection(
     const Formosa::Gramambular2::ReadingGrid::Candidate& chosen) {
-  if (!onManualSelection) return;
+  if (!preferences_) return;
+  const std::string reading = NormalizeReading(chosen.reading);
+  // Punctuation, settled bopomofo and English are literal readings with one
+  // candidate each; there is nothing to learn about them.
+  if (reading.find(kLiteralPrefix) != std::string::npos) return;
 
-  if (chosen.spanningLength >= 2) {
-    onManualSelection(NormalizeReading(chosen.reading), chosen.value);
-    return;
+  // Positions left of the chosen span are exactly what they were before the
+  // pick (restoreCharactersOutside just made sure of it), so the current
+  // walk is the right place to read the context off.
+  const auto chars = WalkChars(walk_);
+  const auto contexts = ContextsAt(chars, chosen.location);
+  for (const auto& context : contexts) {
+    preferences_->record(context, reading, chosen.value);
   }
-
-  // Single character: learn the phrase it sits in, not the character. Walk
-  // the (already re-walked) nodes to find the pick and a single-character
-  // neighbour to pair it with, preferring the one on the LEFT -- the text
-  // before the cursor is settled and is what disambiguates 在/再, while
-  // whatever follows may not be typed yet.
-  const Formosa::Gramambular2::ReadingGrid::Node* previous = nullptr;
-  const Formosa::Gramambular2::ReadingGrid::Node* current = nullptr;
-  const Formosa::Gramambular2::ReadingGrid::Node* next = nullptr;
-  size_t location = 0;
-  for (const auto& node : walk_.nodes) {
-    if (location == chosen.location) {
-      current = node.get();
-    } else if (current != nullptr) {
-      next = node.get();
-      break;
-    } else {
-      previous = node.get();
-    }
-    location += node->spanningLength();
-  }
-  if (current == nullptr || current->spanningLength() != 1) return;
-
-  // Only pair with a single-character neighbour: gluing onto one end of an
-  // existing phrase would learn a span the user never chose.
-  const Formosa::Gramambular2::ReadingGrid::Node* partner = nullptr;
-  bool partnerIsLeft = false;
-  if (previous != nullptr && previous->spanningLength() == 1) {
-    partner = previous;
-    partnerIsLeft = true;
-  } else if (next != nullptr && next->spanningLength() == 1) {
-    partner = next;
-  }
-  if (partner == nullptr) return;
-
-  // Settled bopomofo symbols and punctuation live in the grid as literal
-  // readings; a phrase must not span one.
-  const std::string partnerReading = NormalizeReading(partner->reading());
-  const std::string ownReading = NormalizeReading(current->reading());
-  if (partnerReading.find(kLiteralPrefix) != std::string::npos ||
-      ownReading.find(kLiteralPrefix) != std::string::npos) {
-    return;
-  }
-
-  if (partnerIsLeft) {
-    onManualSelection(partnerReading + "-" + ownReading,
-                      partner->value() + current->value());
-  } else {
-    onManualSelection(ownReading + "-" + partnerReading,
-                      current->value() + partner->value());
+  if (onLearned && !contexts.empty()) {
+    onLearned(contexts.front(), reading, chosen.value);
   }
 }
 
-void Composer::reportPhrasesUsed() const {
-  if (!onPhraseUsed) return;
-  for (const auto& node : walk_.nodes) {
-    if (node->spanningLength() < 2) continue;
-    onPhraseUsed(NormalizeReading(node->reading()), node->value());
+void Composer::applyLearnedOverrides() {
+  if (!preferences_ || grid_.length() == 0) return;
+  // Each pass fixes at most one span and then re-walks, because one
+  // override can move several positions. Every span can be settled at most
+  // once (an overridden node is skipped from then on), so the grid length
+  // bounds the number of passes.
+  for (size_t guard = 0; guard <= grid_.length(); ++guard) {
+    if (!applyOneLearnedOverride()) return;
   }
+}
+
+bool Composer::applyOneLearnedOverride() {
+  const auto chars = WalkChars(walk_);
+  const auto& readings = grid_.readings();
+  if (chars.size() != readings.size()) return false;
+
+  // Positions already carrying an override are the user's own picks, the
+  // pins that protect them, and the corrections applied on an earlier pass.
+  // None of them may be second-guessed here.
+  std::vector<bool> overridden(chars.size(), false);
+  size_t loc = 0;
+  for (const auto& node : walk_.nodes) {
+    const size_t span = node->spanningLength();
+    if (node->isOverridden()) {
+      for (size_t i = loc; i < loc + span && i < overridden.size(); ++i) {
+        overridden[i] = true;
+      }
+    }
+    loc += span;
+  }
+
+  for (size_t start = 0; start < chars.size(); ++start) {
+    if (overridden[start]) continue;
+    const auto contexts = ContextsAt(chars, start);
+    // Longest match first: a learned two-character phrase outranks a
+    // learned single character sitting at the same place.
+    const size_t maxSpan = std::min(kMaxLearnedSpan, chars.size() - start);
+    for (size_t span = maxSpan; span >= 1; --span) {
+      bool blocked = false;
+      std::string reading;
+      std::string current;
+      for (size_t i = start; i < start + span; ++i) {
+        if (overridden[i] || chars[i].literal || chars[i].reading.empty()) {
+          blocked = true;
+          break;
+        }
+        if (i > start) reading += '-';
+        reading += NormalizeReading(readings[i]);
+        current += chars[i].value;
+      }
+      if (blocked) break;  // a shorter span here would end at the same wall
+
+      for (const auto& context : contexts) {
+        if (!preferences_->hasContext(context)) continue;
+        const std::string value = preferences_->lookup(context, reading);
+        if (value.empty() || value == current) continue;
+
+        const auto before = ValuesOf(chars);
+        if (!grid_.overrideCandidate(start, value)) continue;
+        walk_ = grid_.walk();
+        // A learned correction is as narrow as a manual one: whatever the
+        // re-walk moved outside this span goes straight back.
+        restoreCharactersOutside(before, start, start + span);
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 }  // namespace mspy

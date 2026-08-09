@@ -31,7 +31,6 @@ add_library(mspy_core STATIC
   core/syllable_input.cpp
   core/relaxed_tone_lm.cpp
   core/user_preferences.cpp
-  core/user_preference_lm.cpp
   core/composer.cpp
 )
 target_include_directories(mspy_core PUBLIC core)
@@ -76,7 +75,6 @@ add_executable(core_tests
   core/double_pinyin_test.cpp
   core/relaxed_tone_lm_test.cpp
   core/user_preferences_test.cpp
-  core/user_preference_lm_test.cpp
   core/composer_test.cpp
 )
 target_link_libraries(core_tests PRIVATE mspy_core GTest::gtest_main)

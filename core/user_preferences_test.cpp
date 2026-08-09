@@ -7,151 +7,122 @@
 namespace mspy {
 namespace {
 
-constexpr int64_t kNow = 1'800'000'000;
-constexpr int64_t kDay = 24 * 60 * 60;
-
-TEST(UserPreferencesTest, RoundTripsTheFourFieldFormat) {
+TEST(UserPreferencesTest, OneCorrectionIsEnough) {
   UserPreferences prefs;
-  prefs.loadFromText("知道 ㄓ-ㄉㄠˋ 7 1754332800\n");
-  ASSERT_EQ(prefs.size(), 1u);
-  EXPECT_EQ(prefs.serialize(), "知道 ㄓ-ㄉㄠˋ 7 1754332800\n");
-  // Nothing changed on load, so there is nothing to write back.
-  EXPECT_FALSE(prefs.dirty());
+  // A habit the store already holds, however strong.
+  for (int i = 0; i < 20; ++i) prefs.record("鋼", "ㄅㄟ", "悲");
+  ASSERT_EQ(prefs.lookup("鋼", "ㄅㄟ"), "悲");
+
+  // One correction flips it, with nothing to wait for.
+  prefs.record("鋼", "ㄅㄟ", "杯");
+  EXPECT_EQ(prefs.lookup("鋼", "ㄅㄟ"), "杯");
+
+  // And flips back just as cheaply: the store follows the user.
+  prefs.record("鋼", "ㄅㄟ", "悲");
+  EXPECT_EQ(prefs.lookup("鋼", "ㄅㄟ"), "悲");
 }
 
-TEST(UserPreferencesTest, ReadsTheOldTwoFieldFormatAsOneDatedPick) {
+TEST(UserPreferencesTest, ContextsAreIndependent) {
   UserPreferences prefs;
-  prefs.loadFromText("知道 ㄓ-ㄉㄠˋ\n", kNow);
-  // Dated from the migration, so vocabulary already learned survives...
-  const auto live = prefs.lookup("ㄓ-ㄉㄠˋ", kNow);
-  ASSERT_EQ(live.size(), 1u);
-  EXPECT_EQ(live[0].count, 1.0);
-  // ...and then ages out like any other single pick if it goes unused.
-  EXPECT_TRUE(prefs.lookup("ㄓ-ㄉㄠˋ", kNow + 20 * kDay).empty());
-  // The file wants rewriting into the new format.
-  EXPECT_TRUE(prefs.dirty());
+  prefs.record("鋼", "ㄅㄟ", "杯");
+  prefs.record("可", "ㄅㄟ", "悲");
+  EXPECT_EQ(prefs.lookup("鋼", "ㄅㄟ"), "杯");
+  EXPECT_EQ(prefs.lookup("可", "ㄅㄟ"), "悲");
+  // A context nobody has taught anything about stays untouched.
+  EXPECT_TRUE(prefs.lookup("茶", "ㄅㄟ").empty());
+  EXPECT_FALSE(prefs.hasContext("茶"));
+  EXPECT_TRUE(prefs.hasContext("鋼"));
 }
 
-TEST(UserPreferencesTest, SkipsBlankCommentAndCorruptLines) {
+TEST(UserPreferencesTest, RivalsFadeOneCorrectionAtATime) {
   UserPreferences prefs;
-  prefs.loadFromText(
-      "\n# a comment\n知道 ㄓ-ㄉㄠˋ 2 1800000000\nrubbish\n"
-      "壞 ㄏㄨㄞˋ x y\n三 ㄙㄢ 0 1800000000\n");
-  ASSERT_EQ(prefs.size(), 1u);
-  EXPECT_EQ(prefs.lookup("ㄓ-ㄉㄠˋ", kNow).size(), 1u);
-}
+  prefs.record("鋼", "ㄅㄟ", "悲");
+  prefs.record("鋼", "ㄅㄟ", "悲");  // a habit worth two corrections
 
-TEST(UserPreferencesTest, WeightHalvesEveryHalfLifeThenDropsOut) {
-  UserPreferences::Entry entry{"知道", 1.0, kNow};
-  EXPECT_DOUBLE_EQ(UserPreferences::WeightAt(entry, kNow), 1.0);
+  prefs.record("鋼", "ㄅㄟ", "杯");
+  // 杯 wins at once, but 悲 is still on file: the loser has to be able to
+  // come back without starting from nothing.
+  EXPECT_EQ(prefs.lookup("鋼", "ㄅㄟ"), "杯");
+  EXPECT_EQ(prefs.size(), 2u);
 
-  // One half-life later a single pick is exactly at the cutoff...
-  const int64_t oneHalfLife =
-      kNow + static_cast<int64_t>(UserPreferences::kHalfLifeSeconds);
-  EXPECT_DOUBLE_EQ(UserPreferences::WeightAt(entry, oneHalfLife), 0.5);
-  // ...and just past it the entry stops overriding the dictionary.
-  EXPECT_DOUBLE_EQ(UserPreferences::WeightAt(entry, oneHalfLife + kDay), 0.0);
-
-  // A phrase picked repeatedly survives far longer.
-  UserPreferences::Entry habit{"知道", 8.0, kNow};
-  EXPECT_GT(UserPreferences::WeightAt(habit, kNow + 40 * kDay), 0.0);
-}
-
-TEST(UserPreferencesTest, ACorrectionOutranksTheOlderPickImmediately) {
-  // The exact failure the old store could not express: 之道 was picked
-  // first (and won forever); 知道 is picked later and must take over.
-  UserPreferences prefs;
-  prefs.record("ㄓ-ㄉㄠˋ", "之道", kNow);
-  prefs.record("ㄓ-ㄉㄠˋ", "知道", kNow + kDay);
-
-  const auto live = prefs.lookup("ㄓ-ㄉㄠˋ", kNow + kDay);
-  ASSERT_EQ(live.size(), 2u);
-  EXPECT_EQ(live[0].value, "知道");
-}
-
-TEST(UserPreferencesTest, RecordBumpsFromTheDecayedWeightNotTheOldStreak) {
-  UserPreferences prefs;
-  // First record creates the entry at 1; the other nine bump it.
-  for (int i = 0; i < 10; ++i) prefs.record("ㄍㄜ", "歌", kNow);
-  ASSERT_EQ(prefs.lookup("ㄍㄜ", kNow)[0].count, 10.0);
-
-  // Re-picking it a year later resumes from ~1, not from 10.
-  const int64_t muchLater = kNow + 365 * kDay;
-  prefs.record("ㄍㄜ", "歌", muchLater);
-  EXPECT_LE(prefs.lookup("ㄍㄜ", muchLater)[0].count, 2.0);
+  // Sticking with 杯 wears the rival down to nothing.
+  prefs.record("鋼", "ㄅㄟ", "杯");
+  EXPECT_EQ(prefs.size(), 1u);
+  EXPECT_EQ(prefs.lookup("鋼", "ㄅㄟ"), "杯");
 }
 
 TEST(UserPreferencesTest, CountIsCapped) {
   UserPreferences prefs;
-  for (int i = 0; i < 200; ++i) prefs.record("ㄍㄜ", "歌", kNow);
-  EXPECT_LE(prefs.lookup("ㄍㄜ", kNow)[0].count, UserPreferences::kMaxCount);
+  for (int i = 0; i < 50; ++i) prefs.record("鋼", "ㄅㄟ", "杯");
+  const auto records = prefs.all();
+  ASSERT_EQ(records.size(), 1u);
+  EXPECT_LE(records[0].count, UserPreferences::kMaxCount);
 }
 
-TEST(UserPreferencesTest, TouchRefreshesButNeverCreates) {
+TEST(UserPreferencesTest, RoundTripsThroughTheFile) {
   UserPreferences prefs;
-  prefs.record("ㄓ-ㄉㄠˋ", "知道", kNow);
-  prefs.clearDirty();
+  prefs.record("鋼", "ㄅㄟ", "杯");
+  prefs.record("鏽鋼", "ㄅㄟ", "杯");
+  prefs.record(UserPreferences::kStartContext, "ㄧ", "一");
+  prefs.record("鋼", "ㄍㄤ-ㄅㄟ", "鋼杯");
+  const std::string text = prefs.serialize();
 
-  // A phrase that keeps being used as-is stays alive past its half-life.
-  const int64_t later = kNow + 13 * kDay;
-  prefs.touch("ㄓ-ㄉㄠˋ", "知道", later);
-  EXPECT_TRUE(prefs.dirty());
-  EXPECT_FALSE(prefs.lookup("ㄓ-ㄉㄠˋ", later + 13 * kDay).empty());
-
-  // Touching something unknown does nothing at all.
-  prefs.clearDirty();
-  prefs.touch("ㄅㄨˋ-ㄓ-ㄉㄠˋ", "不知道", later);
-  EXPECT_FALSE(prefs.dirty());
-  EXPECT_EQ(prefs.size(), 1u);
+  UserPreferences reloaded;
+  reloaded.loadFromText(text);
+  EXPECT_EQ(reloaded.size(), prefs.size());
+  EXPECT_EQ(reloaded.lookup("鋼", "ㄅㄟ"), "杯");
+  EXPECT_EQ(reloaded.lookup("鏽鋼", "ㄅㄟ"), "杯");
+  EXPECT_EQ(reloaded.lookup(UserPreferences::kStartContext, "ㄧ"), "一");
+  EXPECT_EQ(reloaded.lookup("鋼", "ㄍㄤ-ㄅㄟ"), "鋼杯");
+  EXPECT_FALSE(reloaded.dirty());
+  // Reloading must not reuse serials, or a later merge cannot order them.
+  reloaded.record("鋼", "ㄅㄟ", "盃");
+  EXPECT_EQ(reloaded.lookup("鋼", "ㄅㄟ"), "盃");
 }
 
-TEST(UserPreferencesTest, MergeKeepsTheStrongerRecordOfEachField) {
-  // Every application hosts its own TIP instance, so a save has to fold in
-  // whatever a sibling process wrote in the meantime.
+TEST(UserPreferencesTest, SkipsJunkAndTheOldFormat) {
+  UserPreferences prefs;
+  prefs.loadFromText(
+      "# comment\n"
+      "\n"
+      "杯 ㄅㄟ 鋼 2 7\n"
+      "知道 ㄓ-ㄉㄠˋ 5 1754332800\n"  // a pre-2026-08-09 four-field line
+      "壞 ㄅㄟ 鋼 x 8\n"
+      "杯 ㄅㄟ 鋼 1 3\n");  // same triple, older serial: the newer wins
+  EXPECT_EQ(prefs.size(), 1u);
+  EXPECT_EQ(prefs.lookup("鋼", "ㄅㄟ"), "杯");
+  const auto records = prefs.all();
+  ASSERT_EQ(records.size(), 1u);
+  EXPECT_EQ(records[0].count, 2.0);
+  EXPECT_EQ(records[0].serial, 7);
+}
+
+TEST(UserPreferencesTest, MergeKeepsTheStrongerRecord) {
+  // Every application hosts its own instance, so saving folds the file in.
   UserPreferences mine;
-  mine.record("ㄓ-ㄉㄠˋ", "知道", kNow);
+  mine.record("鋼", "ㄅㄟ", "杯");
 
   UserPreferences theirs;
-  theirs.loadFromText("知道 ㄓ-ㄉㄠˋ 9 " + std::to_string(kNow - kDay) +
-                      "\n很好 ㄏㄣˇ-ㄏㄠˇ 2 " + std::to_string(kNow) + "\n");
+  theirs.record("鋼", "ㄅㄟ", "杯");
+  theirs.record("鋼", "ㄅㄟ", "杯");
+  theirs.record("茶", "ㄅㄟ", "杯");
 
   mine.mergeFrom(theirs);
-  ASSERT_EQ(mine.size(), 2u);
-  const auto merged = mine.lookup("ㄓ-ㄉㄠˋ", kNow);
-  ASSERT_EQ(merged.size(), 1u);
-  EXPECT_EQ(merged[0].count, 9.0);       // the higher count
-  EXPECT_EQ(merged[0].lastUsed, kNow);   // and the newer timestamp
+  EXPECT_EQ(mine.lookup("鋼", "ㄅㄟ"), "杯");
+  EXPECT_EQ(mine.lookup("茶", "ㄅㄟ"), "杯");
+  const auto records = mine.all();
+  for (const auto& record : records) {
+    if (record.context == "鋼") EXPECT_EQ(record.count, 2.0);
+  }
 }
 
-TEST(UserPreferencesTest, DropAmbiguousLegacyKeysClearsStuckOldEntries) {
-  // Exactly the shape the old append-only file left behind: a stuck first
-  // pick plus the correction that could never replace it, neither dated.
+TEST(UserPreferencesTest, IgnoresEmptyFields) {
   UserPreferences prefs;
-  prefs.loadFromText("妳的 ㄋㄧˇ-ㄉㄜ\n你的 ㄋㄧˇ-ㄉㄜ\n很好 ㄏㄣˇ-ㄏㄠˇ\n",
-                     kNow);
-  const auto dropped = prefs.dropAmbiguousLegacyKeys();
-  ASSERT_EQ(dropped.size(), 1u);
-  EXPECT_EQ(dropped[0], "ㄋㄧˇ-ㄉㄜ");
-  EXPECT_TRUE(prefs.lookup("ㄋㄧˇ-ㄉㄜ", kNow).empty());
-  // A single legacy entry is fine -- only the ambiguous ones go.
-  EXPECT_EQ(prefs.lookup("ㄏㄣˇ-ㄏㄠˇ", kNow).size(), 1u);
-}
-
-TEST(UserPreferencesTest, DropAmbiguousLegacyKeysSparesRealPicks) {
-  // Two dated values under one key is the NORMAL shape after a correction:
-  // weight decides between them, so the cleanup must not touch it.
-  UserPreferences prefs;
-  prefs.record("ㄓ-ㄉㄠˋ", "之道", kNow);
-  prefs.record("ㄓ-ㄉㄠˋ", "知道", kNow + kDay);
-  EXPECT_TRUE(prefs.dropAmbiguousLegacyKeys().empty());
-  EXPECT_EQ(prefs.lookup("ㄓ-ㄉㄠˋ", kNow + kDay)[0].value, "知道");
-
-  // Nor a key that mixes a legacy line with a real pick.
-  UserPreferences mixed;
-  mixed.loadFromText("妳的 ㄋㄧˇ-ㄉㄜ\n", kNow);
-  mixed.record("ㄋㄧˇ-ㄉㄜ", "你的", kNow + kDay);
-  EXPECT_TRUE(mixed.dropAmbiguousLegacyKeys().empty());
-  EXPECT_EQ(mixed.lookup("ㄋㄧˇ-ㄉㄜ", kNow + kDay)[0].value, "你的");
+  prefs.record("", "ㄅㄟ", "杯");
+  prefs.record("鋼", "", "杯");
+  prefs.record("鋼", "ㄅㄟ", "");
+  EXPECT_EQ(prefs.size(), 0u);
+  EXPECT_FALSE(prefs.dirty());
 }
 
 }  // namespace

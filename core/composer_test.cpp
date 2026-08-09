@@ -866,14 +866,8 @@ class ComposerLearningTest : public ComposerTest {
  protected:
   void SetUp() override {
     ComposerTest::SetUp();
-    composer_->onManualSelection = [this](const std::string& reading,
-                                          const std::string& value) {
-      learned.push_back({reading, value});
-    };
-    composer_->onPhraseUsed = [this](const std::string& reading,
-                                     const std::string& value) {
-      used.push_back({reading, value});
-    };
+    prefs_ = std::make_shared<UserPreferences>();
+    composer_->setPreferences(prefs_);
   }
 
   // Opens the menu at the cursor and picks the named candidate.
@@ -889,68 +883,105 @@ class ComposerLearningTest : public ComposerTest {
     FAIL() << "no candidate " << value;
   }
 
-  std::vector<std::pair<std::string, std::string>> learned;
-  std::vector<std::pair<std::string, std::string>> used;
+  std::shared_ptr<UserPreferences> prefs_;
 };
 
-TEST_F(ComposerLearningTest, MultiCharacterPickIsLearnedAsItself) {
-  Type("ni3hk3");
-  Type("-");  // anchor the first character
-  PickByValue("妳好");
-  ASSERT_EQ(learned.size(), 1u);
-  EXPECT_EQ(learned[0].first, "ㄋㄧˇ-ㄏㄠˇ");
-  EXPECT_EQ(learned[0].second, "妳好");
-}
-
-TEST_F(ComposerLearningTest, SingleCharacterPickLearnsItsLeftContext) {
-  // Picking 郝 on its own would be a global preference for ㄏㄠˇ, which
-  // says nothing about when the user wants it. The phrase does.
+TEST_F(ComposerLearningTest, OneCorrectionIsEnough) {
   Type("ni3hk3");
   Type("9");  // anchor the second character
   ASSERT_EQ(composer_->displaySegments().highlighted, "好");
   PickByValue("郝");
-  ASSERT_EQ(learned.size(), 1u);
-  EXPECT_EQ(learned[0].first, "ㄋㄧˇ-ㄏㄠˇ");
-  EXPECT_EQ(learned[0].second, "你郝");
+  ASSERT_EQ(composer_->composedText(), "你郝");
+  composer_->feedEnter();
+
+  // Typing the very same thing again must not need the correction twice.
+  Type("ni3hk3");
+  EXPECT_EQ(composer_->composedText(), "你郝");
 }
 
-TEST_F(ComposerLearningTest, SingleCharacterPickFallsBackToTheRightContext) {
-  // Nothing to the left of the first character, so pair rightwards.
-  Type("hk3ni3");
-  Type("-");  // anchor the first character
+TEST_F(ComposerLearningTest, TheCorrectionIsTiedToItsContext) {
+  Type("ni3hk3");
+  Type("9");
+  PickByValue("郝");
+  composer_->feedEnter();
+
+  // ㄏㄠˇ after something else is untouched: what was learned is "after 你",
+  // not "ㄏㄠˇ means 郝".
+  Type("vs3hk3");
+  EXPECT_EQ(composer_->composedText(), "種好");
+}
+
+TEST_F(ComposerLearningTest, PicksAreRecordedUnderBothContextLengths) {
+  Type("wo3ni3hk3");
+  Type("9");
   ASSERT_EQ(composer_->displaySegments().highlighted, "好");
   PickByValue("郝");
-  ASSERT_EQ(learned.size(), 1u);
-  EXPECT_EQ(learned[0].first, "ㄏㄠˇ-ㄋㄧˇ");
-  EXPECT_EQ(learned[0].second, "郝你");
+  EXPECT_EQ(prefs_->lookup("你", "ㄏㄠˇ"), "郝");
+  EXPECT_EQ(prefs_->lookup("我你", "ㄏㄠˇ"), "郝");
 }
 
-TEST_F(ComposerLearningTest, NoPhraseIsLearnedAcrossPunctuation) {
-  // A settled symbol is a literal reading; a learned phrase must not span
-  // one, and a lone character with no neighbour teaches nothing.
+TEST_F(ComposerLearningTest, ContextIsLearnedFromInsideALongerWord) {
+  // The old store gave up here: the character on the left belonged to a
+  // three-character node, so there was no single-character neighbour to
+  // pair with and nothing at all was learned.
+  Type("bu2xq4gh");
+  Type("bz");
+  Settle();
+  ASSERT_EQ(composer_->composedText(), "不鏽鋼悲");
+  PickByValue("杯");
+  ASSERT_EQ(composer_->composedText(), "不鏽鋼杯");
+  EXPECT_EQ(prefs_->lookup("鋼", "ㄅㄟ"), "杯");
+  EXPECT_EQ(prefs_->lookup("鏽鋼", "ㄅㄟ"), "杯");
+
+  // ...and it applies on its own the next time, without disturbing the
+  // three-character word in front of it.
+  composer_->feedEnter();
+  Type("bu2xq4gh");
+  Type("bz");
+  Settle();
+  EXPECT_EQ(composer_->composedText(), "不鏽鋼杯");
+}
+
+TEST_F(ComposerLearningTest, ContextStopsAtPunctuation) {
+  // Nothing before the comma says anything about what follows it.
   Type("ni3hk3");
   composer_->feedChar(',');
   Type("hk3");
   Type("9");
   ASSERT_EQ(composer_->displaySegments().highlighted, "好");
   PickByValue("郝");
-  EXPECT_TRUE(learned.empty());
+  EXPECT_EQ(prefs_->lookup(UserPreferences::kStartContext, "ㄏㄠˇ"), "郝");
+  EXPECT_TRUE(prefs_->lookup("好", "ㄏㄠˇ").empty());
 }
 
-TEST_F(ComposerLearningTest, CommitReportsThePhrasesItUsed) {
-  // Phrases that reach the application unaided are the working vocabulary
-  // the shell refreshes so they do not decay out of the store.
+TEST_F(ComposerLearningTest, AManualPickOverridesWhatWasLearned) {
   Type("ni3hk3");
-  EXPECT_EQ(composer_->feedEnter().commitText, "你好");
-  ASSERT_EQ(used.size(), 1u);
-  EXPECT_EQ(used[0].first, "ㄋㄧˇ-ㄏㄠˇ");
-  EXPECT_EQ(used[0].second, "你好");
-
-  // Single characters are not phrases and are not reported.
-  used.clear();
-  Type("wo3");
+  Type("9");
+  PickByValue("郝");
   composer_->feedEnter();
-  EXPECT_TRUE(used.empty());
+
+  // The correction fires, the user disagrees, and the disagreement sticks:
+  // a learned override never argues with a node the user just set.
+  Type("ni3hk3");
+  ASSERT_EQ(composer_->composedText(), "你郝");
+  Type("9");
+  ASSERT_EQ(composer_->displaySegments().highlighted, "郝");
+  PickByValue("好");
+  EXPECT_EQ(composer_->composedText(), "你好");
+  composer_->feedEnter();
+  Type("ni3hk3");
+  EXPECT_EQ(composer_->composedText(), "你好");
+}
+
+TEST_F(ComposerLearningTest, WithoutAStoreNothingIsLearned) {
+  composer_->setPreferences(nullptr);
+  Type("ni3hk3");
+  Type("9");
+  PickByValue("郝");
+  EXPECT_EQ(composer_->composedText(), "你郝");
+  composer_->feedEnter();
+  Type("ni3hk3");
+  EXPECT_EQ(composer_->composedText(), "你好");
 }
 
 // English mode inside a live composition: the buffer survives the switch

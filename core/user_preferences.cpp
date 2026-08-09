@@ -1,15 +1,14 @@
 #include "user_preferences.h"
 
 #include <algorithm>
-#include <cmath>
 #include <sstream>
 
 namespace mspy {
 
 namespace {
 
-// Splits on single spaces; the fields (a Chinese phrase, a bopomofo key and
-// two integers) never contain one themselves.
+// Splits on whitespace; every field (a Chinese phrase, a bopomofo key, a
+// context of one or two characters and two integers) is space-free.
 std::vector<std::string> SplitFields(const std::string& line) {
   std::vector<std::string> fields;
   std::istringstream in(line);
@@ -20,17 +19,14 @@ std::vector<std::string> SplitFields(const std::string& line) {
 
 }  // namespace
 
-double UserPreferences::WeightAt(const Entry& entry, int64_t now) {
-  // A timestamp in the future (clock change, or a file copied from another
-  // machine) must not inflate the weight, so clamp the age at zero.
-  const double age = static_cast<double>(std::max<int64_t>(0, now - entry.lastUsed));
-  const double weight = entry.count * std::pow(0.5, age / kHalfLifeSeconds);
-  return weight < kMinWeight ? 0.0 : weight;
+bool UserPreferences::StrongerThan(const Entry& a, const Entry& b) {
+  if (a.count != b.count) return a.count > b.count;
+  return a.serial > b.serial;
 }
 
-void UserPreferences::loadFromText(const std::string& text,
-                                   int64_t legacyTimestamp) {
-  byKey_.clear();
+void UserPreferences::loadFromText(const std::string& text) {
+  byContext_.clear();
+  nextSerial_ = 1;
   dirty_ = false;
 
   std::istringstream in(text);
@@ -40,156 +36,158 @@ void UserPreferences::loadFromText(const std::string& text,
     if (line.empty() || line[0] == '#') continue;
 
     const auto fields = SplitFields(line);
-    // "值 讀音鍵" (old format) or "值 讀音鍵 次數 最後使用秒數".
-    if (fields.size() != 2 && fields.size() != 4) continue;
+    if (fields.size() != 5) continue;  // including every pre-2026-08-09 line
 
     Entry entry;
     entry.value = fields[0];
-    const std::string& key = fields[1];
-    if (entry.value.empty() || key.empty()) continue;
-
-    if (fields.size() == 4) {
-      try {
-        entry.count = std::stod(fields[2]);
-        entry.lastUsed = std::stoll(fields[3]);
-      } catch (...) {
-        continue;  // corrupt numbers: skip the line rather than the file
-      }
-      if (!(entry.count > 0.0)) continue;
-      entry.count = std::min(entry.count, kMaxCount);
-    } else {
-      // Old format: one pick, at an unknown time. Dating it from the
-      // migration keeps the vocabulary the user already built while still
-      // letting it age out if it turns out to be stale.
-      entry.count = 1.0;
-      entry.lastUsed = legacyTimestamp;
-      entry.legacy = true;
-      dirty_ = true;  // rewrite in the new format on the next save
+    const std::string& reading = fields[1];
+    const std::string& context = fields[2];
+    if (entry.value.empty() || reading.empty() || context.empty()) continue;
+    try {
+      entry.count = std::stod(fields[3]);
+      entry.serial = std::stoll(fields[4]);
+    } catch (...) {
+      continue;  // corrupt numbers: lose the line, not the file
     }
+    if (!(entry.count > 0.0)) continue;
+    entry.count = std::min(entry.count, kMaxCount);
+    nextSerial_ = std::max(nextSerial_, entry.serial + 1);
 
-    auto& entries = byKey_[key];
+    auto& entries = byContext_[context][reading];
     auto it = std::find_if(entries.begin(), entries.end(),
                            [&](const Entry& e) { return e.value == entry.value; });
     if (it == entries.end()) {
       entries.push_back(std::move(entry));
-    } else if (entry.lastUsed > it->lastUsed) {
+    } else if (entry.serial > it->serial) {
       *it = std::move(entry);
+    }
+  }
+
+  for (auto& [context, byReading] : byContext_) {
+    for (auto& [reading, entries] : byReading) {
+      std::sort(entries.begin(), entries.end(), StrongerThan);
     }
   }
 }
 
 std::string UserPreferences::serialize() const {
   std::string out;
-  for (const auto& [key, entries] : byKey_) {
-    for (const auto& entry : entries) {
-      out += entry.value;
-      out += ' ';
-      out += key;
-      out += ' ';
-      // Counts are whole numbers in practice; print them without a decimal
-      // tail so the file stays readable and diffable by hand.
-      out += std::to_string(static_cast<long long>(std::lround(entry.count)));
-      out += ' ';
-      out += std::to_string(entry.lastUsed);
-      out += '\n';
+  for (const auto& [context, byReading] : byContext_) {
+    for (const auto& [reading, entries] : byReading) {
+      for (const auto& entry : entries) {
+        out += entry.value;
+        out += ' ';
+        out += reading;
+        out += ' ';
+        out += context;
+        out += ' ';
+        // Counts are whole numbers in practice; keep the file hand-readable.
+        out += std::to_string(static_cast<long long>(entry.count));
+        out += ' ';
+        out += std::to_string(entry.serial);
+        out += '\n';
+      }
     }
   }
   return out;
 }
 
+bool UserPreferences::hasContext(const std::string& context) const {
+  return byContext_.find(context) != byContext_.end();
+}
+
 std::vector<UserPreferences::Entry>* UserPreferences::find(
-    const std::string& key) {
-  auto it = byKey_.find(key);
-  return it == byKey_.end() ? nullptr : &it->second;
+    const std::string& context, const std::string& reading) {
+  auto contextIt = byContext_.find(context);
+  if (contextIt == byContext_.end()) return nullptr;
+  auto readingIt = contextIt->second.find(reading);
+  if (readingIt == contextIt->second.end()) return nullptr;
+  return &readingIt->second;
 }
 
-std::vector<UserPreferences::Entry> UserPreferences::lookup(
-    const std::string& key, int64_t now) const {
-  auto it = byKey_.find(key);
-  if (it == byKey_.end()) return {};
-
-  std::vector<Entry> live;
-  for (const auto& entry : it->second) {
-    if (WeightAt(entry, now) > 0.0) live.push_back(entry);
-  }
-  std::stable_sort(live.begin(), live.end(),
-                   [now](const Entry& a, const Entry& b) {
-                     return WeightAt(a, now) > WeightAt(b, now);
-                   });
-  return live;
+std::string UserPreferences::lookup(const std::string& context,
+                                    const std::string& reading) const {
+  auto contextIt = byContext_.find(context);
+  if (contextIt == byContext_.end()) return {};
+  auto readingIt = contextIt->second.find(reading);
+  if (readingIt == contextIt->second.end()) return {};
+  const auto& entries = readingIt->second;
+  return entries.empty() ? std::string() : entries.front().value;
 }
 
-void UserPreferences::record(const std::string& key, const std::string& value,
-                             int64_t now) {
-  if (key.empty() || value.empty()) return;
-  auto& entries = byKey_[key];
-  auto it = std::find_if(entries.begin(), entries.end(),
-                         [&](const Entry& e) { return e.value == value; });
-  if (it == entries.end()) {
-    entries.push_back(Entry{value, 1.0, now});
-  } else {
-    // Bump from the DECAYED weight, not the stored count: re-picking a
-    // phrase last used a year ago should not resume from its old streak.
-    const double decayed = WeightAt(*it, now);
-    it->count = std::min(kMaxCount, std::max(1.0, decayed) + 1.0);
-    it->lastUsed = now;
-  }
-  dirty_ = true;
-}
+void UserPreferences::record(const std::string& context,
+                             const std::string& reading,
+                             const std::string& value) {
+  if (context.empty() || reading.empty() || value.empty()) return;
 
-void UserPreferences::touch(const std::string& key, const std::string& value,
-                            int64_t now) {
-  auto* entries = find(key);
-  if (entries == nullptr) return;
-  auto it = std::find_if(entries->begin(), entries->end(),
-                         [&](const Entry& e) { return e.value == value; });
-  if (it == entries->end()) return;
-  if (it->lastUsed >= now) return;
-  it->lastUsed = now;
-  dirty_ = true;
-}
-
-void UserPreferences::mergeFrom(const UserPreferences& other) {
-  for (const auto& [key, entries] : other.byKey_) {
-    auto& mine = byKey_[key];
-    for (const auto& entry : entries) {
-      auto it = std::find_if(mine.begin(), mine.end(), [&](const Entry& e) {
-        return e.value == entry.value;
-      });
-      if (it == mine.end()) {
-        mine.push_back(entry);
-      } else {
-        // Two processes may both have picked this; keep the stronger record
-        // of each field rather than letting the later writer win outright.
-        it->count = std::min(kMaxCount, std::max(it->count, entry.count));
-        it->lastUsed = std::max(it->lastUsed, entry.lastUsed);
-      }
+  auto& entries = byContext_[context][reading];
+  double count = 1.0;
+  for (auto it = entries.begin(); it != entries.end();) {
+    if (it->value == value) {
+      count = std::max(count, it->count + 1.0);
+      it = entries.erase(it);
+      continue;
     }
-  }
-}
-
-std::vector<std::string> UserPreferences::dropAmbiguousLegacyKeys() {
-  std::vector<std::string> dropped;
-  for (auto it = byKey_.begin(); it != byKey_.end();) {
-    const auto& entries = it->second;
-    const bool allLegacy =
-        std::all_of(entries.begin(), entries.end(),
-                    [](const Entry& e) { return e.legacy; });
-    if (entries.size() > 1 && allLegacy) {
-      dropped.push_back(it->first);
-      it = byKey_.erase(it);
-      dirty_ = true;
+    // The user just said this reading means something else here, so the
+    // habit that was winning has to be able to lose -- and lose NOW, not
+    // after being out-counted, which is what "one correction is enough"
+    // means. Rivals fade a point at a time so flipping back is just as
+    // cheap.
+    count = std::max(count, it->count + 1.0);
+    it->count -= 1.0;
+    if (it->count <= 0.0) {
+      it = entries.erase(it);
     } else {
       ++it;
     }
   }
-  return dropped;
+  entries.push_back(Entry{value, std::min(count, kMaxCount), nextSerial_++});
+  std::sort(entries.begin(), entries.end(), StrongerThan);
+  dirty_ = true;
+}
+
+void UserPreferences::mergeFrom(const UserPreferences& other) {
+  for (const auto& [context, byReading] : other.byContext_) {
+    for (const auto& [reading, entries] : byReading) {
+      auto& mine = byContext_[context][reading];
+      for (const auto& entry : entries) {
+        auto it = std::find_if(mine.begin(), mine.end(), [&](const Entry& e) {
+          return e.value == entry.value;
+        });
+        if (it == mine.end()) {
+          mine.push_back(entry);
+        } else {
+          // Two processes may both have picked this; take the stronger and
+          // newer record of each rather than letting the later writer win.
+          it->count = std::min(kMaxCount, std::max(it->count, entry.count));
+          it->serial = std::max(it->serial, entry.serial);
+        }
+        nextSerial_ = std::max(nextSerial_, entry.serial + 1);
+      }
+      std::sort(mine.begin(), mine.end(), StrongerThan);
+    }
+  }
 }
 
 size_t UserPreferences::size() const {
   size_t n = 0;
-  for (const auto& [key, entries] : byKey_) n += entries.size();
+  for (const auto& [context, byReading] : byContext_) {
+    for (const auto& [reading, entries] : byReading) n += entries.size();
+  }
   return n;
+}
+
+std::vector<UserPreferences::Record> UserPreferences::all() const {
+  std::vector<Record> records;
+  for (const auto& [context, byReading] : byContext_) {
+    for (const auto& [reading, entries] : byReading) {
+      for (const auto& entry : entries) {
+        records.push_back(
+            Record{context, reading, entry.value, entry.count, entry.serial});
+      }
+    }
+  }
+  return records;
 }
 
 }  // namespace mspy

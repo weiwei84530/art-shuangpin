@@ -1,7 +1,7 @@
 // [MspyIME] Bridge between the TSF shell and the mspy input core.
 //
 // Owns the conversion engine stack (McBopomofoLM -> RelaxedToneLM ->
-// UserPreferenceLM -> mspy::Composer) and provides stable UTF-16 snapshots
+// mspy::Composer) and provides stable UTF-16 snapshots
 // of the composer's output for TSF (CStringRange does not own memory, so
 // the shell points into the strings cached here).
 
@@ -12,7 +12,6 @@
 #include <vector>
 
 #include "composer.h"
-#include "user_preference_lm.h"
 #include "user_preferences.h"
 
 namespace McBopomofo {
@@ -54,9 +53,9 @@ public:
     const std::vector<std::wstring>& CandidateTexts();
 
 private:
-    // Loads %APPDATA%\MspyIME\user-phrases.txt into _preferences, migrating
-    // the old two-field format and dropping keys the old append-only store
-    // left with two competing values (see UserPreferences).
+    // Loads %APPDATA%\MspyIME\user-choices.txt into _preferences. A
+    // user-phrases.txt left by a pre-2026-08-09 build is renamed aside: it
+    // records no context, which the contextual store cannot invent.
     void LoadPreferences();
     // Merges _preferences with whatever is on disk now (another
     // application's TIP instance may have written since we loaded) and
@@ -66,13 +65,9 @@ private:
     std::shared_ptr<McBopomofo::McBopomofoLM> _lm;
     std::shared_ptr<mspy::RelaxedToneLM> _relaxed;
     std::shared_ptr<mspy::UserPreferences> _preferences;
-    std::shared_ptr<mspy::UserPreferenceLM> _preferenceLm;
     std::unique_ptr<mspy::Composer> _composer;
-    // Usage refreshes fire on every commit; only write the file this often.
-    static constexpr int64_t kSaveThrottleSeconds = 120;
 
-    std::wstring _userPhrasesPath;
-    int64_t _lastSaveTime = 0;
+    std::wstring _userChoicesPath;
     Segments _segments;
     std::vector<std::wstring> _candidateTexts;
     BOOL _ready = FALSE;

@@ -64,41 +64,21 @@ BOOL CMspyBridge::Initialize()
         return FALSE;
     }
 
-    // The learned picks are applied ABOVE tone relaxation, so the layer
-    // sees the final candidate list. McBopomofoLM's own user-phrase slot is
-    // deliberately left empty: it scores every entry at 0, which is what
-    // used to let one stale pick own a reading forever.
+    // Learned corrections are applied by the composer itself, as node
+    // overrides on the reading grid rather than as scores, so no language
+    // model layer sits above tone relaxation any more. McBopomofoLM's own
+    // user-phrase slot stays empty: it scores every entry at 0, which is
+    // what used to let one stale pick own a reading forever.
     _relaxed = std::make_shared<mspy::RelaxedToneLM>(_lm);
     _preferences = std::make_shared<mspy::UserPreferences>();
     LoadPreferences();
-    _preferenceLm =
-        std::make_shared<mspy::UserPreferenceLM>(_relaxed, _preferences);
-    _composer = std::make_unique<mspy::Composer>(_preferenceLm);
+    _composer = std::make_unique<mspy::Composer>(_relaxed);
+    _composer->setPreferences(_preferences);
 
-    _composer->onManualSelection =
-        [this](const std::string& reading, const std::string& value)
-    {
-        // The composer already widened single-character picks into the
-        // phrase around them, so everything worth learning arrives here.
-        if (reading.find('-') == std::string::npos) return;
-        _preferences->record(reading, value, _preferenceLm->clock());
-        SavePreferences();
-    };
-
-    _composer->onPhraseUsed =
-        [this](const std::string& reading, const std::string& value)
-    {
-        const int64_t now = _preferenceLm->clock();
-        _preferences->touch(reading, value, now);
-        // Refreshes happen on every commit, so writing each one would mean
-        // a file write per sentence. Throttle: a lost refresh only costs a
-        // phrase a little of its remaining half-life.
-        if (_preferences->dirty() && now - _lastSaveTime >= kSaveThrottleSeconds)
-        {
-            SavePreferences();
-            _lastSaveTime = now;
-        }
-    };
+    // Corrections are rare (a keypress or two per sentence at worst) and
+    // must survive a crash, so each one is written out immediately.
+    _composer->onLearned = [this](const std::string&, const std::string&,
+                                  const std::string&) { SavePreferences(); };
 
     _ready = TRUE;
     Global::DebugLog(L"MspyBridge: loaded %s", path.c_str());
@@ -114,39 +94,38 @@ void CMspyBridge::LoadPreferences()
     }
     std::wstring dir = std::wstring(appData) + L"\\MspyIME";
     CreateDirectoryW(dir.c_str(), nullptr);
-    _userPhrasesPath = dir + L"\\user-phrases.txt";
+    _userChoicesPath = dir + L"\\user-choices.txt";
 
-    std::ifstream in(_userPhrasesPath.c_str(), std::ios::binary);
+    // The pre-2026-08-09 store recorded no context, so nothing in it can be
+    // turned into a contextual record. Move it aside rather than delete it:
+    // it is the only copy of what the user taught the old build.
+    const std::wstring legacyPath = dir + L"\\user-phrases.txt";
+    if (GetFileAttributesW(legacyPath.c_str()) != INVALID_FILE_ATTRIBUTES)
+    {
+        const std::wstring parked = legacyPath + L".bak";
+        if (MoveFileExW(legacyPath.c_str(), parked.c_str(),
+                        MOVEFILE_REPLACE_EXISTING))
+        {
+            Global::DebugLog(L"MspyBridge: parked the old preference file at %s",
+                             parked.c_str());
+        }
+    }
+
+    std::ifstream in(_userChoicesPath.c_str(), std::ios::binary);
     if (!in.is_open()) return;
     std::string text((std::istreambuf_iterator<char>(in)),
                      std::istreambuf_iterator<char>());
     in.close();
-
-    // Legacy two-field lines are dated from this migration so the phrases
-    // already learned keep working; they age normally from here.
-    _preferences->loadFromText(
-        text, mspy::UserPreferenceLM::SystemNowSeconds());
-
-    // Files written by the old append-only store can hold two competing
-    // values under one reading (the stuck first pick plus the correction
-    // that could never replace it). Neither is trustworthy, so drop both
-    // and let normal use relearn.
-    const auto dropped = _preferences->dropAmbiguousLegacyKeys();
-    for (const auto& key : dropped)
-    {
-        Global::DebugLog(L"MspyBridge: dropped ambiguous learned key %s",
-                         ToWide(key).c_str());
-    }
-    if (_preferences->dirty()) SavePreferences();
+    _preferences->loadFromText(text);
 }
 
 void CMspyBridge::SavePreferences()
 {
-    if (_userPhrasesPath.empty() || !_preferences->dirty()) return;
+    if (_userChoicesPath.empty() || !_preferences->dirty()) return;
 
     // Every application hosts its own TIP instance with its own copy, so
     // fold in whatever is on disk now before rewriting the whole file.
-    std::ifstream in(_userPhrasesPath.c_str(), std::ios::binary);
+    std::ifstream in(_userChoicesPath.c_str(), std::ios::binary);
     if (in.is_open())
     {
         std::string text((std::istreambuf_iterator<char>(in)),
@@ -159,14 +138,14 @@ void CMspyBridge::SavePreferences()
 
     // Write to a sibling file and rename over the target, so a crash or a
     // concurrent reader never sees a half-written store.
-    const std::wstring temp = _userPhrasesPath + L".tmp";
+    const std::wstring temp = _userChoicesPath + L".tmp";
     {
         std::ofstream out(temp.c_str(), std::ios::binary | std::ios::trunc);
         if (!out.is_open()) return;
         out << _preferences->serialize();
         if (!out.good()) return;
     }
-    if (MoveFileExW(temp.c_str(), _userPhrasesPath.c_str(),
+    if (MoveFileExW(temp.c_str(), _userChoicesPath.c_str(),
                     MOVEFILE_REPLACE_EXISTING))
     {
         _preferences->clearDirty();

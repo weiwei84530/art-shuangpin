@@ -70,10 +70,10 @@
 #include <string>
 #include <vector>
 
-#include "UserOverrideModel.h"
 #include "gramambular2/reading_grid.h"
 #include "relaxed_tone_lm.h"
 #include "syllable_input.h"
+#include "user_preferences.h"
 
 namespace mspy {
 
@@ -94,8 +94,9 @@ class Composer {
   };
 
   // Takes the OUTERMOST language model of the chain (normally
-  // UserPreferenceLM -> RelaxedToneLM -> McBopomofoLM); the composer only
-  // needs hasUnigrams from it.
+  // RelaxedToneLM -> McBopomofoLM). What the user has taught the IME is
+  // NOT a model layer: it is applied as node overrides on the grid, see
+  // setPreferences.
   explicit Composer(
       std::shared_ptr<Formosa::Gramambular2::LanguageModel> lm);
 
@@ -180,24 +181,23 @@ class Composer {
   // Selects a candidate by index into candidates() (kSelecting only).
   Result selectCandidate(size_t index);
 
-  // Called on every manual candidate selection with (reading key, value);
-  // the shell persists these as user preferences. The reading key is free
-  // of internal sentinels.
-  //
-  // A SINGLE-CHARACTER pick reports the two-syllable phrase it sits in
-  // rather than the character alone (我在家 -> 我在, ㄨㄛˇ-ㄗㄞˋ). A global
-  // preference for a lone 在 would just flip 我在家 and 我再說一次 against
-  // each other; the surrounding context is what actually disambiguates, so
-  // that is what gets learned. Nothing is reported when the character has
-  // no single-character neighbour to pair with.
-  std::function<void(const std::string&, const std::string&)>
-      onManualSelection;
+  // The store of learned corrections. The composer both READS it (every
+  // walk is checked against it, see applyLearnedOverrides) and WRITES to it
+  // (a manual pick is recorded with the context it was made in). Optional:
+  // with none set the composer simply does not learn.
+  void setPreferences(std::shared_ptr<UserPreferences> preferences) {
+    preferences_ = std::move(preferences);
+  }
+  const std::shared_ptr<UserPreferences>& preferences() const {
+    return preferences_;
+  }
 
-  // Called once per multi-syllable phrase in the buffer when it commits,
-  // with the same normalized (reading key, value) pair. The shell refreshes
-  // matching preferences so vocabulary that keeps being used as-is does not
-  // decay out of the store; it never creates entries.
-  std::function<void(const std::string&, const std::string&)> onPhraseUsed;
+  // Called after a manual pick has been written into the store, with
+  // (context, reading, value) for the most specific context recorded. The
+  // shell uses it to persist the file; the CLI prints it.
+  std::function<void(const std::string&, const std::string&,
+                     const std::string&)>
+      onLearned;
 
  private:
   // Finalizes the pending syllable as tone-less (tone 1/neutral). This
@@ -244,12 +244,15 @@ class Composer {
   // exactly as it was (2026-08-09). Re-walks after each pin.
   void restoreCharactersOutside(const std::vector<std::string>& before,
                                 size_t from, size_t to);
-  // Reports a manual pick to the shell, widening a single-character pick to
-  // the two-syllable phrase around it (see onManualSelection).
-  void reportManualSelection(
+  // Writes a manual pick into the store under both context lengths.
+  void learnFromSelection(
       const Formosa::Gramambular2::ReadingGrid::Candidate& chosen);
-  // Reports every multi-syllable phrase in the walk to onPhraseUsed.
-  void reportPhrasesUsed() const;
+  // Applies every learned correction that matches the current walk,
+  // repeating until nothing more changes. Each override protects the rest
+  // of the sentence exactly like a manual pick does.
+  void applyLearnedOverrides();
+  // One pass of the above. Returns true if it changed anything.
+  bool applyOneLearnedOverride();
   // Key dispatch while the hollow-final sub-state is active ('`' pressed,
   // awaiting the final key).
   Result feedHollowFinal(char c);
@@ -268,9 +271,9 @@ class Composer {
   SyllableInput pending_;
   State state_ = State::kEmpty;
 
-  // Session re-ranking learned from manual selections (LRU with time
-  // decay, McBopomofo's UserOverrideModel).
-  McBopomofo::UserOverrideModel uom_;
+  // Corrections learned from manual selections, applied as high-score node
+  // overrides after every walk. Shared with the shell, which persists it.
+  std::shared_ptr<UserPreferences> preferences_;
 
   // The most recent syllable, already in the grid (so the sentence walk
   // sees it and the preceding text keeps auto-correcting) but still shown
