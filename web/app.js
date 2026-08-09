@@ -49,6 +49,36 @@ function pressKey(id, dur = 255) {
   setTimeout(() => el.classList.remove('pressed'), dur);
 }
 
+// The physical keycap a printable character lives on, and whether Shift is
+// needed to reach it. The drill highlights the cap, not the character.
+const SHIFTED = {
+  '!': '1', '@': '2', '#': '3', '$': '4', '%': '5', '^': '6', '&': '7',
+  '*': '8', '(': '9', ')': '0', '_': '-', '+': '=', '{': '[', '}': ']',
+  ':': ';', '"': "'", '<': ',', '>': '.', '?': '/', '~': '`'
+};
+
+function capFor(key) {
+  if (key === 'Space' || key === 'Enter' || key === 'Backspace' || key === 'Tab') {
+    return { id: key, shift: false };
+  }
+  if (SHIFTED[key]) return { id: SHIFTED[key], shift: true };
+  return { id: key.toLowerCase(), shift: false };
+}
+
+function clearHints() {
+  for (const el of Object.values(keyEls)) el.classList.remove('hint');
+}
+
+function showHint(key) {
+  clearHints();
+  const { id, shift } = capFor(key);
+  if (keyEls[id]) keyEls[id].classList.add('hint');
+  if (shift) {
+    keyEls['ShiftL'].classList.add('hint');
+    keyEls['ShiftR'].classList.add('hint');
+  }
+}
+
 /* ---------- keyboard rotation (clamped: never shows the back) ---------- */
 
 const rot = { x: 26, y: 0 };
@@ -204,14 +234,156 @@ const player = {
   updateBtn() { $('#btnPlay').textContent = this.playing ? '⏸' : '▶'; }
 };
 
+/* ---------- typing drill ---------- */
+
+// Plays a lesson from DRILLS: the article on top, the simulated IME screen
+// in the notepad, and the next expected key lit up on the keyboard. Wrong
+// keys do nothing at all -- no warning, no penalty, the drill simply does
+// not move (2026-08-09).
+
+const CP = s => Array.from(s);
+
+// A friendly name for the key being asked for.
+const KEY_LABEL = { Space: '空白', Enter: 'Enter' };
+const TONE_NOTE = {
+  '1': '一聲', '2': '二聲', '3': '三聲', '4': '四聲', '5': '輕聲',
+  '0': '一聲（右手）', '9': '二聲（右手）', '8': '三聲（右手）',
+  '7': '四聲（右手）', '6': '輕聲（右手）'
+};
+
+const drill = {
+  di: -1, si: 0, chars: [],
+
+  get lesson() { return DRILLS[this.di]; },
+
+  load(i) {
+    this.di = i;
+    this.si = 0;
+    this.chars = CP(DRILLS[i].text);
+    player.pause();
+    $('#captionBar').hidden = true;
+    $('#drillBar').hidden = false;
+    $('#drillTitle').textContent = DRILLS[i].title;
+    $('#drillIntro').textContent = DRILLS[i].intro;
+    this.render();
+  },
+
+  leave() {
+    this.di = -1;
+    clearHints();
+    $('#drillBar').hidden = true;
+    $('#captionBar').hidden = false;
+  },
+
+  restart() { if (this.di >= 0) this.load(this.di); },
+
+  // The screen as of the last completed keystroke.
+  screenAt(index) {
+    if (index < 0) return { ...EMPTY };
+    const step = this.lesson.steps[index];
+    return {
+      text: step.t,
+      comp: step.c,
+      anchor: step.a >= 0 ? step.a : null,
+      cur: step.r,
+      menu: step.m ? { anchor: step.a >= 0 ? step.a : step.c.length - 1,
+                       items: step.m.items, page: step.m.page, sel: null } : null,
+      mode: 'zh'
+    };
+  },
+
+  render() {
+    const steps = this.lesson.steps;
+    renderScreen(this.screenAt(this.si - 1));
+
+    const done = this.si > 0 ? steps[this.si - 1].d : 0;
+    const text = $('#drillText');
+    text.innerHTML = '';
+    this.chars.forEach((ch, i) => {
+      const span = document.createElement('span');
+      if (i < done) span.className = 'done';
+      else if (i === done) span.className = 'now';
+      span.textContent = ch;
+      text.appendChild(span);
+    });
+
+    $('#drillFill').style.width = (100 * this.si / steps.length) + '%';
+    $('#drillCount').textContent = `${this.si} / ${steps.length}`;
+
+    const hint = $('#drillNext');
+    if (this.si >= steps.length) {
+      clearHints();
+      hint.innerHTML = '<span class="cheer">完成了！</span>　按 ↻ 再練一次，或從左邊挑下一課。';
+      return;
+    }
+    const key = steps[this.si].k;
+    showHint(key);
+    const label = KEY_LABEL[key] || key.toUpperCase();
+    // What the key is FOR, read off the screen that is currently up: the
+    // menu is open on the step before the digit that picks from it.
+    const menuOpen = this.si > 0 && !!steps[this.si - 1].m;
+    let note = '';
+    if (menuOpen) {
+      note = key === '8' ? '　（翻到下一頁）' : '　（在候選單裡選這一個）';
+    } else if (TONE_NOTE[key] && this.si > 0 && /^[a-z;]$/.test(steps[this.si - 1].k)) {
+      note = `　（${TONE_NOTE[key]}）`;
+    } else if (key === 'Space') {
+      note = '　（單鍵音節要用空白或聲調收尾）';
+    } else if (key === 'Enter') {
+      note = '　（整段上屏）';
+    } else if (key === '8') {
+      note = '　（開候選單）';
+    } else if (key === '9' || key === '0') {
+      note = key === '9' ? '　（游標往左）' : '　（游標往右）';
+    }
+    hint.innerHTML = `下一鍵：<kbd>${label}</kbd>${note}`;
+  },
+
+  // Returns true when the event was the key the drill is waiting for.
+  handle(event) {
+    if (this.di < 0) return false;
+    const steps = this.lesson.steps;
+    if (this.si >= steps.length) return false;
+    const want = steps[this.si].k;
+    const got = event.key === ' ' ? 'Space' : event.key;
+    if (got !== want) return false;
+    pressKey(capFor(want).id);
+    this.si++;
+    this.render();
+    return true;
+  }
+};
+
 /* ---------- boot ---------- */
 
 function buildNav() {
   const nav = $('#nav');
+  const heading = label => {
+    const d = document.createElement('div');
+    d.className = 'nav-group';
+    d.textContent = label;
+    nav.appendChild(d);
+  };
+
+  heading('教學');
   TUTORIALS.forEach((t, i) => {
     const b = document.createElement('button');
+    b.dataset.kind = 'tutorial';
     b.innerHTML = `<span class="no">${i === 0 ? '☆' : i}</span>${t.title}`;
-    b.addEventListener('click', () => player.load(i));
+    b.addEventListener('click', () => { drill.leave(); player.load(i); });
+    nav.appendChild(b);
+  });
+
+  heading('看打練習');
+  DRILLS.forEach((d, i) => {
+    const b = document.createElement('button');
+    b.dataset.kind = 'drill';
+    b.innerHTML = `<span class="no">⌨</span>${d.title}`;
+    b.addEventListener('click', () => {
+      document.querySelectorAll('#nav button').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      drill.load(i);
+    });
     nav.appendChild(b);
   });
 }
@@ -220,6 +392,14 @@ $('#btnPrev').addEventListener('click', () => player.prev());
 $('#btnPlay').addEventListener('click', () => player.toggle());
 $('#btnNext').addEventListener('click', () => player.next());
 $('#btnRestart').addEventListener('click', () => player.restart());
+$('#btnDrillRestart').addEventListener('click', () => drill.restart());
+
+// The drill reads the real keyboard, so it has to stop the browser acting
+// on Space, Enter and the like -- but only for the key it actually wanted.
+window.addEventListener('keydown', e => {
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  if (drill.handle(e)) e.preventDefault();
+});
 
 buildKeyboard();
 applyRot();

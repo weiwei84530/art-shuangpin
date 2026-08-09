@@ -49,7 +49,20 @@
       </div>
     </section>
 
-    <section class="caption-bar">
+    <section class="drill-bar" id="drillBar" hidden>
+      <div class="drill-head">
+        <div class="drill-title" id="drillTitle"></div>
+        <div class="drill-meter"><i id="drillFill"></i></div>
+        <span class="drill-count" id="drillCount"></span>
+        <button id="btnDrillRestart" title="從頭再來">↻</button>
+      </div>
+      <p class="drill-intro" id="drillIntro"></p>
+      <div class="drill-text" id="drillText"></div>
+      <div class="drill-next" id="drillNext"></div>
+      <p class="drill-warn">練習時請先把真的輸入法切成英文（或關閉），否則按鍵會被輸入法吃掉，這個頁面收不到。按錯不會有提示，只是不會前進。</p>
+    </section>
+
+    <section class="caption-bar" id="captionBar">
       <div class="controls">
         <button id="btnPrev" title="上一步">⏮</button>
         <button id="btnPlay" title="播放 / 暫停">▶</button>
@@ -72,6 +85,7 @@
   </main>
 </div>
 <script src="tutorials.js"></script>
+<script src="drills.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

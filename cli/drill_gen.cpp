@@ -314,12 +314,8 @@ class Runner {
   const std::vector<Step>& steps() const { return steps_; }
   const std::string& error() const { return error_; }
 
-  void Reset() {
-    composer_.cancel();
-    committed_.clear();
-    steps_.clear();
-    error_.clear();
-  }
+  // The whole lesson, so each step can report how much of it is right.
+  void SetTarget(const std::string& text) { target_ = SplitCodePoints(text); }
 
   // Feeds one printable character and records the resulting screen.
   void Press(char c) {
@@ -455,12 +451,20 @@ class Runner {
       step.menuPage = std::to_string(composer_.candidatePageIndex() + 1) + "/" +
                       std::to_string(composer_.candidatePageCount());
     }
-    step.done = SplitCodePoints(committed_).size() +
-                SplitCodePoints(ComposedText()).size();
+    // How much of the lesson is right SO FAR -- the common prefix, not the
+    // character count, so that during a correction the site points at the
+    // character being fixed rather than at the end of the sentence.
+    const auto produced = SplitCodePoints(committed_ + ComposedText());
+    step.done = 0;
+    while (step.done < produced.size() && step.done < target_.size() &&
+           produced[step.done] == target_[step.done]) {
+      ++step.done;
+    }
     steps_.push_back(std::move(step));
   }
 
   mspy::Composer composer_;
+  std::vector<std::string> target_;
   std::string committed_;
   std::vector<Step> steps_;
   std::string error_;
@@ -647,6 +651,7 @@ int wmain(int argc, wchar_t** argv) {
 
   for (const auto& lesson : lessons) {
     Runner runner(relaxed);
+    runner.SetTarget(lesson.text());
     for (const auto& sentence : lesson.sentences) {
       const auto characters = SplitCodePoints(sentence.text);
       if (characters.size() != sentence.readings.size()) {
