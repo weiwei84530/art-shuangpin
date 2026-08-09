@@ -13,10 +13,12 @@
 // Keystroke rules (docs/spec.md §1, §5, §6):
 //   - a syllable is its double-pinyin key pair, or the single key when the
 //     pair is what that key already means on its own (的 = d, not de);
-//   - tones 2-5 are typed with the hand OPPOSITE the one that typed the
-//     syllable's last letter, using the mirrored digits (tone 3 = 3 or 8);
-//   - tone 1 needs no digit at all -- the next syllable settles it -- and a
-//     single-key syllable in tone 1 takes Space;
+//   - tones 2, 3 and 4 are typed with the hand OPPOSITE the one that typed
+//     the syllable's last letter, using the mirrored digits (tone 3 = 3 or
+//     8);
+//   - tones 1 and 5 are never typed: no digit already means "tone 1 or
+//     neutral", so the next syllable settles a two-key syllable and a
+//     single-key one takes Space (的 = d + Space, not d + 6);
 //   - each sentence ends with its punctuation, then any character the walk
 //     got wrong is corrected through the candidate menu, then Enter.
 
@@ -240,6 +242,13 @@ bool KeysForSyllable(const std::string& bare,
 
 // ---------------------------------------------------------------- lessons
 
+// Punctuation that ends a sentence, and so the only place the drill presses
+// Enter. A comma settles what precedes it just as well, but the composition
+// carries on (docs/spec.md §6: nothing auto-commits).
+bool IsSentenceEnd(const std::string& symbol) {
+  return symbol == "。" || symbol == "！" || symbol == "？";
+}
+
 struct Sentence {
   std::string text;                     // including the trailing punctuation
   std::vector<std::string> readings;    // one per character; empty = literal
@@ -345,16 +354,28 @@ class Runner {
            SplitCodePoints(s.after).size();
   }
 
-  // Walks the cursor to `target` the short way round (9/0 wrap).
+  // Walks the cursor to `target` by the cheapest route that does NOT wrap.
+  // 9/0 do wrap around both ends, but a drill that sends the cursor off one
+  // end to come back at the other teaches nothing and reads as a glitch;
+  // '-' and '=' jump to the ends and are usually no more keystrokes anyway.
   void MoveCursorTo(size_t target) {
+    const size_t at = CursorPosition();
+    if (at == target) return;
     const size_t length = GridLength();
+
+    const size_t direct = at > target ? at - target : target - at;
+    const size_t viaStart = 1 + target;
+    const size_t viaEnd = 1 + (length - target);
+
+    if (viaStart < direct && viaStart <= viaEnd) {
+      Press('-');
+    } else if (viaEnd < direct) {
+      Press('=');
+    }
     for (int guard = 0; guard <= static_cast<int>(length) + 1; ++guard) {
-      const size_t at = CursorPosition();
-      if (at == target) return;
-      // Positions run 0..length inclusive, so there are length+1 stops.
-      const size_t stops = length + 1;
-      const size_t rightSteps = (target + stops - at) % stops;
-      Press(rightSteps * 2 <= stops ? '0' : '9');
+      const size_t now = CursorPosition();
+      if (now == target) return;
+      Press(now > target ? '9' : '0');
     }
     error_ = "cursor would not reach position " + std::to_string(target);
   }
@@ -366,7 +387,13 @@ class Runner {
     for (int round = 0; round < 40; ++round) {
       const auto current = SplitCodePoints(ComposedText());
       const auto wanted = SplitCodePoints(target);
-      if (current == wanted) return true;
+      if (current == wanted) {
+        // Picking a candidate parks the cursor just past the span it
+        // fixed, so typing would carry on in the MIDDLE of the sentence.
+        // '=' puts it back at the end, which is what a user does too.
+        if (CursorPosition() != GridLength()) Press('=');
+        return true;
+      }
       if (current.size() != wanted.size()) {
         error_ = "composed " + ComposedText() + " has a different length from "
                  + target;
@@ -573,11 +600,13 @@ bool LoadLessons(const std::string& path, const ReadingIndex& index,
         sentence.readings.push_back(reading);
       }
     }
-    // The last syllable of a line has to be settled before the run can
-    // check it, and punctuation is what settles it (docs/spec.md §6).
-    if (sentence.readings.empty() || !sentence.readings.back().empty()) {
+    // One line is one sentence: it has to end with 。！？ so the run can
+    // check what the walk produced and then commit it. Commas inside the
+    // line are welcome -- they are what joins clauses into a single Enter.
+    if (sentence.readings.empty() || !sentence.readings.back().empty() ||
+        !IsSentenceEnd(SplitCodePoints(sentence.text).back())) {
       *error = path + ":" + std::to_string(lineNo) +
-               ": a line must end with punctuation";
+               ": a line must end with 。, ！ or ？";
       return false;
     }
     lessons->back().sentences.push_back(std::move(sentence));
@@ -652,6 +681,12 @@ int wmain(int argc, wchar_t** argv) {
   for (const auto& lesson : lessons) {
     Runner runner(relaxed);
     runner.SetTarget(lesson.text());
+    // Everything typed since the last Enter. Punctuation settles the
+    // syllable in front of it, so that is where the run can compare what
+    // the walk produced against the lesson -- and a comma does that just as
+    // well as a full stop, which keeps corrections local instead of piling
+    // them up at the end of a long line.
+    std::string pending;
     for (const auto& sentence : lesson.sentences) {
       const auto characters = SplitCodePoints(sentence.text);
       if (characters.size() != sentence.readings.size()) {
@@ -669,6 +704,17 @@ int wmain(int argc, wchar_t** argv) {
             return 1;
           }
           runner.Press(key);
+          pending += characters[i];
+          if (!runner.CorrectTo(pending)) {
+            std::cerr << lesson.id << ": " << runner.error() << "\n";
+            return 1;
+          }
+          // Only a sentence ending sends the buffer to the application; a
+          // comma just carries on in the same composition.
+          if (IsSentenceEnd(characters[i])) {
+            runner.Press('\n');
+            pending.clear();
+          }
           continue;
         }
         std::string bare;
@@ -682,18 +728,18 @@ int wmain(int argc, wchar_t** argv) {
         coveredKeys.insert(keys);
         coveredSyllables.insert(bare);
         for (char key : keys) runner.Press(key);
-        if (tone != '1') {
+        // Tones 1 and 5 are never typed: no digit at all already means
+        // "tone 1 or neutral" (docs/spec.md §5), so 的 is d + Space, not
+        // d + 6. The explicit digits exist only to EXCLUDE the other one,
+        // which a drill never needs.
+        if (tone != '1' && tone != '5') {
           runner.Press(ToneKeyFor(tone, keys.back()));
         } else if (keys.size() == 1) {
           // A lone key is never settled implicitly (docs/spec.md §1).
           runner.Press(' ');
         }
+        pending += characters[i];
       }
-      if (!runner.CorrectTo(sentence.text)) {
-        std::cerr << lesson.id << ": " << runner.error() << "\n";
-        return 1;
-      }
-      runner.Press('\n');
     }
 
     json += "  {\n";

@@ -141,7 +141,9 @@ const TUTORIALS = [
       { keys: ['0'], screen: { comp: [['的','s'],['歌','s']] },
         cap: '<b>聲調鍵可以用右手</b>：以 <kbd>5</kbd>/<kbd>6</kbd> 之間為軸鏡像，<kbd>0</kbd>＝一聲、<kbd>9</kbd>＝二聲、<kbd>8</kbd>＝三聲、<kbd>7</kbd>＝四聲、<kbd>6</kbd>＝輕聲。這裡的 <kbd>0</kbd> 與 <kbd>1</kbd> 等價，定案成「歌」——<b>明打一聲</b>與不打數字不一樣：不打數字會出輕聲的「個」。' },
       { keys: ['Space'], screen: { text: '我的歌', comp: [] },
-        cap: '沒有待定的音了，這一下空白鍵才上屏。整理：不打數字＝一聲＋輕聲；<kbd>1</kbd>/<kbd>0</kbd>＝嚴格只出一聲；<kbd>2</kbd><kbd>3</kbd><kbd>4</kbd>（或 <kbd>9</kbd><kbd>8</kbd><kbd>7</kbd>）＝精確聲調；<kbd>5</kbd>/<kbd>6</kbd>＝只出輕聲。' }
+        cap: '沒有待定的音了，這一下空白鍵才上屏。整理：不打數字＝一聲＋輕聲；<kbd>1</kbd>/<kbd>0</kbd>＝嚴格只出一聲；<kbd>2</kbd><kbd>3</kbd><kbd>4</kbd>（或 <kbd>9</kbd><kbd>8</kbd><kbd>7</kbd>）＝精確聲調；<kbd>5</kbd>/<kbd>6</kbd>＝只出輕聲。' },
+      { keys: [], screen: {},
+        cap: '實務上<b>幾乎不用打一聲和輕聲</b>：不打數字本來就涵蓋這兩個。它們只在你要<b>排除另一個</b>時才有用（像剛才的「歌」要排除「個」）。所以〈看打練習〉裡永遠只會叫你按 <kbd>2</kbd><kbd>3</kbd><kbd>4</kbd>（或 <kbd>9</kbd><kbd>8</kbd><kbd>7</kbd>），一聲與輕聲一律留空或用空白鍵。' }
     ]
   },
   {

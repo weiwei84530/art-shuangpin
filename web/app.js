@@ -180,7 +180,7 @@ const player = {
     }
     this.si = -1;
     renderScreen(EMPTY);
-    document.querySelectorAll('#nav button').forEach((b, k) =>
+    document.querySelectorAll('#nav .nav-item').forEach((b, k) =>
       b.classList.toggle('active', k === i));
     $('#capStep').textContent = t.title;
     $('#capText').innerHTML = '準備播放…';
@@ -335,6 +335,10 @@ const drill = {
       note = '　（開候選單）';
     } else if (key === '9' || key === '0') {
       note = key === '9' ? '　（游標往左）' : '　（游標往右）';
+    } else if (key === '-' || key === '=') {
+      note = key === '-' ? '　（游標跳到最前面）' : '　（游標跳回最後面）';
+    } else if (key === ',') {
+      note = '　（逗號，同一段繼續打）';
     }
     hint.innerHTML = `下一鍵：<kbd>${label}</kbd>${note}`;
   },
@@ -358,34 +362,53 @@ const drill = {
 
 function buildNav() {
   const nav = $('#nav');
-  const heading = label => {
-    const d = document.createElement('div');
-    d.className = 'nav-group';
-    d.textContent = label;
-    nav.appendChild(d);
+
+  // A collapsible group. The drills are a long list of exercises rather
+  // than reading material, so they start folded away.
+  const group = (label, collapsed) => {
+    const head = document.createElement('button');
+    head.className = 'nav-group' + (collapsed ? ' collapsed' : '');
+    head.innerHTML = `<span class="chev">▾</span><span class="gl">${label}</span>` +
+                     `<span class="cnt"></span>`;
+    const list = document.createElement('div');
+    list.className = 'nav-list' + (collapsed ? ' collapsed' : '');
+    head.addEventListener('click', () => {
+      const now = !list.classList.contains('collapsed');
+      list.classList.toggle('collapsed', now);
+      head.classList.toggle('collapsed', now);
+    });
+    nav.appendChild(head);
+    nav.appendChild(list);
+    return { head, list };
   };
 
-  heading('教學');
+  const lessons = group('教學', false);
   TUTORIALS.forEach((t, i) => {
     const b = document.createElement('button');
-    b.dataset.kind = 'tutorial';
+    b.className = 'nav-item';
     b.innerHTML = `<span class="no">${i === 0 ? '☆' : i}</span>${t.title}`;
     b.addEventListener('click', () => { drill.leave(); player.load(i); });
-    nav.appendChild(b);
+    lessons.list.appendChild(b);
   });
+  lessons.head.querySelector('.cnt').textContent = TUTORIALS.length;
 
-  heading('看打練習');
+  const drills = group('看打練習', true);
   DRILLS.forEach((d, i) => {
     const b = document.createElement('button');
-    b.dataset.kind = 'drill';
+    b.className = 'nav-item';
     b.innerHTML = `<span class="no">⌨</span>${d.title}`;
     b.addEventListener('click', () => {
-      document.querySelectorAll('#nav button').forEach(x => x.classList.remove('active'));
-      b.classList.add('active');
+      setActiveNavItem(b);
       drill.load(i);
     });
-    nav.appendChild(b);
+    drills.list.appendChild(b);
   });
+  drills.head.querySelector('.cnt').textContent = DRILLS.length;
+}
+
+function setActiveNavItem(button) {
+  document.querySelectorAll('#nav .nav-item').forEach(b =>
+    b.classList.toggle('active', b === button));
 }
 
 $('#btnPrev').addEventListener('click', () => player.prev());

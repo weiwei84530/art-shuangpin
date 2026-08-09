@@ -138,10 +138,16 @@ def main():
         lines.append("#title=補完 %d：全鍵位掃描" % number)
         lines.append(
             "#intro=這一課不是文章，是為了把前面沒練到的注音組合補齊而從詞庫挑出來的常用詞。"
-            "每行五個詞，打完一行按 Enter。")
+            "每行五個詞，中間有一個逗號，打完一整行才按 Enter。")
         for start in range(0, len(block), WORDS_PER_SENTENCE):
-            row = block[start:start + WORDS_PER_SENTENCE]
-            lines.append(" ".join(word for word, _, _ in row) + " 。")
+            row = [word for word, _, _ in block[start:start + WORDS_PER_SENTENCE]]
+            # A comma part way through: the drill only presses Enter at a
+            # full stop, so this is where the comma key gets practised.
+            head, tail = row[:2], row[2:]
+            text = " ".join(head)
+            if tail:
+                text += " ， " + " ".join(tail)
+            lines.append(text + " 。")
         lines.append("")
 
     with io.open(args.out, "w", encoding="utf-8", newline="\n") as handle:
