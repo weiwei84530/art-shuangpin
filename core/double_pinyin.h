@@ -21,13 +21,19 @@ namespace mspy {
 // Returns an empty vector if the pair is structurally invalid.
 std::vector<std::string> DecodeKeyPair(char first, char second);
 
-// Decodes a LONE first key into the syllable it already spells by itself
-// (2026-08-08), so that key plus a tone digit is a whole character: 'z' -> ㄗ
-// (字 = z4), 'u' -> ㄕ (是 = u4), 'y' -> ㄧ (一 = y + Space). Only the keys
-// whose bopomofo is a syllable on its own qualify -- the buzzing-vowel
-// initials (ㄓㄔㄕㄖㄗㄘㄙ), the medials (ㄧㄨ) and the standalone vowels
-// (ㄚㄜㄛ). Returns an empty vector for every other key (ㄅ is not a
-// syllable), which leaves those keys waiting for their final as before.
+// Decodes a LONE first key into the syllable it stands for by itself, so
+// that key plus a tone digit is a whole character: 'z' -> ㄗ (字 = z4),
+// 'u' -> ㄕ (是 = u4), 'y' -> ㄧ (一 = y + Space), 'd' -> ㄉㄜ (的 =
+// d + Space).
+//
+// Two groups qualify, and together they cover every letter (2026-08-09):
+//   - keys whose bopomofo IS a syllable: ㄓㄔㄕㄖㄗㄘㄙ, ㄧㄨ, ㄚㄜㄛ
+//     (2026-08-08);
+//   - the remaining initials, which stand for the syllable their bopomofo
+//     is RECITED with: ㄅㄛ ㄆㄛ ㄇㄛ ㄈㄛ / ㄉㄜ ㄊㄜ ㄋㄜ ㄌㄜ ㄍㄜ ㄎㄜ ㄏㄜ /
+//     ㄐㄧ ㄑㄧ ㄒㄧ. That is literally "the final key you would have typed
+//     anyway", so `d` and `de` are the same reading and the shortcut adds
+//     no ambiguity.
 std::vector<std::string> DecodeSingleKey(char first);
 
 // True if the character can start a syllable (a-z).

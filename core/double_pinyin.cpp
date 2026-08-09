@@ -172,6 +172,20 @@ std::optional<std::string> ConsonantFinalZhuyin(std::string_view final,
   return std::string(it->second);
 }
 
+// The final key a lone initial stands in for -- the vowel the bopomofo is
+// recited with. ㄅㄆㄇㄈ take ㄛ (there is no ㄅㄜ in Mandarin at all),
+// ㄉㄊㄋㄌㄍㄎㄏ take ㄜ, and the palatals ㄐㄑㄒ take ㄧ. Returns 0 for keys
+// that are not consonant initials.
+char DefaultFinalKey(char first) {
+  switch (first) {
+    case 'b': case 'p': case 'm': case 'f': return 'o';
+    case 'd': case 't': case 'n': case 'l':
+    case 'g': case 'k': case 'h': return 'e';
+    case 'j': case 'q': case 'x': return 'i';
+    default: return 0;
+  }
+}
+
 }  // namespace
 
 bool IsFirstKey(char c) { return c >= 'a' && c <= 'z'; }
@@ -207,8 +221,21 @@ std::vector<std::string> DecodeSingleKey(char first) {
     case 'a': case 'e': case 'o':            // ㄚ ㄜ ㄛ
       return {FirstKeyDisplay(first)};
     default:
-      return {};
+      break;
   }
+  // Every remaining initial is RECITED with a vowel that is itself a real
+  // syllable (2026-08-09): ㄅㄛ ㄆㄛ ㄇㄛ ㄈㄛ, ㄉㄜ ㄊㄜ ㄋㄜ ㄌㄜ ㄍㄜ
+  // ㄎㄜ ㄏㄜ, ㄐㄧ ㄑㄧ ㄒㄧ. Dropping the final key is therefore
+  // exactly "the final key you would have typed anyway", which is how this
+  // is implemented -- 的 = d + Space is the same reading as `de`, so the
+  // shortcut can never mean something the two-key spelling does not.
+  const char defaultFinalKey = DefaultFinalKey(first);
+  if (defaultFinalKey == 0) return {};
+  auto decoded = DecodeKeyPair(first, defaultFinalKey);
+  // Only the primary reading: the alternate of an ambiguous final key
+  // belongs to the spelling that types the key out ('o' is also ㄨㄛ).
+  if (decoded.size() > 1) decoded.resize(1);
+  return decoded;
 }
 
 bool IsSecondKey(char c) { return (c >= 'a' && c <= 'z') || c == ';'; }
