@@ -1,0 +1,100 @@
+// Typing-drill lessons for the tutorial site. Format: cli/drill_gen.cpp.
+//
+//   #id / #title / #intro start a lesson; every other line is one sentence.
+//   Words are separated by spaces and must end the line with punctuation.
+//   The reading comes from the dictionary; add one after a slash when the
+//   word has more than one (的/ㄉㄜ˙).
+//
+// The graded lessons below are hand-written. The filler lessons that follow
+// them are produced by scripts/make-filler-lessons.py, which picks real
+// dictionary words to cover whatever syllables the graded ones miss.
+
+#id=warmup
+#title=一、暖身：兩鍵一個音節
+#intro=每個音節都是「聲母鍵＋韻母鍵」；要聲調時再補一個數字，字就出現了。不用聲調的字，下一個音節的第一鍵會自動把它定案。
+你好 世界 。
+今天 天氣 很好 。
+我們 一起 出去 走 一走/ㄧ-ㄗㄡˇ 。
+他 在 家裡 看書 。
+謝謝 大家 的/ㄉㄜ˙ 幫忙 。
+早上 起來 先 喝水 。
+
+#id=tones
+#title=二、聲調：左右手都打得到
+#intro=聲調鍵以 5 和 6 之間為軸左右鏡像：一聲 1 或 0、二聲 2 或 9、三聲 3 或 8、四聲 4 或 7、輕聲 5 或 6。提示會挑「跟音節最後一鍵不同手」的那一個，兩手輪流最順。
+媽媽 罵 馬 嗎/ㄇㄚ˙ ？
+國家 語言 學習 方法 。
+時間 過 得/ㄉㄜ˙ 特別 快 。
+希望 明年 可以 見面 。
+音樂 老師 唱歌 給 我們/ㄨㄛˇ-ㄇㄣ˙ 聽 。
+爸爸 買 了/ㄌㄜ˙ 一本 好書 。
+
+#id=single
+#title=三、單鍵音節：省下一鍵
+#intro=注音本身就是一個音節的聲母，韻母鍵可以省略：ㄉ 呼名是 ㄉㄜ，所以「的」只要 d 加空白。單鍵音節一定要用空白或聲調鍵收尾，不能直接接下一個字。
+我 的/ㄉㄜ˙ 書 。
+吃 了/ㄌㄜ˙ 一個 蘋果 。
+這/ㄓㄜˋ 是 什麼/ㄕㄣˊ-ㄇㄜ˙ 意思/ㄧˋ-ㄙ˙ ？
+機會 只有 一次 而已 。
+西瓜 特別 甜 。
+四個 字 都 認識 。
+
+#id=medial-i
+#title=四、齊齒呼：ㄧ 系列
+#intro=ㄐㄑㄒ 後面一律接 ㄧ 或 ㄩ；ia 在 w 鍵、ie 在 x 鍵、iao 在 c 鍵、iu 在 q 鍵、ian 在 m 鍵、in 在 n 鍵、iang 在 d 鍵、ing 在分號鍵。
+今天 見到 一個 朋友 。
+教育 部長 解釋 政策 。
+小心 腳下 的/ㄉㄜ˙ 階梯 。
+先生 請 進來 坐 。
+需要 幾天 才能 完成 ？
+心情 很 輕鬆 。
+
+#id=medial-u
+#title=五、合口呼：ㄨ 系列
+#intro=uo 在 o 鍵、uai 在 y 鍵、ui 在 v 鍵、uan 在 r 鍵、un 在 p 鍵、uang 在 d 鍵、ong 在 s 鍵。
+我 說 中文 。
+國外 的/ㄉㄜ˙ 朋友 寄來 一張 明信片 。
+關於 這個 問題 有 兩種 說法 。
+壞 消息 傳/ㄔㄨㄢˊ 得/ㄉㄜ˙ 特別 快 。
+公司 決定 換 一個 方向 。
+昨晚 睡 得/ㄉㄜ˙ 不太 好 。
+
+#id=medial-v
+#title=六、撮口呼：ㄩ 系列
+#intro=ㄩ 打 y 鍵、ㄩㄝ 打 t 鍵、ㄩㄢ 打 r 鍵、ㄩㄣ 打 p 鍵、ㄩㄥ 打 s 鍵。ㄋㄩ、ㄌㄩ 也在 y 鍵。
+語言 學校 在 遠方 。
+月亮 出來 了/ㄌㄜ˙ 。
+運動 對 身體 很 有用 。
+女生 喜歡 這/ㄓㄜˋ 首 音樂 。
+決定 權 在 你 手上 。
+旅行 的/ㄉㄜ˙ 計畫 全部 取消 。
+
+#id=punctuation
+#title=七、標點與長句
+#intro=標點會定案並融入組字串，不會上屏；整段只有 Enter 才送出去。逗號 , 句號 . 問號 / 驚嘆號 shift+1，引號在中括號。
+他 說 ： 明天 見 。
+你 到底 要 不要 去 ？
+太好了 ， 我們/ㄨㄛˇ-ㄇㄣ˙ 出發 ！
+第一 、 先 準備 資料 。
+如果 下雨 ， 就 改 到 室內 。
+不管 怎麼/ㄗㄣˇ-ㄇㄜ˙ 說 ， 這/ㄓㄜˋ 件 事 都 得/ㄉㄟˇ 做完 。
+
+#id=homophone
+#title=八、選字：同音字的修正
+#intro=整句轉換不一定第一次就對。游標用 9 往左、0 往右，8 開候選單，選單裡 1-6 選字、7/8 翻頁。改完游標會停在下一個字，可以連按 8 一路往右修。
+不鏽鋼 杯子 。
+在座 的/ㄉㄜ˙ 各位 再 想 一想/ㄧ-ㄒㄧㄤˇ 。
+他 的/ㄉㄜ˙ 意見 已經 提出 。
+做/ㄗㄨㄛˋ 事 要 有 原則 。
+這/ㄓㄜˋ 家 店 的/ㄉㄜ˙ 服務 真 週到 。
+公司 需要 一位 會計 。
+
+#id=extras
+#title=九、收尾：零聲母與剩下的角落
+#intro=零聲母音節用 o 加韻母鍵（安＝oj、昂＝oh、二＝or），a／e 開頭的也可以打兩次首字母（愛＝al、恩＝ef）。這一課把前面沒碰到的角落補完。
+你 也 要 去 嗎/ㄇㄚ˙ ？
+是 呢/ㄋㄜ˙ ， 我 也 想 去 。
+老翁 昂首 走過 恩典 街 。
+二月 的/ㄉㄜ˙ 天氣 很 奇怪 。
+安全 第一 ， 熬夜 傷身 。
+歐洲 的/ㄉㄜ˙ 藝術 值得 一看 。

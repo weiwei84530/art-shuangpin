@@ -40,6 +40,10 @@ target_link_libraries(mspy_core PUBLIC mcb_engine)
 add_executable(repl cli/repl.cpp)
 target_link_libraries(repl PRIVATE mspy_core)
 
+# --- Typing-drill data generator (web/drills.js) ---
+add_executable(drill_gen cli/drill_gen.cpp)
+target_link_libraries(drill_gen PRIVATE mspy_core)
+
 # --- Unit tests (vendored upstream tests + ours) ---
 include(FetchContent)
 FetchContent_Declare(
