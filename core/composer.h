@@ -239,6 +239,11 @@ class Composer {
   void dismissMenu();
   // Selects by page-relative index ('1'..'6'); out of range is a no-op.
   Result selectOnCurrentPage(size_t indexInPage);
+  // Re-pins every position OUTSIDE [from, to) whose character changed since
+  // `before`, so that fixing one word leaves the rest of the sentence
+  // exactly as it was (2026-08-09). Re-walks after each pin.
+  void restoreCharactersOutside(const std::vector<std::string>& before,
+                                size_t from, size_t to);
   // Reports a manual pick to the shell, widening a single-character pick to
   // the two-syllable phrase around it (see onManualSelection).
   void reportManualSelection(

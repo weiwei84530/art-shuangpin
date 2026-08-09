@@ -155,6 +155,39 @@ char ToneDigit(char c) {
   }
 }
 
+// Splits UTF-8 text into code points.
+std::vector<std::string> SplitCodePoints(const std::string& s) {
+  std::vector<std::string> out;
+  size_t i = 0;
+  while (i < s.size()) {
+    size_t j = i + 1;
+    while (j < s.size() && (static_cast<unsigned char>(s[j]) & 0xC0) == 0x80) {
+      ++j;
+    }
+    out.push_back(s.substr(i, j - i));
+    i = j;
+  }
+  return out;
+}
+
+// One entry per reading position: the character the walk shows there. A
+// node's value has one code point per reading it spans; a node where that
+// does not hold contributes empty strings so callers skip those positions
+// rather than pin the wrong character to them.
+std::vector<std::string> WalkCharacters(
+    const Formosa::Gramambular2::ReadingGrid::WalkResult& walk) {
+  std::vector<std::string> chars;
+  for (const auto& node : walk.nodes) {
+    auto points = SplitCodePoints(node->value());
+    if (points.size() == node->spanningLength()) {
+      for (auto& point : points) chars.push_back(std::move(point));
+    } else {
+      chars.insert(chars.end(), node->spanningLength(), std::string());
+    }
+  }
+  return chars;
+}
+
 // True if any tone of this toneless bopomofo syllable exists. A bare key
 // already covers tone 1 and the neutral tone (RelaxedToneLM expands it), so
 // only 2/3/4 need asking for separately.
@@ -751,8 +784,15 @@ Composer::Result Composer::selectCandidate(size_t index) {
   }
   const auto& chosen = candidates_[index];
   const auto walkBefore = walk_;
+  const auto charactersBefore = WalkCharacters(walkBefore);
   grid_.overrideCandidate(selectionLocation_, chosen);
   walk_ = grid_.walk();
+  // Correcting one word must never rewrite another. overrideCandidate
+  // resets every node OVERLAPPING the span it writes, so picking 鋼杯 at
+  // 不鏽鋼[悲] tears up the 不鏽鋼 node and the leftover 不鏽 re-segments
+  // into 不秀. Put back whatever the re-walk moved outside the chosen span.
+  restoreCharactersOutside(charactersBefore, chosen.location,
+                           chosen.location + chosen.spanningLength);
   uom_.observe(walkBefore, walk_, selectionLocation_, NowSeconds());
 
   // Park the cursor just past the span that was fixed, so its anchor is
@@ -766,6 +806,28 @@ Composer::Result Composer::selectCandidate(size_t index) {
 
   dismissMenu();
   return {true, ""};
+}
+
+void Composer::restoreCharactersOutside(
+    const std::vector<std::string>& before, size_t from, size_t to) {
+  // Each repair is a LENGTH-1 override, and overrideCandidate only resets
+  // nodes overlapping the span it writes, so pinning one position can never
+  // un-pin another one: the loop converges. The guard is belt-and-braces.
+  for (size_t guard = 0; guard <= before.size(); ++guard) {
+    const auto now = WalkCharacters(walk_);
+    bool repaired = false;
+    for (size_t i = 0; i < before.size() && i < now.size(); ++i) {
+      if (i >= from && i < to) continue;  // the span the user just chose
+      if (before[i].empty() || now[i].empty() || before[i] == now[i]) continue;
+      // A character that only exists inside a longer word has no
+      // single-reading node to pin it to; leave those alone.
+      if (!grid_.overrideCandidate(i, before[i])) continue;
+      walk_ = grid_.walk();
+      repaired = true;
+      break;  // one pin can move several positions: re-measure first
+    }
+    if (!repaired) return;
+  }
 }
 
 void Composer::reportManualSelection(

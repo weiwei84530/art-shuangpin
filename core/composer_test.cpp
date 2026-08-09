@@ -53,6 +53,16 @@ class ComposerTest : public ::testing::Test {
     // is a real syllable, and the dictionary is what says which.
     inner->add("ㄏㄨㄞˊ", "懷", -3);
     inner->add("ㄏㄨㄚ", "花", -3);
+    // 不鏽鋼杯: a three-character phrase whose tail a two-character
+    // candidate overlaps. Scores are set so the walk prefers 不鏽鋼 + 悲.
+    inner->add("ㄅㄨˊ", "不", -2);
+    inner->add("ㄒㄧㄡˋ", "秀", -3);
+    inner->add("ㄒㄧㄡˋ", "鏽", -5);
+    inner->add("ㄍㄤ", "鋼", -4);
+    inner->add("ㄅㄟ", "悲", -3);
+    inner->add("ㄅㄟ", "杯", -4);
+    inner->add("ㄅㄨˊ-ㄒㄧㄡˋ-ㄍㄤ", "不鏽鋼", -5);
+    inner->add("ㄍㄤ-ㄅㄟ", "鋼杯", -6.8);
     lm_ = std::make_shared<RelaxedToneLM>(inner);
     composer_ = std::make_unique<Composer>(lm_);
   }
@@ -607,6 +617,26 @@ TEST_F(ComposerTest, SelectionMovesCursorPastTheFixedSpan) {
   segments = composer_->displaySegments();
   EXPECT_EQ(segments.highlighted, "你");
   EXPECT_EQ(segments.after, "好");
+}
+
+TEST_F(ComposerTest, PickingACandidateLeavesTheRestOfTheSentenceAlone) {
+  Type("bu2xq4gh");
+  Type("bz");
+  Settle();
+  ASSERT_EQ(composer_->composedText(), "不鏽鋼悲");
+
+  // 鋼杯 spans the tail of the 不鏽鋼 node, so applying it tears that node
+  // up and the leftover 不鏽 would re-segment into 不秀. Only the two
+  // characters the user actually chose may move.
+  Type("8");
+  ASSERT_EQ(composer_->state(), Composer::State::kSelecting);
+  size_t index = composer_->candidates().size();
+  for (size_t i = 0; i < composer_->candidates().size(); ++i) {
+    if (composer_->candidates()[i].value == "鋼杯") index = i;
+  }
+  ASSERT_LT(index, composer_->candidates().size());
+  composer_->selectCandidate(index);
+  EXPECT_EQ(composer_->composedText(), "不鏽鋼杯");
 }
 
 TEST_F(ComposerTest, MenuHidesNoOpCandidatesAndSkipsEmptyMenus) {
