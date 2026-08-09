@@ -336,8 +336,14 @@ class Runner {
   const std::vector<Step>& steps() const { return steps_; }
   const std::string& error() const { return error_; }
 
-  // The whole lesson, so each step can report how much of it is right.
-  void SetTarget(const std::string& text) { target_ = SplitCodePoints(text); }
+  // Marks one more character of the lesson as typed. The article panel
+  // follows the KEYSTROKES, not the screen: once the last key of 家 is
+  // down the learner is finished with that character, even though the IME
+  // still shows ㄐㄧㄚ until the next syllable settles it.
+  void FinishCharacter() {
+    ++charactersDone_;
+    if (!steps_.empty()) steps_.back().done = charactersDone_;
+  }
 
   // Feeds one printable character and records the resulting screen.
   void Press(char c) {
@@ -452,20 +458,12 @@ class Runner {
       step.menuPage = std::to_string(composer_.candidatePageIndex() + 1) + "/" +
                       std::to_string(composer_.candidatePageCount());
     }
-    // How much of the lesson is right SO FAR -- the common prefix, not the
-    // character count, so that during a correction the site points at the
-    // character being fixed rather than at the end of the sentence.
-    const auto produced = SplitCodePoints(committed_ + ComposedText());
-    step.done = 0;
-    while (step.done < produced.size() && step.done < target_.size() &&
-           produced[step.done] == target_[step.done]) {
-      ++step.done;
-    }
+    step.done = charactersDone_;
     steps_.push_back(std::move(step));
   }
 
   mspy::Composer composer_;
-  std::vector<std::string> target_;
+  size_t charactersDone_ = 0;
   std::string committed_;
   std::vector<Step> steps_;
   std::string error_;
@@ -626,6 +624,7 @@ size_t TypeSentence(Runner& runner, const Sentence& sentence,
         return i;
       }
       runner.Press(key);
+      runner.FinishCharacter();
       pending += characters[i];
       const size_t bad = runner.FirstMismatch(pending);
       if (bad != std::string::npos) return bad;
@@ -656,6 +655,7 @@ size_t TypeSentence(Runner& runner, const Sentence& sentence,
       // A lone key is never settled implicitly (docs/spec.md §1).
       runner.Press(' ');
     }
+    runner.FinishCharacter();
     pending += characters[i];
   }
   return std::string::npos;
@@ -766,7 +766,6 @@ int wmain(int argc, wchar_t** argv) {
 
     // Pass 2: the real run, over the lines that survived.
     Runner runner(relaxed);
-    runner.SetTarget(lessonText);
     for (const auto* sentence : accepted) {
       std::string fatal;
       TypeSentence(runner, *sentence, *relaxed, &coveredKeys,
