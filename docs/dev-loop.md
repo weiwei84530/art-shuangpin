@@ -18,6 +18,20 @@ scripts\build-data.ps1   # data\ 來源 → out\data.txt（三步：frequency_bu
 - M0 階段：`ime\SampleIME.sln` retarget v143 後以 msbuild 建 x64 / Win32 Release。
 - M1 起：頂層 CMake 建 engine / core / cli / tests（`ctest` 跑全部單元測試）。
 
+## 教學網站與看打練習
+
+```powershell
+scriptsuild-drills.ps1        # drills\lessons.txt → web\drills.js（兩趟：算覆蓋率 → 補完 → 產生）
+python -m http.server -d web    # 本機預覽 http://localhost:8000
+```
+
+- `drills\lessons.txt` 是手寫課程，`drillsiller.txt` 由 `scripts\make-filler-lessons.py` 產生，**不要手改**。
+- 產生器（`cli\drill_gen.cpp`）會用真的 `mspy::Composer` 重跑每一課，**打不出課文就直接失敗**——
+  所以改了輸入行為之後一定要重跑一次，這是 core 之外最有效的迴歸測試。
+- 課文的詞若有多個讀音，產生器取詞庫分數最高的那個並印出 `note:`；不對就在詞後面加 `/讀音`。
+- 每一行課文**必須以標點結尾**（標點才會把最後一個音節定案，產生器才驗得了）。
+- push `web/` 的變更會由 GitHub Actions 自動重佈 Pages。
+
 ## 註冊（一次性，管理員）
 
 ```powershell
