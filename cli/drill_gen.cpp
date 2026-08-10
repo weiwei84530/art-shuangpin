@@ -609,10 +609,13 @@ char PunctuationKey(const std::string& symbol) {
 
 // Types one line into `runner`, checking the walk at every punctuation mark
 // (a comma settles what precedes it just as well as a full stop does) and
-// pressing Enter at the end. Returns npos when the line came out exactly as
-// written, otherwise the index of the first character that did not.
+// pressing Enter at the end. `breakLine` adds the second Enter that starts
+// the next line -- false on the last line of a lesson, where committing is
+// the end of it. Returns npos when the line came out exactly as written,
+// otherwise the index of the first character that did not.
 size_t TypeSentence(Runner& runner, const Sentence& sentence,
                     Formosa::Gramambular2::LanguageModel& lm,
+                    bool breakLine,
                     std::set<std::string>* keysUsed,
                     std::set<std::string>* syllablesUsed,
                     std::string* fatal) {
@@ -639,8 +642,10 @@ size_t TypeSentence(Runner& runner, const Sentence& sentence,
       // and then it is worth two presses -- commit, then break.
       if (IsSentenceEnd(characters[i])) {
         runner.Press('\n');
-        runner.Press('\n');
-        runner.FinishCharacter();  // the newline is a character of the text
+        if (breakLine) {
+          runner.Press('\n');
+          runner.FinishCharacter();  // the newline is a character of the text
+        }
       }
       continue;
     }
@@ -753,7 +758,8 @@ int wmain(int argc, wchar_t** argv) {
       Runner probe(relaxed);
       std::string fatal;
       const size_t bad =
-          TypeSentence(probe, sentence, *relaxed, nullptr, nullptr, &fatal);
+          TypeSentence(probe, sentence, *relaxed, /*breakLine=*/false, nullptr,
+                       nullptr, &fatal);
       if (!fatal.empty()) {
         std::cerr << lesson.id << ": " << fatal << "\n";
         return 1;
@@ -772,17 +778,22 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (accepted.empty()) continue;
 
-    // Every sentence gets its own line, which is the newline the second
-    // Enter types; the article panel and the notepad break in the same
-    // places, so the two read as one.
+    // Every sentence but the last gets its own line, which is the newline
+    // the second Enter types; the article panel and the notepad break in
+    // the same places, so the two read as one. The last line has nothing
+    // after it, so committing it ends the lesson.
     std::string lessonText;
-    for (const auto* sentence : accepted) lessonText += sentence->text + "\n";
+    for (size_t i = 0; i < accepted.size(); ++i) {
+      lessonText += accepted[i]->text;
+      if (i + 1 < accepted.size()) lessonText += "\n";
+    }
 
     // Pass 2: the real run, over the lines that survived.
     Runner runner(relaxed);
-    for (const auto* sentence : accepted) {
+    for (size_t i = 0; i < accepted.size(); ++i) {
       std::string fatal;
-      TypeSentence(runner, *sentence, *relaxed, &coveredKeys,
+      TypeSentence(runner, *accepted[i], *relaxed,
+                   /*breakLine=*/i + 1 < accepted.size(), &coveredKeys,
                    &coveredSyllables, &fatal);
     }
 

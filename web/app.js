@@ -383,6 +383,10 @@ const drill = {
     player.pause();
     $('#captionBar').hidden = true;
     $('#drillBar').hidden = false;
+    // The drill needs its room lower down: the notepad is only there to
+    // show what the IME is doing, while the article and the keyboard are
+    // what the learner actually reads.
+    document.body.classList.add('drilling');
     $('#drillTitle').textContent = DRILLS[i].title;
     $('#drillIntro').textContent = DRILLS[i].intro;
     this.render();
@@ -394,6 +398,7 @@ const drill = {
     clearHints();
     $('#drillBar').hidden = true;
     $('#captionBar').hidden = false;
+    document.body.classList.remove('drilling');
     fitKeyboard();
   },
 

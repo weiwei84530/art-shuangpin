@@ -101,6 +101,15 @@ body {
   overflow-y: auto; scrollbar-width: none;
 }
 .np-body::-webkit-scrollbar { display: none; }
+/* Drill mode gives the top block less room: the notepad is a mirror of
+   what the IME is doing, whereas the article and the keyboard are what the
+   learner is actually reading. Everything it gives up goes to the board,
+   which fitKeyboard() then draws bigger. */
+body.drilling .screen-wrap { padding: 12px 20px 2px; }
+body.drilling .np-body { height: 152px; font-size: 20px; padding: 10px 14px; }
+body.drilling .np-title, body.drilling .np-status { padding-top: 5px; padding-bottom: 5px; }
+body.drilling .drill-bar { margin-top: 12px; }
+
 .np-status {
   display: flex; align-items: center; gap: 10px;
   padding: 6px 14px; font-size: 12px; color: #667; background: #f7f8fa;
