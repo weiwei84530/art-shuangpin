@@ -2,8 +2,9 @@
 //
 //   #id / #title / #intro start a lesson; every other line is one sentence.
 //   Words are separated by spaces. A line must END with 。！？ -- that is
-//   where the drill checks the walk and presses Enter. Commas inside the
-//   line are what join clauses into a single Enter, so use them.
+//   where the drill checks the walk and presses Enter TWICE: once to send
+//   the buffer, once to break the line. Commas inside the line are what
+//   join clauses into one sentence, so use them.
 //   The reading comes from the dictionary; add one after a slash when the
 //   word has more than one (的/ㄉㄜ˙).
 //
@@ -16,7 +17,7 @@
 
 #id=warmup
 #title=一、暖身：兩鍵一個音節
-#intro=每個音節都是「聲母鍵＋韻母鍵」；要二三四聲時再補一個數字，字就出現了。一聲和輕聲不用打數字——不打數字本來就是這兩個。逗號之後同一段繼續打，只有句號才按 Enter。
+#intro=每個音節都是「聲母鍵＋韻母鍵」；要二三四聲時再補一個數字，字就出現了。一聲和輕聲不用打數字——不打數字本來就是這兩個。逗號之後同一段繼續打；到句號才按 Enter，而且按兩次——第一次上屏，第二次換行。
 你好 世界 ， 今天 天氣 很好 。
 我們/ㄨㄛˇ-ㄇㄣ˙ 一起 出去 走 一走/ㄧ-ㄗㄡˇ ， 順便 買 點 東西 。
 他 在 家裡 看書 ， 今天 沒有 出門 。

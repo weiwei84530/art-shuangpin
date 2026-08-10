@@ -29,11 +29,20 @@ function buildKeyboard() {
       key.appendChild(side);
       const cap = document.createElement('div');
       cap.className = 'cap';
-      cap.innerHTML = `<span class="main">${label}</span>`;
+      let html = `<span class="main">${label}</span>`;
       const low = id.toLowerCase();
-      if (INITIALS[low] && id.length === 1) cap.innerHTML += `<span class="sub-i">${INITIALS[low]}</span>`;
-      if (FINALS[low] && id.length === 1) cap.innerHTML += `<span class="sub-f">${FINALS[low]}</span>`;
-      if (CONTROLS[id]) cap.innerHTML += `<span class="sub-c">${CONTROLS[id]}</span>`;
+      if (INITIALS[low] && id.length === 1) {
+        // The recited vowel goes right under the initial: it is what the
+        // key means when it is a syllable all by itself.
+        const vowel = SINGLE_VOWELS[low] ? `<i>${SINGLE_VOWELS[low]}</i>` : '';
+        html += `<span class="sub-i">${INITIALS[low]}${vowel}</span>`;
+      }
+      if (FINALS[low] && id.length === 1) {
+        html += `<span class="sub-f">` +
+                FINALS[low].map(f => `<i>${f}</i>`).join('') + `</span>`;
+      }
+      if (CONTROLS[id]) html += `<span class="sub-c">${CONTROLS[id]}</span>`;
+      cap.innerHTML = html;
       key.appendChild(cap);
       rowEl.appendChild(key);
       keyEls[id] = key;
@@ -160,6 +169,11 @@ function renderScreen(st) {
   } else {
     card.hidden = true;
   }
+
+  // A drill fills more lines than the window has, so follow the caret the
+  // way an editor would.
+  const body = $('#npBody');
+  body.scrollTop = body.scrollHeight;
 }
 
 /* ---------- tutorial player ---------- */
@@ -379,9 +393,20 @@ const drill = {
       const span = document.createElement('span');
       if (i < done) span.className = 'done';
       else if (i === done) span.className = 'now';
+      // The line break is a character to type like any other (Enter commits,
+      // Enter breaks), so it gets a mark of its own rather than vanishing.
+      if (ch === '\n') {
+        span.classList.add('nl');
+        span.textContent = '↵';
+        text.appendChild(span);
+        text.appendChild(document.createElement('br'));
+        return;
+      }
       span.textContent = ch;
       text.appendChild(span);
     });
+    const now = text.querySelector('.now');
+    if (now) now.scrollIntoView({ block: 'nearest' });
 
     $('#drillFill').style.width = (100 * this.si / steps.length) + '%';
     $('#drillCount').textContent = `${this.si} / ${steps.length}`;
@@ -404,7 +429,9 @@ const drill = {
     } else if (key === 'Space') {
       note = '　（單鍵音節要用空白或聲調收尾）';
     } else if (key === 'Enter') {
-      note = '　（整段上屏）';
+      // Two in a row at a full stop: the first commits, the second is the
+      // line break. The step's own screen says which one this is.
+      note = steps[this.si].t.endsWith('\n') ? '　（換行）' : '　（整段上屏）';
     } else if (key === ',') {
       note = '　（逗號，同一段繼續打）';
     }

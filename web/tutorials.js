@@ -25,19 +25,40 @@ const KEY_ROWS = [
    ['AltR','Alt',1.25],['Fn','Fn',1.25],['Menu','☰',1.25],['CtrlR','Ctrl',1.25]]
 ];
 
-// Initial (聲母) shown top-right in orange.
+// Initial (聲母) shown top-right in orange. a/e/o carry none: they are
+// vowel keys that also open a zero-initial syllable (安 = oj), exactly like
+// e in 恩 = ef, so marking only o would be arbitrary.
 const INITIALS = {
   b:'ㄅ', p:'ㄆ', m:'ㄇ', f:'ㄈ', d:'ㄉ', t:'ㄊ', n:'ㄋ', l:'ㄌ',
   g:'ㄍ', k:'ㄎ', h:'ㄏ', j:'ㄐ', q:'ㄑ', x:'ㄒ', r:'ㄖ',
-  z:'ㄗ', c:'ㄘ', s:'ㄙ', v:'ㄓ', i:'ㄔ', u:'ㄕ', y:'ㄧ', w:'ㄨ', o:'零'
+  z:'ㄗ', c:'ㄘ', s:'ㄙ', v:'ㄓ', i:'ㄔ', u:'ㄕ', y:'ㄧ', w:'ㄨ'
 };
 
-// Final (韻母) shown bottom-right in teal (primary reading only; see spec).
+// The vowel an initial is recited with, shown in small type under it: these
+// keys are a syllable on their own (ㄎ alone is ㄎㄜ, so 可 = k + tone).
+// The other initials already ARE their syllable (ㄗ ㄘ ㄙ ㄖ ㄓ ㄔ ㄕ) and
+// need no second glyph. Mirrors DefaultFinalKey() in core/double_pinyin.cpp.
+const SINGLE_VOWELS = {
+  b:'ㄛ', p:'ㄛ', m:'ㄛ', f:'ㄛ',
+  d:'ㄜ', t:'ㄜ', n:'ㄜ', l:'ㄜ', g:'ㄜ', k:'ㄜ', h:'ㄜ',
+  j:'ㄧ', q:'ㄧ', x:'ㄧ'
+};
+
+// Final (韻母) shown bottom-right in teal: every reading the key produces as
+// the SECOND key of a syllable, one per line, always ordered plain → ㄧ →
+// ㄨ → ㄩ. The ㄩ readings are the ones that only follow ㄐㄑㄒ (ju = ㄐㄩ,
+// jr = ㄐㄩㄢ), so they always sit on the bottom line. Derived from
+// FinalKeyMap + ConsonantFinalZhuyin in core/double_pinyin.cpp; after y/w
+// the same keys spell the ㄧ/ㄨ series instead, which is a lesson, not a
+// keycap.
 const FINALS = {
-  a:'ㄚ', o:'ㄛ ㄨㄛ', e:'ㄜ', i:'ㄧ', u:'ㄨ', y:'ㄩ ㄨㄞ',
-  l:'ㄞ', z:'ㄟ', k:'ㄠ', b:'ㄡ', j:'ㄢ', f:'ㄣ', h:'ㄤ', g:'ㄥ',
-  r:'ㄦ ㄨㄢ', w:'ㄧㄚ ㄨㄚ', x:'ㄧㄝ', c:'ㄧㄠ', q:'ㄧㄡ', m:'ㄧㄢ',
-  n:'ㄧㄣ', d:'ㄧㄤ ㄨㄤ', ';':'ㄧㄥ', s:'ㄨㄥ', v:'ㄨㄟ', p:'ㄨㄣ', t:'ㄩㄝ'
+  a:['ㄚ'], o:['ㄛ','ㄨㄛ'], e:['ㄜ'], i:['ㄧ'], u:['ㄨ','ㄩ'],
+  l:['ㄞ'], z:['ㄟ'], k:['ㄠ'], b:['ㄡ'], j:['ㄢ'], f:['ㄣ'],
+  h:['ㄤ'], g:['ㄥ'], r:['ㄦ','ㄨㄢ','ㄩㄢ'],
+  w:['ㄧㄚ','ㄨㄚ'], x:['ㄧㄝ'], c:['ㄧㄠ'], q:['ㄧㄡ'], m:['ㄧㄢ'],
+  n:['ㄧㄣ'], d:['ㄧㄤ','ㄨㄤ'], ';':['ㄧㄥ'],
+  v:['ㄨㄟ','ㄩㄝ'], p:['ㄨㄣ','ㄩㄣ'], s:['ㄨㄥ','ㄩㄥ'],
+  y:['ㄨㄞ','ㄩ'], t:['ㄩㄝ']
 };
 
 // Control / punctuation hints shown bottom-left in gray. Every digit
@@ -56,7 +77,7 @@ const TUTORIALS = [
     id: 'intro', title: '總覽與鍵帽標註',
     steps: [
       { keys: [], screen: {},
-        cap: '歡迎！下方是可以<b>拖曳轉動</b>的 3D 鍵盤。每個鍵帽上：大字＝按鍵本身、右上<b>橘色＝聲母</b>注音、右下<b>青色＝韻母</b>注音；數字排的灰字是聲調與控制功能。每個音節＝「聲母鍵＋韻母鍵」兩鍵，之後可補聲調數字。' },
+        cap: '歡迎！下方是可以<b>拖曳轉動</b>的 3D 鍵盤。每個鍵帽上：大字＝按鍵本身、右上<b>橘色＝聲母</b>注音、右下<b>青色＝韻母</b>注音（一個鍵能拼出好幾個韻母時逐行列出，順序固定是 ㄧ 系→ㄨ 系→ㄩ 系）；數字排的灰字是聲調與控制功能。每個音節＝「聲母鍵＋韻母鍵」兩鍵，之後可補聲調數字。' },
       { keys: ['u'], screen: { comp: [['ㄕ','p']] },
         cap: '例：<kbd>u</kbd> 的聲母是 ㄕ。第一鍵一律顯示注音，不顯示英文字母；虛線底線代表這段還沒上屏。' },
       { keys: ['l'], screen: { comp: [['ㄕㄞ','p']] },
@@ -90,7 +111,7 @@ const TUTORIALS = [
     id: 'single', title: '單鍵音節（省一鍵）',
     steps: [
       { keys: [], screen: {},
-        cap: '<b>26 個字母鍵每一個都是一個音節</b>，韻母鍵可以省略。一種是注音本身就是音節：<kbd>z</kbd>ㄗ <kbd>c</kbd>ㄘ <kbd>s</kbd>ㄙ <kbd>r</kbd>ㄖ <kbd>v</kbd>ㄓ <kbd>i</kbd>ㄔ <kbd>u</kbd>ㄕ <kbd>y</kbd>ㄧ <kbd>w</kbd>ㄨ <kbd>a</kbd>ㄚ <kbd>e</kbd>ㄜ <kbd>o</kbd>ㄛ。另一種是<b>注音的呼名</b>：ㄅㄆㄇㄈ 帶 ㄛ、ㄉㄊㄋㄌㄍㄎㄏ 帶 ㄜ、ㄐㄑㄒ 帶 ㄧ——所以「的」＝<kbd>d</kbd>＋空白、「了」＝<kbd>l</kbd>＋空白。' },
+        cap: '<b>26 個字母鍵每一個都是一個音節</b>，韻母鍵可以省略。一種是注音本身就是音節：<kbd>z</kbd>ㄗ <kbd>c</kbd>ㄘ <kbd>s</kbd>ㄙ <kbd>r</kbd>ㄖ <kbd>v</kbd>ㄓ <kbd>i</kbd>ㄔ <kbd>u</kbd>ㄕ <kbd>y</kbd>ㄧ <kbd>w</kbd>ㄨ <kbd>a</kbd>ㄚ <kbd>e</kbd>ㄜ <kbd>o</kbd>ㄛ。另一種是<b>注音的呼名</b>：ㄅㄆㄇㄈ 帶 ㄛ、ㄉㄊㄋㄌㄍㄎㄏ 帶 ㄜ、ㄐㄑㄒ 帶 ㄧ——所以「的」＝<kbd>d</kbd>＋空白、「了」＝<kbd>l</kbd>＋空白。鍵盤上<b>橘色聲母下方的小字</b>就是這個呼名的韻母。' },
       { keys: ['w','f','2'], screen: { comp: [['文','s']] },
         cap: '示範打「文字」。先打「文」：<kbd>w</kbd><kbd>f</kbd><kbd>2</kbd>（ㄨㄣˊ）。' },
       { keys: ['z'], screen: { comp: [['文','s'],['ㄗ','p']] },

@@ -350,6 +350,10 @@ class Runner {
     mspy::Composer::Result r = c == '\n' ? composer_.feedEnter()
                                          : composer_.feedChar(c);
     committed_ += r.commitText;
+    // A key the composer does not eat reaches the application itself. The
+    // only one the drill ever presses is Enter with nothing composing,
+    // which is how the line actually breaks.
+    if (!r.consumed && c == '\n') committed_ += '\n';
     Record(KeyId(c));
   }
 
@@ -629,8 +633,15 @@ size_t TypeSentence(Runner& runner, const Sentence& sentence,
       const size_t bad = runner.FirstMismatch(pending);
       if (bad != std::string::npos) return bad;
       // Only a sentence ending sends the buffer to the application; a comma
-      // just carries on in the same composition.
-      if (IsSentenceEnd(characters[i])) runner.Press('\n');
+      // just carries on in the same composition. The second Enter is the
+      // line break (2026-08-10): nobody presses Enter mid-paragraph just to
+      // commit, so the drill only asks for it where a new line is wanted,
+      // and then it is worth two presses -- commit, then break.
+      if (IsSentenceEnd(characters[i])) {
+        runner.Press('\n');
+        runner.Press('\n');
+        runner.FinishCharacter();  // the newline is a character of the text
+      }
       continue;
     }
 
@@ -761,8 +772,11 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (accepted.empty()) continue;
 
+    // Every sentence gets its own line, which is the newline the second
+    // Enter types; the article panel and the notepad break in the same
+    // places, so the two read as one.
     std::string lessonText;
-    for (const auto* sentence : accepted) lessonText += sentence->text;
+    for (const auto* sentence : accepted) lessonText += sentence->text + "\n";
 
     // Pass 2: the real run, over the lines that survived.
     Runner runner(relaxed);
@@ -803,7 +817,7 @@ int wmain(int argc, wchar_t** argv) {
     }
     json += "    ]\n";
     json += "  },\n";
-    std::cout << lesson.id << ": " << SplitCodePoints(lesson.text()).size()
+    std::cout << lesson.id << ": " << SplitCodePoints(lessonText).size()
               << " chars, " << runner.steps().size() << " keystrokes\n";
   }
   json += "];\n";

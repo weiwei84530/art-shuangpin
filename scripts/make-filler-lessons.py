@@ -153,7 +153,7 @@ def main():
         lines.append("#title=補完 %d：全鍵位掃描" % number)
         lines.append(
             "#intro=這一課不是文章，是為了把前面沒練到的注音組合補齊而從詞庫挑出來的常用詞。"
-            "每行五個詞，中間有一個逗號，打完一整行才按 Enter。")
+            "每行五個詞，中間有一個逗號，打完一整行才按 Enter：一次上屏，一次換行。")
         for start in range(0, len(block), WORDS_PER_SENTENCE):
             row = [word for word, _, _ in block[start:start + WORDS_PER_SENTENCE]]
             # A comma part way through: the drill only presses Enter at a
