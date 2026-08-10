@@ -22,9 +22,20 @@ scripts\build-data.ps1   # data\ 來源 → out\data.txt（三步：frequency_bu
 
 ```powershell
 scripts\build-drills.ps1        # drills\lessons.txt → web\drills.js（兩趟：算覆蓋率 → 補完 → 產生）
+scripts\check-tutorials.ps1     # web\tutorials.js 的 12 課對真引擎稽核
 python -m http.server -d web    # 本機預覽 http://localhost:8000
 ```
 
+- **教學課程（`web\tutorials.js`）是手寫的**，不像看打練習有產生器把關，所以
+  `scripts\check-tutorials.ps1`（2026-08-10）負責這件事：把每一課的按鍵丟進真的
+  `mspy::Composer` 重跑，比對 (a) 每一步的畫面——已上屏文字、組字串、哪些還是注音、
+  反白字、游標位置、候選清單與頁碼；(b) 每個音節花的鍵數是不是**目前最省的打法**。
+  後者才抓得到「畫面完全正確、只是不再最省」的過時（的＝`de`＋空白）。
+  **改了輸入行為或詞庫之後要重跑。** 步驟可用 `alt: true` 跳過最省鍵檢查（刻意示範較長的
+  打法），或 `audit: false` 表示引擎模擬不到（TSF 層行為，如閒置 Tab 刪已上屏的字），
+  該課的重播就停在那裡。實作＝`scripts\check-tutorials.mjs`（Node，`eval` 載入
+  tutorials.js）＋ `repl.exe --json`／`--shortest`；最省鍵的判準與 drill_gen 共用
+  `cli\keystrokes.h` 的 `KeysForSyllable`（單鍵優先、再試兩鍵、經詞庫驗證）。
 - `drills\lessons.txt` 是手寫課程，`drills\filler.txt` 由 `scripts\make-filler-lessons.py` 產生，**不要手改**。
 - 產生器（`cli\drill_gen.cpp`）會用真的 `mspy::Composer` 重跑每一課，**打不出課文就直接失敗**——
   所以改了輸入行為之後一定要重跑一次，這是 core 之外最有效的迴歸測試。
