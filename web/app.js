@@ -98,6 +98,20 @@ const rot = { x: 18, y: 0 };
 function applyRot() {
   $('#kbTilt').style.transform = `rotateX(${rot.x}deg) rotateY(${rot.y}deg)`;
 }
+// Scales the board down to whatever room is left under the panels. Media
+// queries cannot do this: the drill bar is taller than the caption bar, and
+// tilting the board changes how tall it draws, so the space is only known
+// at run time. Without it the keyboard simply overlaps the panel above.
+function fitKeyboard() {
+  const stage = $('#kbStage'), body = $('#kbBody'), hint = $('.kb-hint');
+  body.style.zoom = '1';
+  const room = stage.clientHeight - hint.offsetHeight - 16;
+  const box = body.getBoundingClientRect();   // the tilted, on-screen size
+  if (box.height <= 0 || room <= 0) return;
+  const z = Math.min(1, room / box.height, (stage.clientWidth - 16) / box.width);
+  body.style.zoom = z.toFixed(3);
+}
+
 function setupDrag() {
   const stage = $('#kbStage');
   let dragging = false, px = 0, py = 0;
@@ -113,7 +127,11 @@ function setupDrag() {
     px = e.clientX; py = e.clientY;
     applyRot();
   });
-  const end = () => { dragging = false; stage.classList.remove('dragging'); };
+  const end = () => {
+    dragging = false;
+    stage.classList.remove('dragging');
+    fitKeyboard();  // a flatter board draws taller and may no longer fit
+  };
   stage.addEventListener('pointerup', end);
   stage.addEventListener('pointercancel', end);
 }
@@ -344,12 +362,20 @@ const TONE_NOTE = {
 
 const drill = {
   di: -1, si: 0, chars: [],
+  // Indices of the characters the learner fumbled: a wrong key is charged
+  // to whichever character was being typed at the time. Reset per attempt.
+  slips: new Set(),
 
   get lesson() { return DRILLS[this.di]; },
+
+  // How many characters of the lesson are finished -- the article panel
+  // follows the keystrokes, so this is what a wrong key is charged to.
+  get done() { return this.si > 0 ? this.lesson.steps[this.si - 1].d : 0; },
 
   load(i) {
     this.di = i;
     this.si = 0;
+    this.slips = new Set();
     this.chars = CP(DRILLS[i].text);
     // Whatever button started the drill keeps keyboard focus, and Space or
     // Enter would then press it again instead of reaching the drill.
@@ -360,6 +386,7 @@ const drill = {
     $('#drillTitle').textContent = DRILLS[i].title;
     $('#drillIntro').textContent = DRILLS[i].intro;
     this.render();
+    fitKeyboard();  // the drill bar is taller than the caption bar
   },
 
   leave() {
@@ -367,6 +394,7 @@ const drill = {
     clearHints();
     $('#drillBar').hidden = true;
     $('#captionBar').hidden = false;
+    fitKeyboard();
   },
 
   restart() { if (this.di >= 0) this.load(this.di); },
@@ -390,12 +418,14 @@ const drill = {
     const steps = this.lesson.steps;
     renderScreen(this.screenAt(this.si - 1));
 
-    const done = this.si > 0 ? steps[this.si - 1].d : 0;
+    const done = this.done;
     const text = $('#drillText');
     text.innerHTML = '';
     this.chars.forEach((ch, i) => {
       const span = document.createElement('span');
-      if (i < done) span.className = 'done';
+      // A character typed cleanly turns green; one that took a wrong key on
+      // the way stays marked, so the mistakes are still visible at the end.
+      if (i < done) span.className = this.slips.has(i) ? 'done slip' : 'done';
       else if (i === done) span.className = 'now';
       // The line break is a character to type like any other (Enter commits,
       // Enter breaks), so it gets a mark of its own rather than vanishing.
@@ -418,7 +448,11 @@ const drill = {
     const hint = $('#drillNext');
     if (this.si >= steps.length) {
       clearHints();
-      hint.innerHTML = '<span class="cheer">完成了！</span>　按 ↻ 再練一次，或從左邊挑下一課。';
+      const slips = this.slips.size;
+      hint.innerHTML = slips === 0
+        ? '<span class="cheer">完成了，全對！</span>　按 ↻ 再練一次，或從左邊挑下一課。'
+        : `<span class="cheer">完成了！</span>　其中 <span class="slip-count">${slips}</span>` +
+          ` 個字打錯過（共 ${this.chars.length} 字），歡迎按 ↻ 再挑戰一次。`;
       return;
     }
     const key = steps[this.si].k;
@@ -542,7 +576,10 @@ window.addEventListener('keydown', e => {
     return;
   }
   if (drill.di < 0) return;
-  if (drill.isMistake(e)) sound.ding();
+  if (drill.isMistake(e)) {
+    sound.ding();
+    drill.slips.add(drill.done);  // charged to the character being typed
+  }
   if (e.key === ' ' || e.key === 'Enter' || e.key === 'Backspace') {
     // Even when it is the wrong key, these must not scroll the page, go
     // back a page, or activate whatever happens to be focused.
@@ -555,4 +592,6 @@ applyRot();
 setupDrag();
 buildNav();
 sound.updateBtn();
+fitKeyboard();
+window.addEventListener('resize', fitKeyboard);
 player.load(0);

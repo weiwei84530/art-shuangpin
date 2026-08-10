@@ -254,11 +254,11 @@ body {
 }
 .kb-hint { margin-top: 14px; font-size: 12px; color: #8a93a8; }
 
-/* Small windows scale the whole board instead of the keycap unit: the
-   annotations are sized in px, so shrinking only the cap makes the four
-   lines on d and r collide. zoom keeps every proportion. */
-@media (max-height: 980px) { .kb-body { zoom: .88; } }
-@media (max-width: 1200px) { .kb-body { zoom: .76; } .np-body { font-size: 21px; } }
+/* The board is scaled to fit by fitKeyboard() in app.js -- a media query
+   cannot see how tall the panel above it happens to be. Shrinking --u
+   instead would not work either: the annotations are sized in px, so the
+   four lines on d and r would collide. */
+@media (max-width: 1200px) { .np-body { font-size: 21px; } }
 
 /* ---- typing drill ---- */
 .drill-bar { width: min(680px, 92%); margin: 10px auto 0; flex: none; }
@@ -281,11 +281,15 @@ body {
   font-size: 20px; line-height: 1.75; letter-spacing: 1px;
   padding: 10px 14px; border-radius: 9px; background: #ffffffcc;
   border: 1px solid #dde2ec; color: #aeb5c4; word-break: break-all;
-  /* one line per sentence would otherwise squeeze the keyboard off the
-     bottom of the window; the panel scrolls with the current character */
-  max-height: 142px; overflow-y: auto; scrollbar-width: thin;
+  /* exactly four lines, whole: one sentence per line would otherwise grow
+     the panel until it squeezed the keyboard off the bottom. 1.75em is the
+     line height, and the padding and border are inside the box. */
+  max-height: calc(1.75em * 4 + 22px); overflow-y: auto; scrollbar-width: thin;
 }
 .drill-text .done { color: #2f9e8f; }
+/* typed, but not cleanly: a wrong key was pressed somewhere in this
+   character. Marked afterwards, never while it is being typed. */
+.drill-text .done.slip { color: #c2662c; }
 /* the line break, shown so the two Enters have something to land on */
 .drill-text .nl { color: #b9c0d0; font-size: .8em; padding: 0 2px; }
 .drill-text .nl.now { color: #fff; }
@@ -300,6 +304,7 @@ body {
 }
 .drill-next .warn { color: #c53030; }
 .drill-next .cheer { color: #2f9e8f; font-weight: 700; }
+.drill-next .slip-count { color: #c2662c; font-weight: 700; }
 
 /* the key the drill is waiting for */
 .key.hint .cap {
