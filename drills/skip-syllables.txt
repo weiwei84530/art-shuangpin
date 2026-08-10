@@ -1,0 +1,23 @@
+# Syllables the typing drills are allowed to skip, one per line.
+#
+# scripts\check-drill-coverage.ps1 passes this to drill_gen --allow, which
+# walks every key combination the IME accepts and fails on anything missing
+# that is not listed here. A line in this file is a decision, not a TODO --
+# write down why, because "we could not be bothered" is not a reason.
+#
+# Every one of these is a key pair whose ONLY characters are obscure enough
+# that no two-character word exists to drill them with (checked against
+# out\data.txt on 2026-08-10). The keys still work in the IME; they just do
+# not appear in a lesson.
+
+ㄟ      # ez -- 注音符號「ㄟ」本身與「欸」；符號在詞庫分數較高，整句轉換一定走符號，
+        #       而練習不做選字，所以打不出「欸」
+ㄥ      # eg -- 注音符號「ㄥ」與「鞥」（馬頸革），現代漢語不用
+ㄅㄧㄤ  # bd -- 只有 𰻞（biangbiang 麵），Unicode 擴充 G 區，多數字型顯示不出來
+ㄆㄧㄚ  # pw -- 只有 㕷
+ㄈㄧㄠ  # fc -- 只有 覅（吳語「不要」的合音）
+ㄋㄨㄣ  # np -- 只有 黁
+ㄙㄟ    # sz -- 只有 㩙
+
+# 2026-08-09 曾以為 ㄋㄩㄝ／ㄌㄩㄢ 也要略過。實際上 ㄋㄩㄝ 有「虐待」可以練，
+# 已經納入；ㄌㄩㄢ 根本不是任何鍵位拼得出來的音節，不必列。

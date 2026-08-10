@@ -25,9 +25,13 @@ import os
 TONE_MARKS = ("ˊ", "ˇ", "ˋ", "˙")
 
 # Below this score a dictionary entry is a word the learner will never meet;
-# drilling it would teach the keys with an unreadable example.
+# drilling it would teach the keys with an unreadable example. The rare
+# syllables at the tail have nothing above the floor, so they get a second
+# pass at FALLBACK_WORD_SCORE rather than going uncovered.
 MIN_WORD_SCORE = -8.0
-# Fraction of single-character usage the drills should be able to type.
+FALLBACK_WORD_SCORE = -13.0
+# Used only when --targets is not given: how much of single-character usage
+# the drills should reach.
 USAGE_TARGET = 0.99
 
 WORDS_PER_SENTENCE = 5
@@ -46,7 +50,7 @@ def code_points(text):
 
 
 def load(path):
-    """Returns (syllable mass, two-character word list)."""
+    """Returns (syllable mass, everyday two-character words, rare ones)."""
     mass = collections.Counter()
     # value -> list of (reading, score); a word with several readings is
     # skipped, so the generator's own pick can never disagree with ours.
@@ -70,15 +74,16 @@ def load(path):
                 mass[bare(reading)] += math.exp(score)
             by_value[value].append((reading, score))
 
-    words = []
+    words, rare = [], []
     for value, readings in by_value.items():
         if len(value) != 2 or len(readings) != 1:
             continue
         reading, score = readings[0]
-        if score < MIN_WORD_SCORE:
-            continue
-        words.append((value, reading.split("-"), score))
-    return mass, words
+        if score >= MIN_WORD_SCORE:
+            words.append((value, reading.split("-"), score))
+        elif score >= FALLBACK_WORD_SCORE:
+            rare.append((value, reading.split("-"), score))
+    return mass, words, rare
 
 
 def main():
@@ -88,9 +93,13 @@ def main():
     parser.add_argument("--out", default="drills/filler.txt")
     parser.add_argument("--exclude", default=None,
                         help="words the walk gets wrong; never pick these")
+    parser.add_argument("--targets", default=None,
+                        help="syllables to cover, one per line (from "
+                             "drill_gen --reachable); without it, the "
+                             "commonest %d%% of usage" % round(USAGE_TARGET * 100))
     args = parser.parse_args()
 
-    mass, words = load(args.data)
+    mass, words, rare = load(args.data)
 
     # Words the generator has already caught the sentence walk getting
     # wrong. The drill never corrects anything, so a word that does not
@@ -104,40 +113,56 @@ def main():
         banned.discard("")
     if banned:
         words = [w for w in words if w[0] not in banned]
+        rare = [w for w in rare if w[0] not in banned]
 
     covered = set()
     if os.path.exists(args.covered):
         with io.open(args.covered, encoding="utf-8") as handle:
             covered = {line.strip() for line in handle if line.strip()}
 
-    # The syllables worth drilling: the common end of the distribution.
+    # What to cover: everything the keyboard can type when the audit hands
+    # us its list, otherwise the common end of the distribution.
     total = sum(mass.values())
-    running = 0.0
-    wanted = set()
-    for syllable, weight in mass.most_common():
-        wanted.add(syllable)
-        running += weight
-        if running / total >= USAGE_TARGET:
-            break
+    if args.targets and os.path.exists(args.targets):
+        with io.open(args.targets, encoding="utf-8") as handle:
+            wanted = {line.strip() for line in handle if line.strip()}
+    else:
+        running = 0.0
+        wanted = set()
+        for syllable, weight in mass.most_common():
+            wanted.add(syllable)
+            running += weight
+            if running / total >= USAGE_TARGET:
+                break
     todo = wanted - covered
 
     chosen = []
-    remaining = list(words)
-    while todo:
-        best = None
-        best_gain = 0
-        best_score = -1e9
-        for entry in remaining:
-            gain = sum(1 for r in entry[1] if bare(r) in todo)
-            if gain > best_gain or (gain == best_gain and gain > 0 and
-                                    entry[2] > best_score):
-                best, best_gain, best_score = entry, gain, entry[2]
-        if best is None:
-            break  # nothing left can reach the rest
-        chosen.append(best)
-        remaining.remove(best)
-        for reading in best[1]:
-            todo.discard(bare(reading))
+
+    def cover(pool):
+        """Greedy set cover: the word that reaches the most of what is left
+        wins, ties going to the commoner word."""
+        remaining = list(pool)
+        while todo:
+            best = None
+            best_gain = 0
+            best_score = -1e9
+            for entry in remaining:
+                gain = sum(1 for r in entry[1] if bare(r) in todo)
+                if gain > best_gain or (gain == best_gain and gain > 0 and
+                                        entry[2] > best_score):
+                    best, best_gain, best_score = entry, gain, entry[2]
+            if best is None:
+                return  # nothing left in this pool can reach the rest
+            chosen.append(best)
+            remaining.remove(best)
+            for reading in best[1]:
+                todo.discard(bare(reading))
+
+    cover(words)
+    if todo:
+        # Whatever is left has no everyday word; take the best that exists
+        # rather than leaving the key combination undrilled.
+        cover(rare)
 
     lines = [
         "// Generated by scripts/make-filler-lessons.py -- do not edit.",

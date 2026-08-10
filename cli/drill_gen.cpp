@@ -2,6 +2,9 @@
 //
 //   drill_gen.exe --data out/data.txt --lessons drills/lessons.txt
 //                 --out web/drills.js [--coverage]
+//   drill_gen.exe ... --audit [--allow drills/skip-syllables.txt]
+//       walks every key combination the IME accepts and reports the ones
+//       the lessons never ask for; exit code 2 when any are left.
 //
 // The drill has to tell the learner the FASTEST correct keystroke for the
 // next character, so the keystrokes cannot be guessed in JavaScript: they
@@ -688,7 +691,10 @@ int wmain(int argc, wchar_t** argv) {
   std::vector<std::string> fillerPaths;
   std::string syllablesPath;
   std::string droppedPath;
+  std::string auditAllowPath;
+  std::string reachablePath;
   bool coverage = false;
+  bool audit = false;
   for (int i = 1; i < argc; ++i) {
     const std::string arg = Narrow(argv[i]);
     if (arg == "--data" && i + 1 < argc) {
@@ -703,6 +709,13 @@ int wmain(int argc, wchar_t** argv) {
       fillerPaths.push_back(Narrow(argv[++i]));
     } else if (arg == "--dropped" && i + 1 < argc) {
       droppedPath = Narrow(argv[++i]);
+    } else if (arg == "--audit") {
+      audit = true;
+    } else if (arg == "--reachable" && i + 1 < argc) {
+      reachablePath = Narrow(argv[++i]);
+    } else if (arg == "--allow" && i + 1 < argc) {
+      audit = true;
+      auditAllowPath = Narrow(argv[++i]);
     } else if (arg == "--coverage") {
       coverage = true;
     }
@@ -855,6 +868,113 @@ int wmain(int argc, wchar_t** argv) {
     std::ofstream dump(syllablesPath, std::ios::binary | std::ios::trunc);
     for (const auto& syllable : coveredSyllables) dump << syllable << "\n";
     std::cout << "wrote " << syllablesPath << "\n";
+  }
+
+  if (audit || !reachablePath.empty()) {
+    // Walks the whole keyboard rather than the dictionary: every first key,
+    // and every first+second pair, asking the decoder (filtered by the
+    // dictionary, exactly as SyllableInput does) what it spells. That is
+    // the definitive list of combinations a learner can type, so anything
+    // in it that the lessons never ask for is a hole in the drills.
+    std::set<std::string> allowed;
+    if (!auditAllowPath.empty()) {
+      std::ifstream in(auditAllowPath, std::ios::binary);
+      std::string line;
+      while (std::getline(in, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        const size_t hash = line.find('#');
+        if (hash != std::string::npos) line = line.substr(0, hash);
+        const std::string entry = Trim(line);
+        if (!entry.empty()) allowed.insert(entry);
+      }
+    }
+
+    // syllable -> the keys that reach it (there can be several spellings)
+    std::map<std::string, std::set<std::string>> spellings;
+    size_t livePairs = 0, liveSingles = 0;
+    const std::string secondKeys = "abcdefghijklmnopqrstuvwxyz;";
+    for (char first = 'a'; first <= 'z'; ++first) {
+      for (const auto& syllable : Accepted(mspy::DecodeSingleKey(first), *relaxed)) {
+        spellings[syllable].insert(std::string(1, first));
+        ++liveSingles;
+      }
+      for (char second : secondKeys) {
+        const auto pair = Accepted(mspy::DecodeKeyPair(first, second), *relaxed);
+        if (!pair.empty()) ++livePairs;
+        for (const auto& syllable : pair) {
+          spellings[syllable].insert(std::string{first, second});
+        }
+      }
+    }
+
+    if (!reachablePath.empty()) {
+      // The target list for scripts/make-filler-lessons.py: everything the
+      // keyboard can say, which is what the drills have to cover.
+      std::ofstream dump(reachablePath, std::ios::binary | std::ios::trunc);
+      for (const auto& [syllable, keys] : spellings) dump << syllable << "\n";
+      std::cout << "wrote " << reachablePath << " (" << spellings.size()
+                << " syllables)\n";
+    }
+    if (!audit) return 0;
+
+    struct Hole {
+      std::string syllable, keys, examples;
+      double mass = 0.0;
+    };
+    std::vector<Hole> holes;
+    size_t excused = 0;
+    for (const auto& [syllable, keys] : spellings) {
+      if (coveredSyllables.count(syllable) != 0) continue;
+      if (allowed.count(syllable) != 0) {
+        ++excused;
+        continue;
+      }
+      Hole hole;
+      hole.syllable = syllable;
+      // The spelling the drill would prescribe, which is the one a learner
+      // would practise; the others reach the same sound.
+      if (!KeysForSyllable(syllable, *relaxed, &hole.keys)) {
+        hole.keys = *keys.begin();
+      }
+      auto mass = syllableMass.find(syllable);
+      hole.mass = mass == syllableMass.end() ? 0.0 : mass->second;
+      // A few common characters, so the gap is judged by what it can type.
+      std::vector<std::pair<double, std::string>> words;
+      for (const char* tone : {"", "ˊ", "ˇ", "ˋ", "˙"}) {
+        for (const auto& unigram : relaxed->getUnigrams(syllable + tone)) {
+          if (SplitCodePoints(unigram.value()).size() == 1) {
+            words.push_back({unigram.score(), unigram.value()});
+          }
+        }
+      }
+      std::sort(words.rbegin(), words.rend());
+      for (size_t i = 0; i < words.size() && i < 5; ++i) {
+        hole.examples += (i == 0 ? "" : " ") + words[i].second;
+      }
+      holes.push_back(std::move(hole));
+    }
+    std::sort(holes.begin(), holes.end(), [](const Hole& a, const Hole& b) {
+      return a.mass > b.mass;
+    });
+
+    std::cout << "\n=== 看打練習鍵位稽核 ===\n";
+    std::cout << "有效鍵位：" << liveSingles << " 個單鍵 ＋ " << livePairs
+              << " 組雙鍵，共可拼出 " << spellings.size() << " 個音節\n";
+    std::cout << "課文用到：" << coveredSyllables.size() << " 個音節 ／ "
+              << coveredKeys.size() << " 種鍵序\n";
+    std::cout << "明列略過：" << excused << " 個\n";
+    if (holes.empty()) {
+      std::cout << "沒有練到的：0 個 —— 全部覆蓋。\n";
+    } else {
+      std::cout << "沒有練到的：" << holes.size() << " 個（依詞庫使用量排序）\n";
+      for (const auto& hole : holes) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%.6f", hole.mass);
+        std::cout << "  " << hole.syllable << "\t" << hole.keys << "\t" << buf
+                  << "\t" << hole.examples << "\n";
+      }
+    }
+    if (!holes.empty()) return 2;
   }
 
   if (coverage) {

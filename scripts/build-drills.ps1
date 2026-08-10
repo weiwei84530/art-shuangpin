@@ -31,19 +31,22 @@ if (-not (Test-Path $Data)) {
 
 $quiet = { $_ -notmatch '^\s*note:' }
 $syllables = "out\drill-syllables.txt"
+$reachable = "out\drill-reachable.txt"
 $dropped = "out\drill-dropped.txt"
 $banned = "out\drill-banned.txt"
 Remove-Item $banned -ErrorAction SilentlyContinue
 
 Write-Host "pass 1: what the graded lessons already cover"
+# --reachable is the whole keyboard: every combination the decoder plus the
+# dictionary accept, which is what the filler has to fill in.
 & $gen --data $Data --lessons drills\lessons.txt --out out\drills-pass1.js `
-       --syllables $syllables | Where-Object $quiet
+       --syllables $syllables --reachable $reachable | Where-Object $quiet
 if ($LASTEXITCODE -ne 0) { throw "a hand-written line does not convert cleanly" }
 
 for ($round = 1; $round -le $MaxRounds; $round++) {
     Write-Host "`nround ${round}: filling in the rest"
     python scripts\make-filler-lessons.py --data $Data --covered $syllables `
-           --exclude $banned --out drills\filler.txt
+           --targets $reachable --exclude $banned --out drills\filler.txt
     if ($LASTEXITCODE -ne 0) { throw "make-filler-lessons.py failed" }
 
     & $gen --data $Data --lessons drills\lessons.txt --filler drills\filler.txt `
