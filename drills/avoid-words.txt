@@ -1,0 +1,10 @@
+# Words the filler generator must never pick, one per line.
+#
+# scripts\build-drills.ps1 seeds the ban list with these before the greedy
+# cover runs, so the syllables they would have covered get some other word.
+# This is for judgement calls -- unreadable characters are handled by
+# MIN_CHAR_SCORE in make-filler-lessons.py instead.
+
+什麼    # 詞庫裡 ㄕㄣˊ／ㄕㄜˊ 四種鍵同分，貪婪法會挑到 ㄕㄜˊ-ㄇㄛ˙；
+        # 但〈單鍵音節〉那一課已經照教育部標準釘成 ㄕㄣˊ-ㄇㄜ˙，
+        # 同一個詞在兩課教兩種讀音只會讓人困惑

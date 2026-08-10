@@ -34,7 +34,22 @@ $syllables = "out\drill-syllables.txt"
 $reachable = "out\drill-reachable.txt"
 $dropped = "out\drill-dropped.txt"
 $banned = "out\drill-banned.txt"
+$avoid = "drills\avoid-words.txt"
 Remove-Item $banned -ErrorAction SilentlyContinue
+
+# The ban list starts with the words we have decided against by hand; the
+# rounds below add the ones the sentence walk gets wrong.
+if (Test-Path $avoid) {
+    $seed = @(Get-Content $avoid -Encoding UTF8 |
+              ForEach-Object { ($_ -split '#')[0].Trim() } |
+              Where-Object { $_ })
+    if ($seed.Count -gt 0) {
+        Write-Host "avoiding by hand: $($seed -join ' ')"
+        [System.IO.File]::WriteAllLines(
+            (Join-Path $root $banned), [string[]]$seed,
+            (New-Object System.Text.UTF8Encoding($false)))
+    }
+}
 
 Write-Host "pass 1: what the graded lessons already cover"
 # --reachable is the whole keyboard: every combination the decoder plus the
