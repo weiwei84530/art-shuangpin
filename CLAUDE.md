@@ -71,8 +71,12 @@ web\    互動教學網站＋看打練習（純 CSS/JS，GitHub Pages）
 
 ## 狀態記錄
 
-- 2026-08-10：**看打練習：按錯出聲**。`web\app.js` 新增 `sound` 模組，Web Audio 現場合成一聲 196→128 Hz、
-  約 0.11 秒的三角波（gain 走 exponential ramp，直接設值會有 click），**不放音檔**以維持純靜態站台；
+- 2026-08-10：**看打練習：按錯出聲**。`web\app.js` 新增 `sound` 模組，Web Audio 現場合成一聲柔和鐘聲，
+  **不放音檔**以維持純靜態站台。音色不是憑印象調的：直接量 Win 11 的 Default Beep
+  （`C:\Windows\Media\Windows Background.wav`，微軟注音打錯時放的就是它）——FFT 出來是 F3 174.6 Hz 基音
+  ＋ C4 261.6 Hz 五度＋ F4／C5 泛音（**不是低頻悶響**），衰減 1.3 秒。`CHIME` 表照這四個分音疊四個 sine，
+  各自的延音砍到 0.18–0.45 秒（打字間隔放不下 1.3 秒尾巴），起音 20 ms（原音 60 ms 太慢，回應要落在按鍵上）；
+  gain 一律走 exponential ramp，直接設值會有 click。第一版是 196→128 Hz 的下滑三角波，使用者反映太低沉。
   AudioContext 等到第一次要響才建立，那時必定已有使用者手勢。判定放在 `drill.isMistake()`：課程進行中、
   非自動重複（按住不放只算一次錯）、且按鍵是「可能是輸入」的那些（單一字元、空白、Enter、Backspace）才響——
   Shift／Tab／方向鍵／功能鍵一律安靜。**畫面依舊完全不標記錯誤**（2026-08-09 的決定不變），只是多了聲音。

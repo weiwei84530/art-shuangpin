@@ -236,10 +236,22 @@ const player = {
 
 /* ---------- sound ---------- */
 
-// The wrong-key buzz. Synthesised rather than served as an audio file: the
+// The wrong-key chime. Synthesised rather than served as an audio file: the
 // site is plain static assets on GitHub Pages and this keeps it that way.
-// The context is built on the first buzz, by which point the learner has
+// The context is built on the first chime, by which point the learner has
 // pressed a key -- the gesture browsers demand before a page may make noise.
+
+// Shaped after the Windows 11 default beep, which is what the Microsoft IME
+// plays when it rejects a key. Measured off Windows Background.wav: a soft
+// F3 + C4 chime, [frequency, level, ring] per partial. The real one takes
+// 1.3 s to fade -- far too long to sit between two keystrokes -- so this
+// keeps its shape and cuts the tail.
+const CHIME = [
+  [174.6, 0.050, 0.42],  // F3, the fundamental
+  [261.6, 0.034, 0.45],  // C4, a fifth above it
+  [349.2, 0.013, 0.18],  // F4
+  [523.3, 0.030, 0.40]   // C5 -- the partial that makes it read as bright
+];
 
 const store = {
   get(key, fallback) {
@@ -258,7 +270,7 @@ const sound = {
     this.on = !this.on;
     store.set('drillSound', this.on ? 'on' : 'off');
     this.updateBtn();
-    if (this.on) this.buzz();  // so the learner hears what they turned on
+    if (this.on) this.ding();  // so the learner hears what they turned on
   },
 
   updateBtn() {
@@ -268,7 +280,7 @@ const sound = {
     b.classList.toggle('off', !this.on);
   },
 
-  buzz() {
+  ding() {
     if (!this.on) return;
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return;
@@ -276,20 +288,21 @@ const sound = {
     if (this.ctx.state === 'suspended') this.ctx.resume();
 
     const t = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-    // Low, soft and short: it has to carry over the sound of a keyboard
-    // without making the learner flinch, and be gone before the next key.
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(196, t);
-    osc.frequency.exponentialRampToValueAtTime(128, t + 0.09);
-    // Ramps, not steps -- a square edge on the gain clicks audibly.
-    gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.exponentialRampToValueAtTime(0.1, t + 0.008);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
-    osc.connect(gain).connect(this.ctx.destination);
-    osc.start(t);
-    osc.stop(t + 0.12);
+    for (const [freq, level, ring] of CHIME) {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      // Ramps, not steps -- a square edge on the gain clicks audibly. The
+      // attack is quick where the original swells over 60 ms: at typing
+      // speed the answer has to land on the key, not after it.
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(level, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + ring);
+      osc.connect(gain).connect(this.ctx.destination);
+      osc.start(t);
+      osc.stop(t + ring + 0.02);
+    }
   }
 };
 
@@ -298,7 +311,7 @@ const sound = {
 // Plays a lesson from DRILLS: the article on top, the simulated IME screen
 // in the notepad, and the next expected key lit up on the keyboard. A wrong
 // key never moves the drill on and is never marked on screen; the only
-// answer it gets is a short buzz (2026-08-10).
+// answer it gets is a short chime (2026-08-10).
 
 const CP = s => Array.from(s);
 
@@ -402,10 +415,10 @@ const drill = {
   // Modifiers, Tab, the arrows and the function keys are not part of the
   // drill at all, so they stay silent; anything the learner could have
   // meant as input -- a letter, a digit, punctuation, Space, Enter or
-  // Backspace -- gets the buzz.
+  // Backspace -- gets the chime.
   isMistake(event) {
     if (this.di < 0 || this.si >= this.lesson.steps.length) return false;
-    // A held-down key is one mistake, not thirty buzzes a second.
+    // A held-down key is one mistake, not thirty chimes a second.
     if (event.repeat) return false;
     const k = event.key;
     return k === ' ' || k === 'Enter' || k === 'Backspace' || CP(k).length === 1;
@@ -498,7 +511,7 @@ window.addEventListener('keydown', e => {
     return;
   }
   if (drill.di < 0) return;
-  if (drill.isMistake(e)) sound.buzz();
+  if (drill.isMistake(e)) sound.ding();
   if (e.key === ' ' || e.key === 'Enter' || e.key === 'Backspace') {
     // Even when it is the wrong key, these must not scroll the page, go
     // back a page, or activate whatever happens to be focused.
