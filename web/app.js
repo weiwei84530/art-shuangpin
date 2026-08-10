@@ -58,6 +58,17 @@ function pressKey(id, dur = 255) {
   setTimeout(() => el.classList.remove('pressed'), dur);
 }
 
+// The press animation is over in a quarter of a second, which is too fast to
+// find a key you do not already know. The keys a tutorial step pressed stay
+// lit until the next step, so the caption always has something to point at.
+function litKey(id) {
+  if (keyEls[id]) keyEls[id].classList.add('lit');
+}
+
+function clearLit() {
+  document.querySelectorAll('.key.lit').forEach(el => el.classList.remove('lit'));
+}
+
 // The physical keycap a printable character lives on, and whether Shift is
 // needed to reach it. The drill highlights the cap, not the character.
 const SHIFTED = {
@@ -202,7 +213,9 @@ function renderScreen(st) {
 /* ---------- tutorial player ---------- */
 
 const player = {
-  ti: 0, si: -1, states: [], playing: false, gen: 0,
+  // `pending` is the step being animated; it runs ahead of `si`, which only
+  // catches up once the keys have finished playing.
+  ti: 0, si: -1, pending: -1, states: [], playing: false, gen: 0,
 
   load(i) {
     this.ti = i;
@@ -216,36 +229,63 @@ const player = {
       this.states.push(st);
     }
     this.si = -1;
+    this.pending = -1;
+    this.playing = false;
+    clearLit();
     renderScreen(EMPTY);
     setActiveNavItem($(`#nav .nav-item[data-lesson="${i}"]`));
     $('#capStep').textContent = t.title;
-    $('#capText').innerHTML = '準備播放…';
-    this.play();
+    $('#capText').innerHTML = '';
+    this.updateBtn();
+    // Show the first step at once -- a blank screen reads as broken -- but
+    // go no further until the reader asks for it.
+    const gen = this.gen;
+    this.stepTo(0, true, gen).then(() => { if (gen === this.gen) this.armNext(); });
   },
 
   async stepTo(k, animate, gen) {
     const t = TUTORIALS[this.ti];
     if (k < 0 || k >= t.steps.length) return;
     const step = t.steps[k];
+    this.pending = k;
+    clearLit();
     if (animate) {
       for (const key of step.keys) {
         if (gen !== this.gen) return;
         pressKey(key);
+        litKey(key);
         await sleep(450);
       }
+    } else {
+      for (const key of step.keys) litKey(key);
     }
     if (gen !== undefined && gen !== this.gen) return;
     this.si = k;
     renderScreen(this.states[k]);
     $('#capStep').textContent = `${t.title}　·　步驟 ${k + 1} / ${t.steps.length}`;
     $('#capText').innerHTML = step.cap;
+    if (k === t.steps.length - 1) progress.mark(t.id);
   },
+
+  // Nothing advances on its own, so the reader has to be told a step is
+  // finished: the button that carries on blinks until it is used.
+  armNext() {
+    const t = TUTORIALS[this.ti];
+    const last = this.si >= t.steps.length - 1;
+    const more = !last || this.ti < TUTORIALS.length - 1;
+    const btn = $('#btnNext');
+    btn.classList.toggle('blink', more);
+    btn.title = last ? '下一課' : '下一步';
+  },
+
+  disarmNext() { $('#btnNext').classList.remove('blink'); },
 
   async play() {
     const t = TUTORIALS[this.ti];
     if (this.si >= t.steps.length - 1) { this.load(this.ti); return; }
     const gen = ++this.gen;
     this.playing = true;
+    this.disarmNext();
     this.updateBtn();
     while (this.si < t.steps.length - 1) {
       await this.stepTo(this.si + 1, true, gen);
@@ -254,20 +294,95 @@ const player = {
       await sleep(Math.min(8000, 1600 + cap.length * 55));
       if (gen !== this.gen) return;
     }
-    if (gen === this.gen) { this.playing = false; this.updateBtn(); }
+    if (gen === this.gen) {
+      this.playing = false;
+      this.updateBtn();
+      this.armNext();
+    }
   },
 
-  pause() { this.gen++; this.playing = false; this.updateBtn(); },
+  pause() { this.gen++; this.playing = false; this.updateBtn(); this.disarmNext(); },
 
-  toggle() { this.playing ? this.pause() : this.play(); },
+  toggle() {
+    if (this.playing) { this.pause(); this.armNext(); } else { this.play(); }
+  },
 
-  next() { this.pause(); this.stepTo(this.si + 1, true, this.gen); },
+  async next() {
+    const t = TUTORIALS[this.ti];
+    // Clicked again while the keys are still playing: that means "skip the
+    // animation", not "start the step over". Aborting the in-flight step
+    // and re-running it from the top would sit there making no progress
+    // for anyone who clicks faster than 450ms a key.
+    if (this.pending > this.si) {
+      const k = this.pending;
+      this.pause();
+      await this.stepTo(k, false, this.gen);
+      this.armNext();
+      return;
+    }
+    this.pause();
+    // Past the last step the sensible next move is the next lesson.
+    if (this.si >= t.steps.length - 1) {
+      if (this.ti < TUTORIALS.length - 1) this.load(this.ti + 1);
+      return;
+    }
+    const gen = this.gen;
+    await this.stepTo(this.si + 1, true, gen);
+    if (gen === this.gen) this.armNext();
+  },
 
-  prev() { this.pause(); this.stepTo(Math.max(0, this.si - 1), false); },
+  async prev() {
+    this.pause();
+    const gen = this.gen;
+    await this.stepTo(Math.max(0, this.si - 1), false, gen);
+    if (gen === this.gen) this.armNext();
+  },
 
   restart() { this.load(this.ti); },
 
   updateBtn() { $('#btnPlay').textContent = this.playing ? '⏸' : '▶'; }
+};
+
+/* ---------- progress ---------- */
+
+// Which lessons the reader has reached the end of. Keyed by lesson id, not
+// by position, so reordering the curriculum later does not scramble it.
+const progress = {
+  KEY: 'tutorialDone',
+  done: new Set(),
+
+  load() {
+    try {
+      this.done = new Set(JSON.parse(localStorage.getItem(this.KEY) || '[]'));
+    } catch { this.done = new Set(); }
+  },
+
+  save() {
+    try { localStorage.setItem(this.KEY, JSON.stringify([...this.done])); } catch {}
+  },
+
+  mark(id) {
+    if (this.done.has(id)) return;
+    this.done.add(id);
+    this.save();
+    this.render();
+  },
+
+  reset() { this.done.clear(); this.save(); this.render(); },
+
+  render() {
+    const total = TUTORIALS.length;
+    const n = TUTORIALS.filter(t => this.done.has(t.id)).length;
+    $('#pgCount').textContent = `${n} / ${total}`;
+    $('#pgFill').style.width = total ? `${(n / total) * 100}%` : '0';
+    $('#progress').classList.toggle('all-done', total > 0 && n === total);
+    document.querySelectorAll('#nav .nav-item[data-lesson]').forEach(b => {
+      const i = +b.dataset.lesson;
+      const hit = this.done.has(TUTORIALS[i].id);
+      b.classList.toggle('done', hit);
+      b.querySelector('.no').textContent = hit ? '✓' : String(i + 1);
+    });
+  }
 };
 
 /* ---------- sound ---------- */
@@ -381,6 +496,7 @@ const drill = {
     // Enter would then press it again instead of reaching the drill.
     if (document.activeElement) document.activeElement.blur();
     player.pause();
+    clearLit();
     $('#captionBar').hidden = true;
     $('#drillBar').hidden = false;
     // The drill needs its room lower down: the notepad is only there to
@@ -577,6 +693,8 @@ function setActiveNavItem(button) {
     b.classList.toggle('active', b === button));
 }
 
+$('#pgReset').addEventListener('click', e => { progress.reset(); e.currentTarget.blur(); });
+
 $('#btnPrev').addEventListener('click', () => player.prev());
 $('#btnPlay').addEventListener('click', () => player.toggle());
 $('#btnNext').addEventListener('click', () => player.next());
@@ -610,7 +728,9 @@ window.addEventListener('keydown', e => {
 buildKeyboard();
 applyRot();
 setupDrag();
+progress.load();
 buildNav();
+progress.render();
 sound.updateBtn();
 fitKeyboard();
 window.addEventListener('resize', fitKeyboard);
