@@ -234,12 +234,71 @@ const player = {
   updateBtn() { $('#btnPlay').textContent = this.playing ? '⏸' : '▶'; }
 };
 
+/* ---------- sound ---------- */
+
+// The wrong-key buzz. Synthesised rather than served as an audio file: the
+// site is plain static assets on GitHub Pages and this keeps it that way.
+// The context is built on the first buzz, by which point the learner has
+// pressed a key -- the gesture browsers demand before a page may make noise.
+
+const store = {
+  get(key, fallback) {
+    try { return localStorage.getItem(key) ?? fallback; } catch (e) { return fallback; }
+  },
+  set(key, value) {
+    try { localStorage.setItem(key, value); } catch (e) { /* private mode */ }
+  }
+};
+
+const sound = {
+  on: store.get('drillSound', 'on') !== 'off',
+  ctx: null,
+
+  toggle() {
+    this.on = !this.on;
+    store.set('drillSound', this.on ? 'on' : 'off');
+    this.updateBtn();
+    if (this.on) this.buzz();  // so the learner hears what they turned on
+  },
+
+  updateBtn() {
+    const b = $('#btnDrillSound');
+    b.textContent = this.on ? '🔊' : '🔇';
+    b.title = this.on ? '按錯有提示聲（點一下關掉）' : '提示聲已關閉（點一下打開）';
+    b.classList.toggle('off', !this.on);
+  },
+
+  buzz() {
+    if (!this.on) return;
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    if (!this.ctx) this.ctx = new Ctx();
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    // Low, soft and short: it has to carry over the sound of a keyboard
+    // without making the learner flinch, and be gone before the next key.
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(196, t);
+    osc.frequency.exponentialRampToValueAtTime(128, t + 0.09);
+    // Ramps, not steps -- a square edge on the gain clicks audibly.
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.1, t + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
+    osc.connect(gain).connect(this.ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.12);
+  }
+};
+
 /* ---------- typing drill ---------- */
 
 // Plays a lesson from DRILLS: the article on top, the simulated IME screen
-// in the notepad, and the next expected key lit up on the keyboard. Wrong
-// keys do nothing at all -- no warning, no penalty, the drill simply does
-// not move (2026-08-09).
+// in the notepad, and the next expected key lit up on the keyboard. A wrong
+// key never moves the drill on and is never marked on screen; the only
+// answer it gets is a short buzz (2026-08-10).
 
 const CP = s => Array.from(s);
 
@@ -339,6 +398,19 @@ const drill = {
     hint.innerHTML = `下一鍵：<kbd>${label}</kbd>${note}`;
   },
 
+  // Whether a key that was not the one wanted counts as a typing mistake.
+  // Modifiers, Tab, the arrows and the function keys are not part of the
+  // drill at all, so they stay silent; anything the learner could have
+  // meant as input -- a letter, a digit, punctuation, Space, Enter or
+  // Backspace -- gets the buzz.
+  isMistake(event) {
+    if (this.di < 0 || this.si >= this.lesson.steps.length) return false;
+    // A held-down key is one mistake, not thirty buzzes a second.
+    if (event.repeat) return false;
+    const k = event.key;
+    return k === ' ' || k === 'Enter' || k === 'Backspace' || CP(k).length === 1;
+  },
+
   // Returns true when the event was the key the drill is waiting for.
   handle(event) {
     if (this.di < 0) return false;
@@ -412,6 +484,10 @@ $('#btnPlay').addEventListener('click', () => player.toggle());
 $('#btnNext').addEventListener('click', () => player.next());
 $('#btnRestart').addEventListener('click', () => player.restart());
 $('#btnDrillRestart').addEventListener('click', () => drill.restart());
+$('#btnDrillSound').addEventListener('click', e => {
+  sound.toggle();
+  e.currentTarget.blur();  // or Space would toggle it again
+});
 
 // The drill reads the real keyboard, so it has to stop the browser acting
 // on Space, Enter and the like -- but only for the key it actually wanted.
@@ -419,9 +495,13 @@ window.addEventListener('keydown', e => {
   if (e.ctrlKey || e.altKey || e.metaKey) return;
   if (drill.handle(e)) {
     e.preventDefault();
-  } else if (drill.di >= 0 && (e.key === ' ' || e.key === 'Enter')) {
-    // Even when it is the wrong key, these two must not scroll the page or
-    // activate whatever happens to be focused.
+    return;
+  }
+  if (drill.di < 0) return;
+  if (drill.isMistake(e)) sound.buzz();
+  if (e.key === ' ' || e.key === 'Enter' || e.key === 'Backspace') {
+    // Even when it is the wrong key, these must not scroll the page, go
+    // back a page, or activate whatever happens to be focused.
     e.preventDefault();
   }
 });
@@ -430,4 +510,5 @@ buildKeyboard();
 applyRot();
 setupDrag();
 buildNav();
+sound.updateBtn();
 player.load(0);
