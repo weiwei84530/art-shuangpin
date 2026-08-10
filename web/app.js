@@ -90,7 +90,11 @@ function showHint(key) {
 
 /* ---------- keyboard rotation (clamped: never shows the back) ---------- */
 
-const rot = { x: 26, y: 0 };
+// A shallow tilt on purpose: the annotations are 10px bopomofo, and tilting
+// the board foreshortens them VERTICALLY -- which is exactly what flattens
+// ㄧ into a dash and blurs ㄛ against ㄜ. Drag it steeper if you want the
+// look; the drill needs the reading.
+const rot = { x: 18, y: 0 };
 function applyRot() {
   $('#kbTilt').style.transform = `rotateX(${rot.x}deg) rotateY(${rot.y}deg)`;
 }
