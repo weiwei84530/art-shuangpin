@@ -240,7 +240,7 @@ const player = {
     // Show the first step at once -- a blank screen reads as broken -- but
     // go no further until the reader asks for it.
     const gen = this.gen;
-    this.stepTo(0, true, gen).then(() => { if (gen === this.gen) this.armNext(); });
+    this.runStep(0, true, gen).then(ok => { if (ok) this.armNext(); });
   },
 
   async stepTo(k, animate, gen) {
@@ -267,8 +267,23 @@ const player = {
     if (k === t.steps.length - 1) progress.mark(t.id);
   },
 
-  // Nothing advances on its own, so the reader has to be told a step is
-  // finished: the button that carries on blinks until it is used.
+  // How long the caption needs to be read. Both modes run this same clock
+  // and differ only in what happens when it runs out: autoplay moves on,
+  // manual lights the button that would have moved on.
+  dwell(step) { return Math.min(8000, 1600 + step.cap.length * 55); },
+
+  // One step, start to finish: play the keys, show the caption, then hold
+  // for the reading time. False means something interrupted it.
+  async runStep(k, animate, gen) {
+    this.disarmNext();
+    await this.stepTo(k, animate, gen);
+    if (gen !== this.gen) return false;
+    await sleep(this.dwell(TUTORIALS[this.ti].steps[k]));
+    return gen === this.gen;
+  },
+
+  // The reading time is up and nothing is going to happen by itself, so the
+  // button that carries on starts asking to be pressed.
   armNext() {
     const t = TUTORIALS[this.ti];
     const last = this.si >= t.steps.length - 1;
@@ -285,24 +300,19 @@ const player = {
     if (this.si >= t.steps.length - 1) { this.load(this.ti); return; }
     const gen = ++this.gen;
     this.playing = true;
-    this.disarmNext();
     this.updateBtn();
     while (this.si < t.steps.length - 1) {
-      await this.stepTo(this.si + 1, true, gen);
-      if (gen !== this.gen) return;
-      const cap = t.steps[this.si].cap;
-      await sleep(Math.min(8000, 1600 + cap.length * 55));
-      if (gen !== this.gen) return;
+      if (!await this.runStep(this.si + 1, true, gen)) return;
     }
-    if (gen === this.gen) {
-      this.playing = false;
-      this.updateBtn();
-      this.armNext();
-    }
+    this.playing = false;
+    this.updateBtn();
+    this.armNext();
   },
 
   pause() { this.gen++; this.playing = false; this.updateBtn(); this.disarmNext(); },
 
+  // Pausing by hand is not "the reading time ran out", but the reader has
+  // just said they want the controls, so show them straight away.
   toggle() {
     if (this.playing) { this.pause(); this.armNext(); } else { this.play(); }
   },
@@ -327,15 +337,13 @@ const player = {
       return;
     }
     const gen = this.gen;
-    await this.stepTo(this.si + 1, true, gen);
-    if (gen === this.gen) this.armNext();
+    if (await this.runStep(this.si + 1, true, gen)) this.armNext();
   },
 
   async prev() {
     this.pause();
     const gen = this.gen;
-    await this.stepTo(Math.max(0, this.si - 1), false, gen);
-    if (gen === this.gen) this.armNext();
+    if (await this.runStep(Math.max(0, this.si - 1), false, gen)) this.armNext();
   },
 
   restart() { this.load(this.ti); },
