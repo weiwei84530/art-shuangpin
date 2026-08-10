@@ -9,6 +9,13 @@
 //                 7/8 page). Control tokens:
 //                   <  Backspace                !  Esc
 //                   #  bare Shift tap (中/英)    \n Enter
+// JSON mode:      repl.exe --keys "ni3hk3" --json
+//                 same replay, one JSON object per keystroke, for
+//                 scripts/check-tutorials.mjs to compare against the
+//                 hand-written lessons.
+// Shortest mode:  repl.exe --shortest ㄉㄜ ㄏㄠ
+//                 prints the fewest keys that spell each bare reading, so
+//                 the audit can tell a lesson it is teaching the slow way.
 // Piped mode:     each stdin line = whitespace-separated bopomofo readings.
 
 #include <windows.h>
@@ -23,6 +30,8 @@
 
 #include "McBopomofoLM.h"
 #include "composer.h"
+#include "json.h"
+#include "keystrokes.h"
 #include "gramambular2/reading_grid.h"
 #include "relaxed_tone_lm.h"
 #include "user_preferences.h"
@@ -106,20 +115,54 @@ void PrintComposerState(const mspy::Composer& composer,
   std::cout << "\n";
 }
 
+// One line of JSON per keystroke: everything the tutorial audit needs to
+// decide whether a hand-written lesson still matches the engine.
+void PrintComposerJson(const mspy::Composer& composer,
+                       const mspy::Composer::Result& result,
+                       const std::string& key) {
+  using mspy_cli::JsonString;
+  auto segments = composer.displaySegments();
+  std::cout << "{\"key\":" << JsonString(key)
+            << ",\"state\":" << JsonString(StateName(composer.state()))
+            << ",\"before\":" << JsonString(segments.before)
+            << ",\"unconfirmed\":" << JsonString(segments.unconfirmed)
+            << ",\"highlighted\":" << JsonString(segments.highlighted)
+            << ",\"after\":" << JsonString(segments.after)
+            << ",\"commit\":" << JsonString(result.commitText)
+            << ",\"consumed\":" << (result.consumed ? "true" : "false");
+  if (composer.state() == mspy::Composer::State::kSelecting) {
+    std::cout << ",\"menu\":{\"page\":\"" << (composer.candidatePageIndex() + 1)
+              << "/" << composer.candidatePageCount() << "\",\"items\":[";
+    bool first = true;
+    for (const auto& c : composer.currentPageCandidates()) {
+      if (!first) std::cout << ",";
+      std::cout << JsonString(c.value);
+      first = false;
+    }
+    std::cout << "]}";
+  } else {
+    std::cout << ",\"menu\":null";
+  }
+  std::cout << "}\n";
+}
+
 void RunKeyMode(std::shared_ptr<McBopomofo::McBopomofoLM> lm,
                 std::shared_ptr<mspy::UserPreferences> preferences,
-                const std::string& keys) {
+                const std::string& keys, bool json) {
   auto relaxed = std::make_shared<mspy::RelaxedToneLM>(lm);
   mspy::Composer composer(relaxed);
   composer.setPreferences(preferences);
   // Echo what the shell would learn, so a key sequence shows its own
-  // effect on the store.
-  composer.onLearned = [](const std::string& context,
-                          const std::string& reading,
-                          const std::string& value) {
-    std::cout << "  LEARNED: \"" << value << "\" " << reading << " after "
-              << context << "\n";
-  };
+  // effect on the store. JSON mode stays silent: it is a machine stream,
+  // and the audit only wants the screens.
+  if (!json) {
+    composer.onLearned = [](const std::string& context,
+                            const std::string& reading,
+                            const std::string& value) {
+      std::cout << "  LEARNED: \"" << value << "\" " << reading << " after "
+                << context << "\n";
+    };
+  }
   // '#' stands for the bare Shift tap, so a key sequence can cross the
   // Chinese/English boundary the way the shell does.
   bool english = false;
@@ -137,11 +180,19 @@ void RunKeyMode(std::shared_ptr<McBopomofo::McBopomofoLM> lm,
         r = english ? composer.feedEnglishChar(c) : composer.feedChar(c);
         break;
     }
-    PrintComposerState(composer, r, c);
+    if (json)
+      PrintComposerJson(composer, r, std::string(1, c));
+    else
+      PrintComposerState(composer, r, c);
   }
+  // A trailing Enter, so a lesson that never commits still reports what it
+  // would have sent.
   auto final = composer.feedEnter();
-  if (!final.commitText.empty())
+  if (json) {
+    PrintComposerJson(composer, final, "\n");
+  } else if (!final.commitText.empty()) {
     std::cout << "  FINAL COMMIT: \"" << final.commitText << "\"\n";
+  }
 }
 
 }  // namespace
@@ -154,6 +205,8 @@ int wmain(int argc, wchar_t** argv) {
   std::string keySequence;
   bool keyMode = false;
   bool showCandidates = false;
+  bool jsonMode = false;
+  bool shortestMode = false;
   std::vector<std::string> readings;
 
   for (int i = 1; i < argc; ++i) {
@@ -167,6 +220,10 @@ int wmain(int argc, wchar_t** argv) {
       keySequence = Narrow(argv[++i]);
     } else if (arg == "--candidates") {
       showCandidates = true;
+    } else if (arg == "--json") {
+      jsonMode = true;
+    } else if (arg == "--shortest") {
+      shortestMode = true;
     } else {
       readings.push_back(arg);
     }
@@ -193,8 +250,22 @@ int wmain(int argc, wchar_t** argv) {
     preferences->loadFromText(text);
   }
 
+  // The fewest keys that spell each bare reading -- the same oracle the
+  // drill generator prescribes from, so the audit and the drills agree.
+  if (shortestMode) {
+    for (const auto& reading : readings) {
+      std::string keys;
+      if (mspy_cli::KeysForSyllable(reading, *lm, &keys)) {
+        std::cout << reading << " " << keys << "\n";
+      } else {
+        std::cout << reading << " -\n";
+      }
+    }
+    return 0;
+  }
+
   if (keyMode) {
-    RunKeyMode(lm, preferences, keySequence);
+    RunKeyMode(lm, preferences, keySequence, jsonMode);
     return 0;
   }
 

@@ -170,8 +170,9 @@ function renderScreen(st) {
       ).join('') +
       `<div class="cand-pager">${st.menu.page}</div>`;
     card.hidden = false;
-    // place under the anchor character
-    const spans = compEl.children;
+    // place under the anchor character -- .ch only, since the caret is a
+    // sibling span and would shift every index past it by one
+    const spans = compEl.querySelectorAll('.ch');
     const target = spans[Math.min(st.menu.anchor, spans.length - 1)];
     if (target) {
       const bodyRect = $('#npBody').getBoundingClientRect();
@@ -216,8 +217,7 @@ const player = {
     }
     this.si = -1;
     renderScreen(EMPTY);
-    document.querySelectorAll('#nav .nav-item').forEach((b, k) =>
-      b.classList.toggle('active', k === i));
+    setActiveNavItem($(`#nav .nav-item[data-lesson="${i}"]`));
     $('#capStep').textContent = t.title;
     $('#capText').innerHTML = '準備播放…';
     this.play();
@@ -533,15 +533,30 @@ function buildNav() {
     return { head, list };
   };
 
-  const lessons = group('教學', false);
+  // The lessons run in stages, and a stage only makes sense once the one
+  // before it is done, so each gets its own open group in reading order.
+  const stages = [];
   TUTORIALS.forEach((t, i) => {
-    const b = document.createElement('button');
-    b.className = 'nav-item';
-    b.innerHTML = `<span class="no">${i === 0 ? '☆' : i}</span>${t.title}`;
-    b.addEventListener('click', () => { drill.leave(); player.load(i); });
-    lessons.list.appendChild(b);
+    let stage = stages.find(s => s.name === t.stage);
+    if (!stage) {
+      stage = { name: t.stage, items: [] };
+      stages.push(stage);
+    }
+    stage.items.push({ lesson: t, index: i });
   });
-  lessons.head.querySelector('.cnt').textContent = TUTORIALS.length;
+
+  stages.forEach((stage, si) => {
+    const g = group(`${si + 1}　${stage.name}`, false);
+    stage.items.forEach(({ lesson, index }) => {
+      const b = document.createElement('button');
+      b.className = 'nav-item';
+      b.dataset.lesson = index;
+      b.innerHTML = `<span class="no">${index + 1}</span>${lesson.title}`;
+      b.addEventListener('click', () => { drill.leave(); player.load(index); });
+      g.list.appendChild(b);
+    });
+    g.head.querySelector('.cnt').textContent = stage.items.length;
+  });
 
   const drills = group('看打練習', true);
   DRILLS.forEach((d, i) => {
