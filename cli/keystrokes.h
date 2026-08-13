@@ -83,6 +83,11 @@ inline bool KeysForSyllable(const std::string& bare,
   }
   for (char first = 'a'; first <= 'z'; ++first) {
     for (char second : std::string("abcdefghijklmnopqrstuvwxyz;")) {
+      // Alternate spellings reach the same syllable in the same two keys,
+      // so they never win on length -- but they would win on iteration
+      // order (ㄨㄟ is 'v' before 'z'), and what gets prescribed has to be
+      // the Microsoft spelling.
+      if (mspy::IsAlternateKeyPair(first, second)) continue;
       const auto pair = Accepted(mspy::DecodeKeyPair(first, second), lm);
       if (!pair.empty() && pair.front() == bare) {
         *keys = std::string{first, second};

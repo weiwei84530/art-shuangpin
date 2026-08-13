@@ -91,6 +91,7 @@ function clearHints() {
 
 function showHint(key) {
   clearHints();
+  if (kbMode.n !== 0) return;  // the learner asked not to be shown
   const { id, shift } = capFor(key);
   if (keyEls[id]) keyEls[id].classList.add('hint');
   if (shift) {
@@ -114,9 +115,9 @@ function applyRot() {
 // tilting the board changes how tall it draws, so the space is only known
 // at run time. Without it the keyboard simply overlaps the panel above.
 function fitKeyboard() {
-  const stage = $('#kbStage'), body = $('#kbBody'), hint = $('.kb-hint');
+  const stage = $('#kbStage'), body = $('#kbBody'), foot = $('.kb-foot');
   body.style.zoom = '1';
-  const room = stage.clientHeight - hint.offsetHeight - 16;
+  const room = stage.clientHeight - foot.offsetHeight - 16;
   const box = body.getBoundingClientRect();   // the tilted, on-screen size
   if (box.height <= 0 || room <= 0) return;
   const z = Math.min(1, room / box.height, (stage.clientWidth - 16) / box.width);
@@ -127,6 +128,9 @@ function setupDrag() {
   const stage = $('#kbStage');
   let dragging = false, px = 0, py = 0;
   stage.addEventListener('pointerdown', e => {
+    // The footer sits inside the stage; capturing the pointer there would
+    // steal the click from the button.
+    if (e.target.closest('.kb-foot')) return;
     dragging = true; px = e.clientX; py = e.clientY;
     stage.classList.add('dragging');
     stage.setPointerCapture(e.pointerId);
@@ -465,6 +469,43 @@ const sound = {
   }
 };
 
+/* ---------- keyboard help level ---------- */
+
+// How much the on-screen keyboard gives away during a drill, cycled by the
+// button under the board. Look-typing is the point of the exercise, so the
+// help has to be something the learner can take away as they get faster.
+// The tutorial player is deliberately not affected: its lit keys are the
+// lesson itself, not a hint.
+const kbMode = {
+  KEY: 'drillKeyboard',
+  // [button label, what the button does next]
+  STEPS: [
+    ['⌨ 提示下一鍵', '點一下：不再提示鍵位'],
+    ['⌨ 不提示鍵位', '點一下：隱藏整個鍵盤'],
+    ['⌨ 已隱藏鍵盤', '點一下：恢復提示下一鍵']
+  ],
+  n: Math.min(2, Math.max(0, +store.get('drillKeyboard', '0') || 0)),
+
+  cycle() {
+    this.n = (this.n + 1) % this.STEPS.length;
+    store.set(this.KEY, String(this.n));
+    this.apply();
+  },
+
+  apply() {
+    const [label, title] = this.STEPS[this.n];
+    const b = $('#btnKbMode');
+    b.textContent = label;
+    b.title = title;
+    b.classList.toggle('off', this.n !== 0);
+    document.body.classList.toggle('kb-hidden', this.n === 2);
+    // The hint is put on the keycap by showHint, so the level only takes
+    // effect once the drill asks for the next key again.
+    if (drill.di >= 0) drill.render();
+    fitKeyboard();
+  }
+};
+
 /* ---------- typing drill ---------- */
 
 // Plays a lesson from DRILLS: the article on top, the simulated IME screen
@@ -578,10 +619,12 @@ const drill = {
     if (this.si >= steps.length) {
       clearHints();
       const slips = this.slips.size;
+      const keys = '按 <kbd>R</kbd> 再練一次' +
+                   (this.di + 1 < DRILLS.length ? '，<kbd>N</kbd> 進入下一課' : '');
       hint.innerHTML = slips === 0
-        ? '<span class="cheer">完成了，全對！</span>　按 ↻ 再練一次，或從左邊挑下一課。'
+        ? `<span class="cheer">完成了，全對！</span>　${keys}。`
         : `<span class="cheer">完成了！</span>　其中 <span class="slip-count">${slips}</span>` +
-          ` 個字打錯過（共 ${this.chars.length} 字），歡迎按 ↻ 再挑戰一次。`;
+          ` 個字打錯過（共 ${this.chars.length} 字），${keys}。`;
       return;
     }
     const key = steps[this.si].k;
@@ -603,6 +646,23 @@ const drill = {
       note = '　（逗號，同一段繼續打）';
     }
     hint.innerHTML = `下一鍵：<kbd>${label}</kbd>${note}`;
+  },
+
+  get finished() {
+    return this.di >= 0 && this.si >= this.lesson.steps.length;
+  },
+
+  // With the lesson over the keyboard has nothing else to do, so the two
+  // things anyone wants next get a key each rather than a trip to the mouse.
+  shortcut(event) {
+    if (!this.finished || event.repeat) return false;
+    const k = event.key.toLowerCase();
+    if (k === 'r') { this.restart(); return true; }
+    if (k === 'n' && this.di + 1 < DRILLS.length) {
+      selectDrill(this.di + 1);
+      return true;
+    }
+    return false;
   },
 
   // Whether a key that was not the one wanted counts as a typing mistake.
@@ -634,6 +694,8 @@ const drill = {
 };
 
 /* ---------- boot ---------- */
+
+const drillNavItems = [];
 
 function buildNav() {
   const nav = $('#nav');
@@ -687,13 +749,18 @@ function buildNav() {
     const b = document.createElement('button');
     b.className = 'nav-item';
     b.innerHTML = `<span class="no">⌨</span>${d.title}`;
-    b.addEventListener('click', () => {
-      setActiveNavItem(b);
-      drill.load(i);
-    });
+    b.addEventListener('click', () => selectDrill(i));
+    drillNavItems[i] = b;
     drills.list.appendChild(b);
   });
   drills.head.querySelector('.cnt').textContent = DRILLS.length;
+}
+
+// Starting a drill from the keyboard (N) has to move the sidebar selection
+// as well, so both ways in go through here.
+function selectDrill(i) {
+  setActiveNavItem(drillNavItems[i]);
+  drill.load(i);
 }
 
 function setActiveNavItem(button) {
@@ -712,11 +779,19 @@ $('#btnDrillSound').addEventListener('click', e => {
   sound.toggle();
   e.currentTarget.blur();  // or Space would toggle it again
 });
+$('#btnKbMode').addEventListener('click', e => {
+  kbMode.cycle();
+  e.currentTarget.blur();
+});
 
 // The drill reads the real keyboard, so it has to stop the browser acting
 // on Space, Enter and the like -- but only for the key it actually wanted.
 window.addEventListener('keydown', e => {
   if (e.ctrlKey || e.altKey || e.metaKey) return;
+  if (drill.shortcut(e)) {
+    e.preventDefault();
+    return;
+  }
   if (drill.handle(e)) {
     e.preventDefault();
     return;
@@ -740,6 +815,7 @@ progress.load();
 buildNav();
 progress.render();
 sound.updateBtn();
+kbMode.apply();
 fitKeyboard();
 window.addEventListener('resize', fitKeyboard);
 player.load(0);
