@@ -57,14 +57,23 @@ FetchContent_MakeAvailable(googletest)
 enable_testing()
 include(GoogleTest)
 
+# MemoryMappedFile has a Win32 branch and a POSIX branch, each with its own
+# test file, and the two cannot both be compiled: the upstream POSIX one puts
+# TempFile in a named namespace McBopomofo while the Win32 port uses an
+# anonymous one, so the suites would collide. Expect two fewer tests off
+# Windows -- the POSIX file has 4 cases, the Win32 file 6.
+if(WIN32)
+  set(MEMORY_MAPPED_FILE_TEST engine/mcbopomofo/MemoryMappedFileTestWin.cpp)
+else()
+  set(MEMORY_MAPPED_FILE_TEST engine/mcbopomofo/MemoryMappedFileTest.cpp)
+endif()
+
 add_executable(engine_tests
   engine/gramambular2/reading_grid_test.cpp
   engine/mcbopomofo/AssociatedPhrasesV2Test.cpp
   engine/mcbopomofo/ByteBlockBackedDictionaryTest.cpp
   engine/mcbopomofo/McBopomofoLMTest.cpp
-  # MemoryMappedFileTest.cpp is POSIX-only (mkstemp/mkdtemp); the Win32 port
-  # is covered by MemoryMappedFileTestWin.cpp instead.
-  engine/mcbopomofo/MemoryMappedFileTestWin.cpp
+  ${MEMORY_MAPPED_FILE_TEST}
   engine/mcbopomofo/ParselessLMTest.cpp
   engine/mcbopomofo/ParselessPhraseDBTest.cpp
   engine/mcbopomofo/PhraseReplacementMapTest.cpp

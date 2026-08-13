@@ -18,7 +18,9 @@
 //                 the audit can tell a lesson it is teaching the slow way.
 // Piped mode:     each stdin line = whitespace-separated bopomofo readings.
 
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 #include <fstream>
 #include <iostream>
@@ -38,6 +40,8 @@
 
 namespace {
 
+#ifdef _WIN32
+// argv is UTF-16 on Windows; everything below speaks UTF-8.
 std::string Narrow(const wchar_t* wide) {
   int len = WideCharToMultiByte(CP_UTF8, 0, wide, -1, nullptr, 0, nullptr, nullptr);
   if (len <= 0) return {};
@@ -45,6 +49,7 @@ std::string Narrow(const wchar_t* wide) {
   WideCharToMultiByte(CP_UTF8, 0, wide, -1, out.data(), len, nullptr, nullptr);
   return out;
 }
+#endif
 
 std::vector<std::string> SplitWhitespace(const std::string& line) {
   std::vector<std::string> tokens;
@@ -195,11 +200,7 @@ void RunKeyMode(std::shared_ptr<McBopomofo::McBopomofoLM> lm,
   }
 }
 
-}  // namespace
-
-int wmain(int argc, wchar_t** argv) {
-  SetConsoleOutputCP(CP_UTF8);
-
+int Run(const std::vector<std::string>& args) {
   std::string dataPath = "out/data.txt";
   std::string userChoicesPath;
   std::string keySequence;
@@ -209,15 +210,15 @@ int wmain(int argc, wchar_t** argv) {
   bool shortestMode = false;
   std::vector<std::string> readings;
 
-  for (int i = 1; i < argc; ++i) {
-    std::string arg = Narrow(argv[i]);
-    if (arg == "--data" && i + 1 < argc) {
-      dataPath = Narrow(argv[++i]);
-    } else if (arg == "--user-choices" && i + 1 < argc) {
-      userChoicesPath = Narrow(argv[++i]);
-    } else if (arg == "--keys" && i + 1 < argc) {
+  for (size_t i = 0; i < args.size(); ++i) {
+    const std::string& arg = args[i];
+    if (arg == "--data" && i + 1 < args.size()) {
+      dataPath = args[++i];
+    } else if (arg == "--user-choices" && i + 1 < args.size()) {
+      userChoicesPath = args[++i];
+    } else if (arg == "--keys" && i + 1 < args.size()) {
       keyMode = true;
-      keySequence = Narrow(argv[++i]);
+      keySequence = args[++i];
     } else if (arg == "--candidates") {
       showCandidates = true;
     } else if (arg == "--json") {
@@ -282,3 +283,25 @@ int wmain(int argc, wchar_t** argv) {
   }
   return 0;
 }
+
+}  // namespace
+
+#ifdef _WIN32
+// wmain rather than main, and it stays that way: readings arrive as
+// arguments (--shortest, which scripts/check-tutorials.mjs calls with
+// bopomofo). A narrow main() would receive those in the console code page
+// -- cp950 on a zh-TW box -- and every dictionary lookup would silently
+// miss.
+int wmain(int argc, wchar_t** argv) {
+  SetConsoleOutputCP(CP_UTF8);
+  std::vector<std::string> args;
+  args.reserve(argc > 1 ? static_cast<size_t>(argc - 1) : 0);
+  for (int i = 1; i < argc; ++i) args.push_back(Narrow(argv[i]));
+  return Run(args);
+}
+#else
+int main(int argc, char** argv) {
+  // argv is already UTF-8 here, and there is no console code page to set.
+  return Run(std::vector<std::string>(argv + 1, argv + argc));
+}
+#endif

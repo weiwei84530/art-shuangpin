@@ -32,7 +32,9 @@
 // filler -- see scripts/build-drills.ps1, which bans the offending word and
 // re-picks until every line converts cleanly.
 
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -56,6 +58,8 @@
 
 namespace {
 
+#ifdef _WIN32
+// argv is UTF-16 on Windows; everything below speaks UTF-8.
 std::string Narrow(const wchar_t* wide) {
   int len =
       WideCharToMultiByte(CP_UTF8, 0, wide, -1, nullptr, 0, nullptr, nullptr);
@@ -64,6 +68,7 @@ std::string Narrow(const wchar_t* wide) {
   WideCharToMultiByte(CP_UTF8, 0, wide, -1, out.data(), len, nullptr, nullptr);
   return out;
 }
+#endif
 
 std::vector<std::string> SplitCodePoints(const std::string& s) {
   std::vector<std::string> out;
@@ -596,11 +601,7 @@ size_t TypeSentence(Runner& runner, const Sentence& sentence,
   return std::string::npos;
 }
 
-}  // namespace
-
-int wmain(int argc, wchar_t** argv) {
-  SetConsoleOutputCP(CP_UTF8);
-
+int Run(const std::vector<std::string>& args) {
   std::string dataPath = "out/data.txt";
   std::vector<std::string> lessonPaths;
   std::string outPath = "web/drills.js";
@@ -611,27 +612,27 @@ int wmain(int argc, wchar_t** argv) {
   std::string reachablePath;
   bool coverage = false;
   bool audit = false;
-  for (int i = 1; i < argc; ++i) {
-    const std::string arg = Narrow(argv[i]);
-    if (arg == "--data" && i + 1 < argc) {
-      dataPath = Narrow(argv[++i]);
-    } else if (arg == "--lessons" && i + 1 < argc) {
-      lessonPaths.push_back(Narrow(argv[++i]));
-    } else if (arg == "--out" && i + 1 < argc) {
-      outPath = Narrow(argv[++i]);
-    } else if (arg == "--syllables" && i + 1 < argc) {
-      syllablesPath = Narrow(argv[++i]);
-    } else if (arg == "--filler" && i + 1 < argc) {
-      fillerPaths.push_back(Narrow(argv[++i]));
-    } else if (arg == "--dropped" && i + 1 < argc) {
-      droppedPath = Narrow(argv[++i]);
+  for (size_t i = 0; i < args.size(); ++i) {
+    const std::string& arg = args[i];
+    if (arg == "--data" && i + 1 < args.size()) {
+      dataPath = args[++i];
+    } else if (arg == "--lessons" && i + 1 < args.size()) {
+      lessonPaths.push_back(args[++i]);
+    } else if (arg == "--out" && i + 1 < args.size()) {
+      outPath = args[++i];
+    } else if (arg == "--syllables" && i + 1 < args.size()) {
+      syllablesPath = args[++i];
+    } else if (arg == "--filler" && i + 1 < args.size()) {
+      fillerPaths.push_back(args[++i]);
+    } else if (arg == "--dropped" && i + 1 < args.size()) {
+      droppedPath = args[++i];
     } else if (arg == "--audit") {
       audit = true;
-    } else if (arg == "--reachable" && i + 1 < argc) {
-      reachablePath = Narrow(argv[++i]);
-    } else if (arg == "--allow" && i + 1 < argc) {
+    } else if (arg == "--reachable" && i + 1 < args.size()) {
+      reachablePath = args[++i];
+    } else if (arg == "--allow" && i + 1 < args.size()) {
       audit = true;
-      auditAllowPath = Narrow(argv[++i]);
+      auditAllowPath = args[++i];
     } else if (arg == "--coverage") {
       coverage = true;
     }
@@ -919,3 +920,25 @@ int wmain(int argc, wchar_t** argv) {
   }
   return 0;
 }
+
+}  // namespace
+
+#ifdef _WIN32
+// wmain rather than main, and it stays that way: readings arrive as
+// arguments (--shortest, which scripts/check-tutorials.mjs calls with
+// bopomofo). A narrow main() would receive those in the console code page
+// -- cp950 on a zh-TW box -- and every dictionary lookup would silently
+// miss.
+int wmain(int argc, wchar_t** argv) {
+  SetConsoleOutputCP(CP_UTF8);
+  std::vector<std::string> args;
+  args.reserve(argc > 1 ? static_cast<size_t>(argc - 1) : 0);
+  for (int i = 1; i < argc; ++i) args.push_back(Narrow(argv[i]));
+  return Run(args);
+}
+#else
+int main(int argc, char** argv) {
+  // argv is already UTF-8 here, and there is no console code page to set.
+  return Run(std::vector<std::string>(argv + 1, argv + argc));
+}
+#endif
