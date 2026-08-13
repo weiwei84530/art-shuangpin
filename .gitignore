@@ -26,3 +26,9 @@ build32/
 *.dSYM/
 *.o
 .DS_Store
+
+# mac/release/ holds the files copied verbatim into the release ZIP. The
+# Release/ rule above is for MSVC output, but git's ignore matching is
+# case-insensitive on Windows and swallows this directory without it.
+!/mac/release/
+!/mac/release/**

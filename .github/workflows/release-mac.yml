@@ -1,0 +1,126 @@
+# Builds the macOS half of a release: one ZIP that installs offline.
+#
+# The Windows half is still packaged by hand on the development box
+# (scripts\make-package.ps1) and uploaded to the same release. This job
+# exists because the Mac half cannot be built there at all -- there is no
+# darwin toolchain -- and asking users to compile it themselves would mean
+# Xcode Command Line Tools, python3 and a git clone before they can type a
+# character.
+#
+# What comes out: art-shuangpin-mac-vX.Y.Z.zip, holding a universal
+# (arm64 + x86_64) app with the language model already inside it, plus the
+# two .command files. Download, unzip, right-click install.command.
+#
+# The release is created as a DRAFT and never published automatically.
+name: Release (macOS)
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build (re-runs without re-tagging)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # Must match mac.yml, or what users download is not what the guard tested.
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Resolve the tag
+        id: tag
+        run: echo "name=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      # First, and cheap: VERSION is the single source of truth for both
+      # halves of a release, and this is the whole of its enforcement.
+      - name: Check VERSION agrees with the tag
+        run: |
+          want="v$(cat VERSION)"
+          got="${{ steps.tag.outputs.name }}"
+          if [ "$want" != "$got" ]; then
+            echo "::error::VERSION says $want but the tag is $got."
+            echo "::error::Bump VERSION and re-tag, or tag the right commit."
+            exit 1
+          fi
+          echo "version gate ok: $got"
+
+      - name: Dictionary cache key
+        id: datakey
+        run: echo "sha=$(git rev-parse HEAD:data)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        id: dictionary
+        with:
+          path: out/data.txt
+          key: mspy-data-${{ steps.datakey.outputs.sha }}
+
+      - name: Build the dictionary
+        if: steps.dictionary.outputs.cache-hit != 'true'
+        run: bash scripts/build-data.sh
+
+      # Ad-hoc signing happens inside the Makefile, so this needs no
+      # keychain, no identity and no secret. The cost is that the
+      # Accessibility grant does not survive a version change, which
+      # release/install.command handles by resetting it every time.
+      - name: Build the universal app
+        run: make -C mac ARCH="arm64 x86_64" MIN_MACOS=11.0
+
+      - name: Check the bundle
+        run: |
+          app=mac/dist/ArtShuangpin.app
+          lipo -archs "$app/Contents/MacOS/ArtShuangpin"
+          test -f "$app/Contents/Resources/mspy-data.txt"
+          codesign --verify --deep --strict --verbose=2 "$app"
+
+      - name: Stage the archive
+        run: |
+          stage=stage/art-shuangpin-mac
+          mkdir -p "$stage"
+          cp -R mac/dist/ArtShuangpin.app "$stage/"
+          cp mac/release/install.command mac/release/uninstall.command "$stage/"
+          cp mac/release/README.txt "$stage/"
+          chmod +x "$stage"/*.command
+          ls -la "$stage"
+
+      # ditto, not zip and not Python's zipfile: it is Apple's own archiver,
+      # so it writes forward-slash entry names, create_system = 3, correct
+      # Unix modes, and it preserves the extended attributes a code
+      # signature depends on. --sequesterRsrc keeps those attributes in the
+      # archive; --keepParent keeps the folder rather than scattering its
+      # contents into the user's Downloads.
+      - name: Pack
+        run: |
+          mkdir -p out
+          ditto -c -k --sequesterRsrc --keepParent \
+            stage/art-shuangpin-mac \
+            "out/art-shuangpin-mac-${{ steps.tag.outputs.name }}.zip"
+
+      # ditto gets all of this right; the check is here because every one of
+      # these failures is invisible until someone's Mac refuses to open the
+      # app, and because the day a zip is built anywhere else they all come
+      # back at once.
+      - name: Verify the archive
+        run: python3 mac/tools/verify_zip.py "out/art-shuangpin-mac-${{ steps.tag.outputs.name }}.zip"
+
+      # gh rather than a release action: an action that "creates or updates"
+      # can flip an already-published release back to draft when the job is
+      # re-run. Create only if missing, then upload.
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ steps.tag.outputs.name }}"
+          gh release view "$tag" >/dev/null 2>&1 || \
+            gh release create "$tag" --draft --title "$tag" \
+              --notes "（待補：繁體中文說明。Windows 版的 zip 也要上傳到這裡。）"
+          gh release upload "$tag" "out/art-shuangpin-mac-$tag.zip" --clobber
+          echo "Uploaded. The release stays a draft until it is published by hand."
