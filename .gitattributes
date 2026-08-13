@@ -1,0 +1,33 @@
+# Line endings, scoped to the halves that care.
+#
+# The Windows half (ime/ core/ engine/ cli/ data/ docs/ drills/ web/ and the
+# PowerShell in scripts/) is deliberately NOT covered. It is checked out
+# through core.autocrlf=true and its worktree is mixed -- core/composer.cpp
+# sits as LF while data/Makefile and docs/spec.md sit as CRLF. A repo-wide
+# `* text=auto` would buy nothing there and would change what every one of
+# those files looks like after the next checkout.
+#
+# The macOS half cannot tolerate a CR anywhere: bash dies with
+# "$'\r': command not found" on a .command, and clang reports bogus line
+# numbers in a .mm.
+#
+# Never run `git add --renormalize`. It is a no-op today and it is the one
+# command that could turn this into a whole-tree diff.
+
+/mac/**             text=auto eol=lf
+
+# Unanchored on purpose, as a net for shell scripts written outside mac/
+# (scripts/build-data.sh). Verified safe when added: no .sh or .command
+# existed anywhere else in the tree.
+*.sh                text eol=lf
+*.command           text eol=lf
+
+# A no-op today (pages.yml is already LF both sides); here so a workflow
+# authored on Windows can never ship a CR inside a `run: |` block.
+/.github/**/*.yml   text eol=lf
+
+# Belt and braces: text=auto already detects these, but a generated icon or
+# screenshot landing under mac/ must never be line-ending converted.
+/mac/**/*.png       binary
+/mac/**/*.tiff      binary
+/mac/**/*.icns      binary
