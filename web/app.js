@@ -85,18 +85,35 @@ function capFor(key) {
   return { id: key.toLowerCase(), shift: false };
 }
 
+// The left-hand half of the board -- the same split cli/keystrokes.h uses to
+// pick which mirrored digit a tone gets, so the drill hints and the
+// prescribed keys agree about which hand is busy. Everything else is right.
+const LEFT_HAND = new Set('12345qwertasdfgzxcvb`'.split(''));
+const isLeftHand = id => LEFT_HAND.has(id);
+
 function clearHints() {
-  for (const el of Object.values(keyEls)) el.classList.remove('hint');
+  for (const el of Object.values(keyEls)) {
+    el.classList.remove('hint', 'hint-left', 'hint-right');
+  }
 }
 
-function showHint(key) {
+// `prev` is the key typed just before, which is what decides the hand for
+// Space (the two are pressed one after the other, so they should alternate).
+function showHint(key, prev) {
   clearHints();
   if (kbMode.n !== 0) return;  // the learner asked not to be shown
   const { id, shift } = capFor(key);
-  if (keyEls[id]) keyEls[id].classList.add('hint');
+  const el = keyEls[id];
+  if (el) el.classList.add('hint');
   if (shift) {
-    keyEls['ShiftL'].classList.add('hint');
-    keyEls['ShiftR'].classList.add('hint');
+    // The Shift to reach for is the one under the OTHER hand: pressing the
+    // one on the symbol's own side leaves a single hand doing both.
+    keyEls[isLeftHand(id) ? 'ShiftR' : 'ShiftL'].classList.add('hint');
+  }
+  // Space is one key but two thumbs. Light the half away from the hand that
+  // just typed, the same alternation the tone digits follow.
+  if (el && id === 'Space' && prev) {
+    el.classList.add(isLeftHand(capFor(prev).id) ? 'hint-right' : 'hint-left');
   }
 }
 
@@ -479,10 +496,11 @@ const sound = {
 const kbMode = {
   KEY: 'drillKeyboard',
   // [button label, what the button does next]
+  // The label is the mode it is IN; the tooltip is what clicking does.
   STEPS: [
-    ['⌨ 提示下一鍵', '點一下：不再提示鍵位'],
-    ['⌨ 不提示鍵位', '點一下：隱藏整個鍵盤'],
-    ['⌨ 已隱藏鍵盤', '點一下：恢復提示下一鍵']
+    ['⌨ 當前模式：提示下一鍵', '點一下：不再提示鍵位'],
+    ['⌨ 當前模式：不提示鍵位', '點一下：隱藏整個鍵盤'],
+    ['⌨ 當前模式：隱藏鍵盤', '點一下：恢復提示下一鍵']
   ],
   n: Math.min(2, Math.max(0, +store.get('drillKeyboard', '0') || 0)),
 
@@ -628,7 +646,7 @@ const drill = {
       return;
     }
     const key = steps[this.si].k;
-    showHint(key);
+    showHint(key, this.si > 0 ? steps[this.si - 1].k : null);
     const label = KEY_LABEL[key] || key.toUpperCase();
     // Every key in a drill is a letter, a tone digit, Space, Enter or
     // punctuation -- the lessons are chosen so nothing ever needs
