@@ -1,56 +1,74 @@
 # CLAUDE.md — ArtShuangpin for macOS
 
-A native macOS **InputMethodKit** shell around the *existing* art-shuangpin C++ core
-(`D:\Projects\art-shuangpin`, mirrored read-only under `vendor/art-shuangpin/`).
-The mirror currently tracks upstream **v0.6**.
+A native macOS **InputMethodKit** shell around the art-shuangpin C++ core, which sits one
+directory up: `../core`, `../engine`, `../cli`. This is the macOS half of the repository;
+`../ime` is the Windows half, and both are shells over the same `mspy::Composer`.
 
-Private project. `origin` is the **private** GitHub repo `weiwei84530/art-shuangpin-mac`;
-`vendor/` never goes there. See rule 6.
+Until 2026-08-13 this was a separate private repo consuming a read-only mirror of the core
+under `vendor/`. Both are gone. The reason for the merge was the mirror's one real cost:
+the shell repo was private, so every Mac needed GitHub credentials, while everything it
+fetched into `vendor/` was already public.
 
-## What this repo is — and is not
+The root `CLAUDE.md` governs and is 繁體中文; this file covers what is specific to `mac/`
+and stays English (rule 5).
 
-This repo is a **shell only**. Every input behaviour — the Composing/Selecting state machine,
-the reading grid, the cursor and anchor model, tone semantics, punctuation, learning — already
-lives in `mspy::Composer`. The shell feeds it abstract keys and renders its output.
+## What `mac/` is — and is not
 
-* **Never re-implement composer logic in ObjC++.** If behaviour is wrong, the fix belongs
-  upstream in art-shuangpin, not here.
-* **Behaviour spec: `vendor/art-shuangpin/docs/spec.md` §6** and `core/composer.h`. Read them
-  before touching key handling. They are the authority; this file is not.
+This directory is a **shell only**. Every input behaviour — the Composing/Selecting state
+machine, the reading grid, the cursor and anchor model, tone semantics, punctuation,
+learning — already lives in `mspy::Composer`. The shell feeds it abstract keys and renders
+its output.
+
+* **Never re-implement composer logic in ObjC++.** If behaviour is wrong, the fix belongs in
+  `../core`, not here. (That is now an edit you can make yourself — see rule 3 — which makes
+  the temptation to patch around it in the shell easier to give in to, not harder.)
+* **Behaviour spec: `../docs/spec.md` §6** and `../core/composer.h`. Read them before
+  touching key handling. They are the authority; this file is not.
 
 ## Hard rules
 
 1. **Development host is Windows; the target is macOS.** There is no darwin toolchain here —
-   no Xcode, no `swiftc`, no clang for darwin. **Never try to build or run the app.** The user
-   builds on the Mac and reports back. Everything shipped is source.
+   no Xcode, no `swiftc`, no clang for darwin. **Never try to build the app here.** What
+   *can* be verified on this host is the shared C++: `cmake --build build && ctest` covers
+   `../core`, `../engine` and `../cli`, and `../cli/repl.exe` answers any composer-behaviour
+   question without a Mac. Everything under `src/` compiles only in
+   `../.github/workflows/mac.yml` and behaves only on the user's Mac — write it, push it,
+   read the CI log. Expect **171** tests on macOS against 173 here: `engine_tests` picks its
+   `MemoryMappedFile` test per platform and the POSIX file has two fewer cases.
 2. **Command Line Tools only.** The user has `xcode-select --install`, not full Xcode. Build
    with plain `clang++` driven by a `Makefile`, assemble the `.app` by hand, ad-hoc
    `codesign -s -`. **No `.xcodeproj`, no `xcodebuild`, no nib/xib** — `ibtool` ships with
-   Xcode, not with CLT.
-3. **`vendor/art-shuangpin/` is a READ-ONLY mirror.** Never commit inside it. Its push URL is
-   deliberately set to `DISABLED-read-only-mirror` so an accidental push cannot reach the
-   original. **Never write to `D:\Projects\art-shuangpin`** under any circumstance. (It lived
-   at `D:\Claude\Input` until 2026-08-06; `tools/sync_art.py` re-points an older mirror's
-   fetch URL automatically.) Refresh the mirror with `python tools/sync_art.py`.
-4. **`vendor/` is gitignored** — it holds the mirror clone and the 7.5 MB `mspy-data.txt`
-   build product. Two ways to restore it, both driven by **`vendor.pin`** (the one place the
-   upstream tag, release asset and data sha256 live — bump it to track a new release):
-   `tools/sync_art.py` on Windows, from the local working copy; `bootstrap.command` on the
-   Mac, from public sources. Gitignoring `vendor/` costs nothing now: neither half of it is
-   private, only this repo is.
-5. **Language.** Code, comments, `CLAUDE.md`, `README.md`, `docs/NOTES.md` are **English**.
-   `docs/INSTALL.md` is **繁體中文** — it is end-user instruction text and ships as
-   `README.txt`. The same rule makes the *printed output* of `*.command` and of
-   `START-HERE.txt` 繁體中文 while their comments stay English: those are read by the
-   person installing, not by whoever is editing the repo. Replies to the user are 繁體中文.
-6. **Git.** `origin` is a **private** GitHub repo. Commit and push only when explicitly
-   asked; stay on the current branch. What must never reach any remote is `vendor/` — it
-   is gitignored, and the mirror clone inside it has its own push URL disabled (rule 3).
-   The upstream `weiwei84530/art-shuangpin` is a *different*, public repo; nothing here
-   is ever pushed to it. Tags and releases live on this private repo too — see
-   **Cutting a release** below, and do that only when asked, like any other push.
-7. **Commit messages and release notes are English** (they are git artifacts), even though
-   replies to the user are 繁體中文.
+   Xcode, not with CLT. CI runs on a **full-Xcode runner**, so a green build is *not* proof
+   of this rule: never introduce an Xcode-only tool because CI accepted it. CMake is not part
+   of CLT either, which is why `make probe` links `../cli/repl.cpp` by hand rather than
+   through `../CMakeLists.txt`.
+3. **`../core`, `../engine` and `../cli` are the same tree now** — not a mirror, and no
+   longer off limits. You may change them, and a change there **is a Windows change**: run
+   `ctest` before committing, and check `src/ArtBridge.mm` still exposes what the shell
+   needs. `scripts/check-parity.py` reports both. What has not changed is where behaviour
+   belongs: editing `../core` to work around something awkward in the shell is still the
+   wrong fix.
+4. **The language model is a build product.** `../out/data.txt`, 7.5 MB, built from the
+   tracked sources in `../data` by `bash ../scripts/build-data.sh` — python3, no packages, a
+   couple of minutes. `out/` is gitignored, so no clone carries it, and CI caches it keyed on
+   the git tree object of `data/`. No pinned tag, no release asset, no sha256 to keep in step
+   any more; `make` diagnoses a missing model and prints the one command that fixes it.
+5. **Language — by reader, not by directory.** This file and `docs/NOTES.md` are **English**:
+   their readers are people editing `src/`, the vocabulary (IMKInputController, marked text,
+   TCC, code directory hash) is English anyway, and translating them would cut them off from
+   the Windows-side comments they are meant to be read beside. `docs/INSTALL.md`,
+   `release/README.txt` and the *printed output* of every `*.command` are **繁體中文** —
+   those are read by the person installing, not by whoever is editing the repo. Comments
+   inside those same scripts stay English. Replies to the user are 繁體中文. The root
+   `CLAUDE.md` states this ruling once; do not "fix" either half towards the other.
+6. **Git.** One public `origin`, `weiwei84530/art-shuangpin`, shared with the Windows half.
+   The root rule governs: commit freely, **push only when asked**, stay on the current
+   branch. New since the merge: **a tag is a publishing act** — pushing `vX.Y.Z` triggers
+   `release-mac.yml`, which builds the app and attaches it to a GitHub release. Treat
+   tagging exactly like a push, and never tag unasked.
+7. **Commit messages, tag annotations and code comments are English.** Release notes are
+   **繁體中文**, per the root rule — there is one release page for both platforms now, and
+   its language has been consistent since v0.2.
 
 ## Why this project exists — the measured root cause, do not re-derive
 
@@ -124,9 +142,9 @@ std::function<void(const std::string& context, const std::string& reading,
 why the port is a shell and not a reimplementation: the thing the Rime version could not do is
 a field the core already returns.
 
-`vendor/art-shuangpin/ime/SampleIME/MspyBridge.{h,cpp}` is the Windows equivalent of the
-bridge this repo needs — **read it before changing `ArtBridge.mm`**, the two are deliberately
-line-for-line comparable. `cli/repl.cpp` builds the same three layers:
+`../ime/SampleIME/MspyBridge.{h,cpp}` is the Windows equivalent of the bridge this directory
+needs — **read it before changing `ArtBridge.mm`**, the two are deliberately line-for-line
+comparable. `../cli/repl.cpp` builds the same three layers:
 
 ```cpp
 auto lm = std::make_shared<McBopomofo::McBopomofoLM>();
@@ -148,12 +166,16 @@ it scores every user phrase at 0, which beats every dictionary entry.
 
 | tree | lines | platform |
 |---|---|---|
-| `core/` (composer, double pinyin, tone LM, user preferences) | 2272 | **zero Windows dependencies** |
-| `engine/` (McBopomofo gramambular2 + LM) | 4419 | Windows code only in `MemoryMappedFile.{h,cpp}`, always behind `#ifdef _WIN32` with a POSIX `#else` |
-| `ime/SampleIME/` (TSF shell) | 19090 | Windows-only — **replaced, not ported** |
+| `../core` (composer, double pinyin, tone LM, user preferences) | 2272 | **zero Windows dependencies** |
+| `../engine` (McBopomofo gramambular2 + LM) | 4419 | Windows code only in `MemoryMappedFile.{h,cpp}`, always behind `#ifdef _WIN32` with a POSIX `#else` |
+| `../ime/SampleIME` (TSF shell) | 19090 | Windows-only — **replaced, not ported** |
 
-v0.6 also added `cli/drill_gen.cpp`, `drills/` and ~3,000 lines of `web/` — a typing tutor.
-None of it is input behaviour and none of it builds here; ignore it when reading a diff.
+`../cli` joined that first row on 2026-08-13: `repl.cpp` and `drill_gen.cpp` used to take
+`wchar_t` argv, and now keep `wmain` behind `#ifdef _WIN32` with a plain `main` elsewhere.
+`repl` is what `make probe` builds.
+
+v0.6 also added `../drills` and ~3,000 lines of `../web` — a typing tutor. None of it is
+input behaviour and none of it builds here; ignore it when reading a diff.
 
 The `MemoryMappedFile.cpp` POSIX branch is the *upstream-native* one: the engine is
 McBopomofo's, and McBopomofo is a macOS input method. This C++ compiles on darwin as-is.
@@ -264,53 +286,51 @@ here — `wouldConsume`/`feedChar`/`selectCandidate` absorb every one.
 
 ## Cutting a release
 
-Releases live on the **private** `weiwei84530/art-shuangpin-mac`, tagged `vX.Y.Z` matching
-`VERSION` (first one: `v0.2.0`, 2026-08-06). They exist for one job only: handing the user
-`bootstrap.command` for a **first install or a recovery**. Ordinary updates never touch the
-release page — the checked-out `~/ArtShuangpin/bootstrap.command` pulls and reinstalls itself.
+One release page, two assets, one `VERSION` at the repository root. `git push` of a tag
+`vX.Y.Z` **is the publishing act** for this half (rule 6).
 
-Steps, in order. Never skip 2:
+1. Bump `../VERSION`, commit.
+2. `git tag -a vX.Y.Z -m "…"` and push the tag **when asked**.
+   `release-mac.yml` then checks the tag equals `v$(cat VERSION)` — that gate is the whole
+   enforcement that the two halves agree — builds a universal app on `macos-15`, packs it
+   with `ditto` and attaches `art-shuangpin-mac-vX.Y.Z.zip` to a **draft** release.
+3. On the Windows box: build both architectures, `scripts\make-package.ps1` →
+   `art-shuangpin-vX.Y.Z.zip`, `gh release upload` it to the same tag.
+4. Write the 繁體中文 notes covering both halves, then publish the draft.
 
-1. Bump `VERSION`.
-2. **Bump `vendor.pin`** if upstream released — `ART_TAG`, `ART_ASSET`, `MSPY_DATA_SHA256`.
-   The Mac fetches the *pinned tag*, so without this it keeps building the old core no matter
-   what `tools/sync_art.py` has synced here. That script warns when the mirror has moved past
-   the pin; the warning is the reminder.
-3. Commit and push (only when asked).
-4. `python tools/make_transfer_zip.py --bootstrap-only` → `dist/ArtShuangpin-bootstrap-<VERSION>.zip`.
-5. `git tag -a vX.Y.Z -m "…"` and push the tag.
-6. `gh release create vX.Y.Z --repo weiwei84530/art-shuangpin-mac --latest --notes-file … `
-   with **both** assets: the zip *and* a plain copy of `bootstrap.command`.
+**Why the zip and not a bare `.command`.** A `.command` served over HTTP arrives with no Unix
+mode — browsers save it `0644` — so downloading the bare file and double-clicking reproduces
+exactly the *"you do not have appropriate access privileges"* dialog. Only an archive carries
+the executable bit, which is also why `tools/verify_zip.py` checks it. Release notes must say
+**right-click → 打開**, not double-click: downloads are quarantined and this is ad-hoc signed,
+not Developer ID.
 
-**Why two assets, and why the zip is the one to use.** A `.command` served over HTTP arrives
-with no Unix mode — browsers save it `0644` — so downloading the bare file and double-clicking
-it reproduces exactly the *"could not be executed because you do not have appropriate access
-privileges"* dialog. Only a ZIP carries the executable bit. The plain file is there for reading
-and for anyone who would rather `chmod +x`. Release notes must also say **right-click → Open**,
-not double-click: browser downloads are quarantined and this is not Developer ID signed.
-
-The asset is a *snapshot* of `bootstrap.command` at that tag, so **re-upload it every release**
-even when the script itself did not change — a stale asset would clone an older pin.
-
-`--bootstrap-only` goes through the same `add()`/`verify()` path as the transfer archive, so
-the `create_system = 3` fix and the CR check apply to it as well. Do not hand-roll the zip.
+`release/` holds exactly what goes into that archive beside the app. `install.command` there
+is a different file from the one in this directory: it copies a prebuilt app rather than
+building one, strips `com.apple.quarantine`, and resets the Accessibility grant every time —
+see NOTES.md, "Ad-hoc signing and Accessibility".
 
 ## Testing
 
-There is no way to run this on Windows. What *can* be checked here:
+The app cannot run on Windows, but almost everything under it can be checked there:
 
-* `vendor/art-shuangpin/` has a full C++ unit-test suite (`core/*_test.cpp`,
-  `engine/**/*Test.cpp`) — that is the composer's coverage and it already passes upstream.
-* `cli/repl.exe --keys "ni3hk3vs 99"` prints every state transition including `anchor:[...]`.
-  (The space is load-bearing since v0.4: while `vs` is unsettled the digits are tone keys,
-  not cursor keys.) `tools/artprobe.cpp` takes `~` for the bare-Shift switch, so
-  `--keys "ni3hk3~ ok~"` replays the v0.5 中英 flow without a Mac.
-  Use it to establish expected behaviour **before** writing shell code, so the Mac-side loop
-  is only ever debugging the shell. `--user-choices <path>` loads a copy of the user's learned
-  store so the output matches what they actually see; `tools/artprobe.cpp` takes the same flag
-  on the Mac side. Since v0.6 those records are grid overrides, so they change what comes out,
-  not merely how candidates rank — reproducing a report without the file reproduces a
-  different engine.
+* **The C++ test suite is in this repository now** — `../core/*_test.cpp`,
+  `../engine/**/*Test.cpp`. `cmake --build build && ctest` on the Windows host is the same
+  coverage the Mac gets, minus two platform-specific mmap cases.
+* `../build/Release/repl.exe --keys "ni3hk3vs 99"` prints every state transition including
+  `anchor:[...]`. (The space is load-bearing since v0.4: while `vs` is unsettled the digits
+  are tone keys, not cursor keys.) `#` is the bare-Shift switch, so `--keys "ni3hk3# ok#"`
+  replays the v0.5 中英 flow without a Mac. Use it to establish expected behaviour **before**
+  writing shell code, so the Mac-side loop is only ever debugging the shell.
+  `--user-choices <path>` loads a copy of the user's learned store so the output matches what
+  they actually see; since v0.6 those records are grid overrides, so they change what comes
+  out rather than merely how candidates rank — reproducing a report without the file
+  reproduces a different engine.
+* On the Mac, `make probe` builds that same `repl` from `../cli/repl.cpp` and
+  `check-engine.command` runs it. It used to be a local copy called `artprobe` with its own
+  key dialect (`~` for Shift, `#` for Enter); if you find that spelling anywhere, it is stale.
+* `python scripts/check-parity.py` from the repository root reports what the Windows side has
+  changed since `upstream-alignment.txt`, and what this shell may owe it.
 
-The shell itself is verified by the user on the Mac. Keep it thin so there is little to
-verify.
+The shell itself is verified by CI (it compiles, links universal, signs) and by the user on
+the Mac (it behaves). Keep it thin so there is little to verify.

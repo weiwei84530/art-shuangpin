@@ -5,101 +5,76 @@
 
 ---
 
-## 需要什麼
+## 兩種安裝方式
 
-* macOS 11 或更新的版本。
-* **Command Line Tools**（不需要完整的 Xcode）：
-
-  ```sh
-  xcode-select --install
-  ```
-
-## 一、把程式碼帶到 Mac
-
-`vendor/` 這個資料夾被 git 忽略，**不會跟著 `git clone` 過來**，但建置一定要用到它：
-
-```
-vendor/art-shuangpin/    輸入核心與轉換引擎的原始碼
-vendor/mspy-data.txt     7.5 MB 的詞庫
-```
-
-請把整個專案資料夾（含 `vendor/`）從 Windows 那台複製過來，用**不會改動換行字元**的方式
-（壓縮成 zip、或用 `scp`、`rsync`；不要用會做 CRLF 轉換的同步工具）——`mspy-data.txt`
-必須維持 LF 換行，否則詞庫會載入失敗。
-
-少了什麼東西時 `make` 會直接告訴你少哪一個檔案。
-
-## 一之二、或者：只複製一個檔案，剩下讓它自己來
-
-上面那一節（整包複製過來）現在不是唯一的路。**`bootstrap.command` 一支就夠**——
-把它單獨複製到 Mac 上任何地方雙擊，它會自己 `git clone` 這個專案、自己把 `vendor/`
-補齊、然後建置安裝，一路到底。預設裝在 `~/ArtShuangpin`。
-
-之後要更新，就雙擊 `~/ArtShuangpin/bootstrap.command`：它會 `git pull`、確認
-`vendor/` 是不是還對、然後重新建置安裝。**不用再傳任何壓縮檔。**
-
-為什麼做得到——`vendor/` 雖然不進版控，但它兩半都在公開的地方：
-
-| `vendor/` 的內容 | 從哪裡來 | 要權限嗎 |
+| | 用釋出的 zip | 從原始碼建置 |
 |---|---|---|
-| `art-shuangpin/`（輸入核心原始碼） | 公開 repo `weiwei84530/art-shuangpin`，指定的 tag | 不用 |
-| `mspy-data.txt`（7.5 MB 詞庫） | 同一個 repo 的公開釋出檔（Windows 安裝包裡就有一份，位元組完全相同，會驗 sha256） | 不用 |
-| 這個 macOS 外殼本身 | **私人** repo `weiwei84530/art-shuangpin-mac` | **要** |
+| 需要什麼 | macOS 11 以上，**其他都不用** | 再加上 Command Line Tools（含 git 與 python3） |
+| 要多久 | 十幾秒 | 第一次五到十分鐘（詞庫要建） |
+| 適合誰 | 幾乎所有人 | 想跑還沒發佈的改動 |
 
-所以整個流程只有第一步需要登入。第一次跑會問，兩種做法選一個做一次就好：
+**大部分人用第一種。** 下面第一節就是。
+
+---
+
+## 一、用釋出的 zip 安裝
+
+1. 到 [Releases](https://github.com/weiwei84530/art-shuangpin/releases) 下載
+   `art-shuangpin-mac-vX.Y.Z.zip`。
+
+2. 解壓縮，把裡面的 `install.command` **按右鍵 →「打開」**，再按一次「打開」。
+
+   **一定要用右鍵。** 直接雙擊會被系統擋下來，說「無法打開，因為來自身分不明的開發者」——
+   所有從網路下載、又沒有付費開發者憑證的程式都會遇到這個一次性確認。
+
+3. 過程中可能會問管理者密碼（只有清除舊的輔助使用授權那一步需要，可以按 Ctrl-C 跳過）。
+
+4. 跳到第三節，把輸入法加進系統。
+
+要更新就下載新版的 zip 再做一次同樣的事，輸入來源不用重加。
+
+---
+
+## 二、從原始碼建置
+
+只有在你要跑「還沒發佈」的改動時才需要這條路。先裝 Command Line Tools（不需要完整的 Xcode）：
 
 ```sh
-# A) 最省事：裝 GitHub CLI，用瀏覽器登入
-brew install gh
-gh auth login
-
-# B) 不裝東西：到 github.com → Settings → Developer settings
-#    → Personal access tokens → Tokens (classic) → Generate new token
-#    勾 repo 權限，產生後複製那串字。再跑一次 bootstrap.command，
-#    git 問密碼時貼上權杖（不是 GitHub 密碼）。macOS 會記進鑰匙圈。
+xcode-select --install
 ```
 
-該追哪一版上游，記在 `vendor.pin` 這個檔案裡（tag、釋出檔名稱、詞庫的 sha256）。
-Windows 那邊的 `tools/sync_art.py` 讀同一個檔案，所以兩邊不會各說各話。
+然後把 repo 裡的 `mac/bootstrap.command` 複製到 Mac 上任何地方雙擊。它會自己 `git clone`
+這個專案（公開的，不用登入）、建詞庫、建置、安裝，一路到底。預設裝在 `~/art-shuangpin`。
 
-## 二、建置與安裝（雙擊就好）
+之後要更新，就雙擊 `~/art-shuangpin/mac/bootstrap.command`：它會 `git pull` 再重新建置安裝。
 
-資料夾最上層有四個可以直接雙擊的檔案，不需要開終端機：
+`mac/` 資料夾裡有四個可以直接雙擊的檔案，不需要開終端機：
 
 | 檔案 | 做什麼 |
 |---|---|
-| `bootstrap.command` | 更新程式碼與 `vendor/`，然後做下面 `install.command` 那件事。 |
+| `bootstrap.command` | 更新程式碼、必要時建詞庫，然後做下面 `install.command` 那件事。 |
 | `check-engine.command` | 只編譯輸入核心與詞庫引擎、跑一次組字測試。不安裝、不碰系統。 |
-| `install.command` | 清掉舊的建置產物 → 重新建置 → 安裝到 `~/Library/Input Methods/` → 註冊輸入來源。更新也是按這個。 |
+| `install.command` | 清掉舊的建置產物 → 重新建置 → 安裝到 `~/Library/Input Methods/` → 註冊輸入來源。 |
 | `uninstall.command` | 移除。會先問要不要一併刪掉學過的詞。 |
 
 雙擊會自己開「終端機」跑完，跑完停住等你按 Enter，看得完訊息再關。
-第一次建議先跑 `check-engine.command`，看到組出「你好中」就表示核心在這台機器上是好的。
+第一次建議先跑 `check-engine.command`，看到最後一行是 `FINAL COMMIT: "你好中"`
+就表示核心在這台機器上是好的。
 
 `install.command` 還會自動偵測鑰匙圈裡有沒有名為 `ArtShuangpin Dev` 的自簽憑證，
 有就拿來簽章——這樣輔助使用權限不會每次重建都失效（見第四節）。沒有也照樣能裝。
 
-> **雙擊之後是用「文字編輯」打開，而不是跑起來**
-> 檔案的執行權限在傳輸過程掉了。在終端機執行一次就好（把資料夾拖進終端機視窗
-> 可以直接得到路徑）：
->
-> ```sh
-> chmod +x /把這裡換成這個資料夾/*.command
-> ```
->
-> **跳出「無法打開，因為它來自未識別的開發者」**
-> 在該檔案上按右鍵 →「打開」→ 再按一次「打開」。每支檔案只會問一次。
-
 ### 想自己打指令的話
 
 ```sh
-cd ArtMac
+cd art-shuangpin/mac
+bash ../scripts/build-data.sh    # 只有第一次要跑，產生 ../out/data.txt
 make clean && make install       # 等同 install.command
 make probe                       # 等同 check-engine.command
-build/artprobe --data vendor/mspy-data.txt --keys "ni3hk3vs#"   # 尾巴的 # 代表 Enter
+build/repl --data ../out/data.txt --keys "ni3hk3vs"
 ```
 
-產物是 `dist/ArtShuangpin.app`。預設只編譯這台 Mac 的架構；要編通用版本：
+產物是 `mac/dist/ArtShuangpin.app`。預設只編譯這台 Mac 的架構；要編通用版本：
 
 ```sh
 make ARCH="arm64 x86_64"
@@ -282,7 +257,10 @@ bash scripts/uninstall.sh --purge    # 連使用者詞一起刪
 
 模式已經是中文卻還是出英文字母，那是詞庫沒載入成功，輸入法會自動退化成「完全放行」
 以免卡住你打字。同一個選單最上面會寫「⚠️ 詞庫未載入：<路徑>」。
-通常是 `vendor/mspy-data.txt` 沒複製到，或複製過程換行被改掉了。
+
+用 zip 裝的話這不該發生（詞庫就在 app 裡面），若真的遇到請回報。
+自己建置的話多半是 `../out/data.txt` 沒建成功，重跑一次
+`bash ../scripts/build-data.sh` 再 `make install`。
 
 **改了程式重新安裝，行為卻沒變**
 輸入法是常駐程式，舊的還在跑。`make install` 會自動先關掉它；手動的話：

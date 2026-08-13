@@ -1,6 +1,8 @@
 # 阿特雙拼輸入法（art-shuangpin）
 
-Windows 原生 TSF 中文輸入法：**注音式輸入節奏＋微軟雙拼鍵位＋微軟注音式模態選字**，輸出繁體中文（zh-TW），全 C++、全 MIT。
+Windows 與 macOS 的原生中文輸入法：**注音式輸入節奏＋微軟雙拼鍵位＋微軟注音式模態選字**，輸出繁體中文（zh-TW），全 C++、全 MIT。
+
+兩個平台共用同一套輸入核心，打起來完全一樣：Windows 是 TSF（`ime/`），macOS 是 InputMethodKit（`mac/`）。
 
 ## 特色
 
@@ -12,17 +14,35 @@ Windows 原生 TSF 中文輸入法：**注音式輸入節奏＋微軟雙拼鍵�
 
 **[使用手冊](docs/guide.md)**（鍵位、省鍵設計、完整按鍵表）；**[互動教學網站](https://weiwei84530.github.io/art-shuangpin/)**（3D 鍵盤動畫示範各項操作，附看打練習）；程式實作細節與決策記錄見 [docs/spec.md](docs/spec.md)。
 
-## 安裝（Windows 10 / 11，x64）
+## 安裝
 
-1. 下載 Release 的 `art-shuangpin-*.zip` 並解壓（或自行建置後跑 `scripts\make-package.ps1` 打包）。
+每個 Release 都有兩份資產，各平台一份。
+
+### Windows 10 / 11（x64）
+
+1. 下載 `art-shuangpin-vX.Y.Z.zip` 並解壓（或自行建置後跑 `scripts\make-package.ps1` 打包）。
 2. 以**系統管理員**開 PowerShell，執行解壓目錄中的 `install.ps1`。
 3. 系統語言清單需已有「中文（台灣）」；輸入法會出現在該語言底下，名為「阿特雙拼輸入法」。沒出現時先登出再登入。
 
 移除：以系統管理員執行 `install.ps1 -Uninstall`。
 
+### macOS 11 以上（Apple Silicon 與 Intel 通用）
+
+1. 下載 `art-shuangpin-mac-vX.Y.Z.zip` 並解壓。
+2. 對 `install.command` **按右鍵 →「打開」**（不能直接雙擊——那是所有非開發者憑證程式的一次性確認）。
+3. 系統設定 → 鍵盤 → 文字輸入 → 輸入來源 → 編輯… → ＋，在「中文（繁體）」底下加入。
+
+不需要 Xcode、git 或 Python，app 與詞庫都在 zip 裡。詳細說明與疑難排解見
+[mac/docs/INSTALL.md](mac/docs/INSTALL.md)。
+
+移除：執行同一個資料夾裡的 `uninstall.command`。
+
 ## 從原始碼建置
 
-需 VS2022 Build Tools（v143＋Win11 SDK）、CMake、Python 3。步驟見 [docs/dev-loop.md](docs/dev-loop.md)。
+- **Windows**：VS2022 Build Tools（v143＋Win11 SDK）、CMake、Python 3。步驟見 [docs/dev-loop.md](docs/dev-loop.md)。
+- **macOS**：只要 Command Line Tools（`xcode-select --install`），不需要完整的 Xcode。
+  `bash scripts/build-data.sh` 建詞庫，再 `make -C mac install`。
+  也可以直接雙擊 `mac/bootstrap.command`，它會把這些一次做完。
 
 ## 授權
 

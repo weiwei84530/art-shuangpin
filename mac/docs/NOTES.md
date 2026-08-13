@@ -4,8 +4,7 @@ Working notes for the macOS shell. `CLAUDE.md` has the rules and the
 measured facts; this file has the decisions taken while writing `src/`, and
 — more usefully — where to look first when something is wrong.
 
-The behaviour authority is `vendor/art-shuangpin/docs/spec.md` §6. Nothing
-here overrides it.
+The behaviour authority is `../docs/spec.md` §6. Nothing here overrides it.
 
 ## The shape of the thing
 
@@ -20,45 +19,49 @@ ArtInputController.mm   IMKInputController: key routing, marked text,
 ArtCandidateWindow.mm   NSPanel + custom NSView, positioned under the anchor
 ArtModeHUD.mm           the 中/英 flash
 ArtNavigation.mm        CGEventPost, Accessibility trust
-tools/artprobe.cpp      core-only CLI (`make probe`)
 tools/make_icon.m       build-time menu-bar icon generator
+tools/verify_zip.py     checks a release archive for the faults that are
+                        invisible until someone else's Mac opens it
+release/                copied verbatim into the release ZIP
 *.command               double-clickable wrappers around make
 ```
 
-## Getting a working tree onto the Mac without carrying one
+The core-only CLI is `../cli/repl.cpp`, built by `make probe`. It used to be
+a local copy here called `artprobe`, which existed only because `repl.cpp`
+included `<windows.h>` and `vendor/` was a read-only mirror that could not be
+patched. Both reasons died with the merge — and the two had drifted into
+different key dialects, which is reason enough not to keep two.
 
-`vendor/` is gitignored and never reaches a remote, which used to mean a clone
-was not buildable and a 2.7 MB archive had to be hand-carried every round.
-That was never actually necessary: **neither half of `vendor/` is private.**
+## How the code gets to the Mac
 
-| `vendor/` | source | credentials |
-|---|---|---|
-| `art-shuangpin/` | the public `weiwei84530/art-shuangpin` repo, at a tag | none |
-| `mspy-data.txt` | the public release asset for that tag | none |
-| the shell itself | the private `weiwei84530/art-shuangpin-mac` | **yes** |
+Two paths, and the ordinary one needs nothing installed.
 
-The language model looked like the blocker, since upstream's `out/` is
-gitignored and rebuilding it means running the whole `data/` Python pipeline.
-It is not: the Windows install package published with every release carries
-it, and the copy inside `art-shuangpin-v0.5.zip` hashes to exactly the
-`MSPY_DATA_SHA256` this repo has been pinning all along. Verified before
-relying on it, and re-verified at every bump — v0.5 rebuilt no `data/`, so
-the model is byte-identical to v0.4's and only `ART_TAG` / `ART_ASSET` moved.
+**The release ZIP.** `release-mac.yml` builds a universal app on a macOS
+runner with the language model already inside the bundle, packs it with
+`ditto`, and attaches it to the GitHub release. Download, unzip, right-click
+`install.command`. No git, no Command Line Tools, no python3, no GitHub
+account. This is what almost everyone should use.
 
-So `bootstrap.command` is one self-contained file that clones, reconstructs
-`vendor/`, and hands over to `install.command`. Run from inside a checkout it
-updates that checkout instead of cloning, which makes it the update path too —
-double-click it in `~/ArtShuangpin` and there is nothing left to transfer.
+**A clone, for running code that has not been released.** `bootstrap.command`
+clones or pulls, builds `../out/data.txt` if it is missing, and hands over to
+`install.command`. Needs Command Line Tools (compiler, git and python3 all
+come with it) and nothing else.
 
-The pinned coordinates live in `vendor.pin`, deliberately `KEY=value` with no
-spaces so bash can `source` it and a five-line Python parser can read it.
-`tools/sync_art.py` reads the same file, so the hash the Windows side accepts
-and the hash the Mac downloads cannot drift apart. That script follows the
-source repo's HEAD while the bootstrap fetches a TAG, so it now says out loud
-when this tree has moved past the release the Mac would get.
+Neither path asks for credentials, and that is the whole reason the two
+repositories were merged. Until 2026-08-13 the shell lived in a *private*
+repo consuming a read-only mirror of the core under `vendor/`, pinned by tag
+and sha256 in `vendor.pin`. Everything the mirror fetched was already public;
+the only thing needing a GitHub login was the shell itself. Merging into the
+public repo deleted the mirror, the pin, `sync_art.py`, `make_transfer_zip.py`
+and about 120 lines of credential handling in `bootstrap.command` — and the
+dictionary, which used to be extracted from the Windows release asset because
+`out/` is gitignored, is now simply built from `../data` by
+`../scripts/build-data.sh`.
 
-**Bump `vendor.pin` when tracking a new upstream release**, or the Mac keeps
-building the old one no matter what is synced here.
+One measurement worth keeping from that work: running `build-data.sh` under
+`PYTHON=python` on Windows produces a dictionary byte-identical to
+`build-data.ps1`'s, sha256 `1f484ca2…` — the same bytes v0.6 shipped. The two
+scripts are meant to be read side by side and they really do agree.
 
 ## The .command wrappers
 
@@ -70,15 +73,19 @@ handled and all worth knowing:
 
 * **Finder starts them in `$HOME`**, not in the folder they live in. Every one
   of them opens with `cd "$(dirname "$0")"`.
-* **The executable bit has to survive the trip from Windows.** Git on this
-  host cannot set it, so `tools/make_transfer_zip.py` stores 0755 for `.sh`
-  and `.command` entries in the archive — which is how the Mac actually
-  receives them. Without it, a double-click opens the file in TextEdit;
-  `START-HERE.txt` says so and gives the `chmod +x` line.
+* **The executable bit has to survive both the repository and the download.**
+  `core.filemode` is false on the Windows host, so git will not pick the bit
+  up from disk and it has to be set in the index by hand
+  (`git update-index --chmod=+x`) — this was very nearly lost during the
+  merge, and the symptom would have been a 0644 `install.command` in the
+  release archive. Downloads are the second half: a browser saves a bare
+  `.command` 0644 regardless, which is why the release is an archive.
+  Without the bit, a double-click opens the file in TextEdit or reports
+  *"you do not have appropriate access privileges"*.
 * **A single CR breaks them** with `bad interpreter: /bin/bash^M`, which reads
-  as file corruption rather than as a line-ending problem. `.gitattributes`
-  pins `*.command` to LF, and the packer now *refuses to build an archive*
-  containing a CR in any shipped shell script.
+  as file corruption rather than as a line-ending problem. The root
+  `.gitattributes` pins `mac/**`, `*.sh` and `*.command` to LF, and
+  `tools/verify_zip.py` re-checks the finished archive.
 
 Two deliberate choices inside them:
 
@@ -121,17 +128,22 @@ shows up here, it is a bug.
 
 ## Tracking upstream
 
-`vendor/` is refreshed with `python tools/sync_art.py`; the mirror is at
-**v0.6**. (The source repository moved from `D:\Claude\Input` to
-`D:\Projects\art-shuangpin` on 2026-08-06 — the sync script re-points an older
-mirror's fetch URL by itself, so this needed no manual repair.)
+There is no upstream any more, in the sense of another repository to track:
+`../core` and `../engine` are the same working tree, so a core change reaches
+this shell the moment it is committed. What replaced the mirror bump is
+`upstream-alignment.txt` plus `../scripts/check-parity.py`, which report what
+has moved on the shared side since anyone last read it against `src/`. Run
+`python scripts/check-parity.py` from the repository root, or `/mac-parity`.
 
-**`vendor/` is gitignored, so it does not travel with the commit.** Most of
-what a release changes is core, which means pulling this repo on the Mac
-without re-copying `vendor/` gets none of it and the fixes look absent. Copy
-the whole directory across (LF endings — `mspy-data.txt` needs them) and
-`make clean`, or the stale object files link the old composer straight back
-in.
+The strongest check there is worth understanding rather than trusting blindly:
+`-handleKeyDown:client:` is a transliteration of the Windows
+`IsVirtualKeyNeedMspy`, in the same order deliberately, and no tool can verify
+that semantically. So the marker records a **hash of that function's body**,
+located by name — the comment in `ArtInputController.mm` cites line 1597,
+which is the call site, while the definition is at 1600, and that is exactly
+why a line number is the wrong anchor. A changed hash means "go and read it".
+A rename makes the function un-findable, which is reported loudly rather than
+passing silently.
 
 Most upstream releases need nothing here, and it is worth knowing why before
 reaching for the editor: behaviour lives in `mspy::Composer` and
@@ -233,6 +245,23 @@ code: `n`+Space used to settle as the bopomofo symbol ㄋ and now produces 呢,
 so a user who typed bare ㄋ deliberately needs `` n` ``. That is upstream's
 call, documented in spec §5, and the shell has no say in it.
 
+### v0.7.0 — the two repositories become one
+
+No input behaviour changed. What changed is where this directory lives and how
+it is built and shipped.
+
+| change | shell work |
+|---|---|
+| `vendor/` mirror, `vendor.pin`, `sync_art.py`, `make_transfer_zip.py` deleted | **Makefile** — `../core`, `../engine`, `../cli`; `patsubst` for object paths |
+| `../cli/repl.cpp` builds off Windows now | **probe** — `artprobe.cpp` deleted, `check-engine.command` retargeted, key dialect changed |
+| the language model is built, not downloaded | **preflight** — diagnose `../out/data.txt` and name the command that makes it |
+| CI builds and tests on macOS | none — but it is the first time `src/` has been compiled by anything other than the user |
+| releases carry a prebuilt universal app | **release/** — a second, simpler installer for the ZIP |
+
+The one behavioural note is not in the app: a downloaded release is
+quarantined and ad-hoc signed, so the installer has to strip the attribute and
+reset the Accessibility grant. See "Ad-hoc signing and Accessibility".
+
 ## The preference store (v0.6)
 
 `ArtBridge.mm` is a port of upstream's `CMspyBridge::LoadPreferences` /
@@ -296,14 +325,14 @@ The macOS side of the port, and where it deviates:
   method is usually ended with a signal — and it now covers only a failed
   write, since nothing is ever being held back.
 
-`make probe` takes `--user-choices <path>`, renamed with the file and still
-mirroring upstream's `repl`. Point it at the real store and the probe
-produces what the running app produces, which is the only way to reproduce a
-"why did it pick that" report offline. This is a stronger claim than it was:
-the records now change the *output*, not merely the candidate order.
+`make probe` takes `--user-choices <path>`. Point it at the real store and the
+probe produces what the running app produces, which is the only way to
+reproduce a "why did it pick that" report offline. This is a stronger claim
+than it was: the records now change the *output*, not merely the candidate
+order.
 
 ```sh
-build/artprobe --data vendor/mspy-data.txt \
+build/repl --data ../out/data.txt \
   --user-choices ~/Library/Application\ Support/ArtShuangpin/user-choices.txt \
   --keys "wo3vidk4"
 ```
@@ -604,36 +633,83 @@ file holding its value, so switching identities re-signs without a
 development host — it cannot be. If `codesign` rejects the identity, the
 ad-hoc default plus `tccutil` above still works, it is just manual.*
 
-None of this affects distribution: Gatekeeper never runs on locally built,
-unquarantined apps, and input methods do not need a Developer ID (Squirrel
-ships the same way).
+Input methods do not need a Developer ID — Squirrel ships the same way — but
+**"Gatekeeper never runs" is true only of locally built apps.** It was written
+when this was the only kind there was. Anything a browser downloads carries
+`com.apple.quarantine`, and macOS refuses to load a quarantined app that is
+only ad-hoc signed, reporting it as *"damaged and can't be opened"* — which
+reads as a corrupt download rather than as a policy decision. That is why
+`release/install.command` runs `xattr -dr com.apple.quarantine` before
+copying anything, and why the release notes must say **right-click → 打開**
+rather than double-click.
+
+The release path also loses the self-signed-certificate escape above: CI signs
+ad-hoc, so every release is a different code directory hash and the
+Accessibility grant is always stale. `release/install.command` therefore
+resets it unconditionally, where the source installer only does so when
+`SIGN_ID` is `-`. The user re-grants it once per version, and only the idle
+navigation keys depend on it.
+
+## The release ZIP
+
+Built by `.github/workflows/release-mac.yml` on a tag push, as a draft
+release, never published automatically.
+
+Packed with **`ditto -c -k --sequesterRsrc --keepParent`**, not `zip` and
+definitely not Python's `zipfile`. `ditto` is Apple's own archiver: forward-
+slash entry names, `create_system = 3`, correct Unix modes, and it preserves
+the extended attributes a code signature depends on. Everything
+`tools/verify_zip.py` checks, it gets right without being asked.
+
+`verify_zip.py` runs anyway, because each of those failures is invisible on
+the machine that builds the archive and only appears when someone else's Mac
+refuses to open the app. Its docstring is the surviving half of the packer
+this project used to need on Windows, and the `create_system` lesson in it is
+the expensive one: `zipfile.ZipInfo` sets `create_system = 0` (MS-DOS) when
+constructed on Windows, and an extractor reading a create_system-0 entry
+ignores the Unix mode entirely — the archive looks correct to `zipfile` on the
+build host and extracts 0644 on the Mac.
+
+Its backslash check was **dead code** in the original, found by self-testing
+it against a deliberately malformed archive: `ZipInfo.__init__` rewrites
+`os.sep` to `/`, so the decoded `filename` never contains a backslash however
+the archive was written. The stored name has to be read from
+`orig_filename`.
 
 ## Testing
 
-`vendor/art-shuangpin` carries the composer's real test suite (143 tests,
-green upstream) and it is not rebuilt here — this repo has no behaviour to
-test, only wiring.
+The composer's test suite is `../core/*_test.cpp` and `../engine/**/*Test.cpp`
+— in this repository, run by `ctest`, and it covers the behaviour this shell
+only wires up. `.github/workflows/mac.yml` runs it on macOS too, where it
+reports **171** cases against 173 on Windows: `engine_tests` picks its
+`MemoryMappedFile` test per platform and the upstream POSIX file has four
+cases where the Win32 port has six.
 
-`cli/repl.cpp` upstream cannot be built on macOS: it includes `<windows.h>`,
-and `vendor/` is a read-only mirror that must not be patched. `tools/
-artprobe.cpp` is the local stand-in — same idea, same output shape, no
-Windows headers:
+`make probe` builds `../cli/repl.cpp` — the same harness the Windows side
+uses. It replaced a local copy called `artprobe`, which existed only because
+`repl.cpp` used to include `<windows.h>` behind an unpatchable mirror.
 
 ```sh
 make probe
-build/artprobe --data vendor/mspy-data.txt --keys "ni3hk3vs 99"
+build/repl --data ../out/data.txt --keys "ni3hk3vs 99"
 ```
 
 Establish what the composer *should* do there before debugging the shell.
 Control tokens inside `--keys`: `<` Backspace (which is also what Tab does),
-`!` Esc, `#` Enter, and `~` for the bare-Shift language switch — everything
-after a `~` is fed through `feedEnglishChar` until the next one, so
+`!` Esc, a literal newline for Enter, and **`#` for the bare-Shift language
+switch** — everything after a `#` is fed through `feedEnglishChar` until the
+next one, so
 
 ```sh
-build/artprobe --data vendor/mspy-data.txt --keys "ni3hk3~ ok~"
+build/repl --data ../out/data.txt --keys "ni3hk3# ok#"
 ```
 
 reproduces the v0.5 flow of 你好 ␣ok␣ living in one uncommitted buffer.
+
+**The dialect changed with the binary.** `artprobe` read `#` as Enter and `~`
+as the language switch; `repl` reads `#` as the switch and takes a literal
+newline for Enter, and it presses Enter itself when a `--keys` run ends. Any
+`~` in an old note or transcript is stale.
 
 Debug logging in the shell:
 

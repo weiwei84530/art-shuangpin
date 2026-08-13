@@ -4,6 +4,7 @@
 
 Windows 11 原生 TSF 輸入法：**注音式輸入節奏 + 微軟雙拼鍵位 + 微軟注音式的模態選字**。
 取代先前在 Rime／小狼毫上的 `mspy_zhuyin` 方案（該方案受限於 Rime 架構：數字鍵無法選字、候選窗無法按需顯示）。
+**2026-08-13 起同一個 repo 也含 macOS 版**（`mac\`，InputMethodKit 外殼，共用同一套 `core\`）。
 
 完整計劃與決策記錄：`C:\Users\weiwe\.claude\plans\windows-11-swift-meadow.md`（歷史參考）；本檔為現行狀態的權威來源。
 
@@ -11,6 +12,7 @@ Windows 11 原生 TSF 輸入法：**注音式輸入節奏 + 微軟雙拼鍵位 +
 
 ```
 ime\    SampleIME 衍生 TSF 外殼（微軟官方範例 → 自有碼；候選窗、COM、註冊）
+mac\    macOS InputMethodKit 外殼（ObjC++）；與 ime\ 平行，共用 core\ 與 engine\
 core\   輸入核心（自寫）：雙拼解析、聲調規則、Composing/Selecting 模態狀態機、上下文選字記憶
 engine\ 小麥注音引擎子集（gramambular2 詞格轉換 + McBopomofoLM；UserOverrideModel 已不再使用）
 data\   小麥詞庫來源（Python 建置 → out\data.txt）
@@ -21,6 +23,47 @@ web\    互動教學網站＋看打練習（純 CSS/JS，GitHub Pages）
 
 - 引擎藏在 `core\` 的介面後（`relaxed_tone_lm` 配接器），日後可抽換。
 - **授權紅線：GPL-3 一律不用**。現行全棧 MIT/BSD，來源與 sha 見 `docs/PROVENANCE.md`。
+
+## macOS 外殼（mac\）
+
+`mac\` 之於 macOS，等同 `ime\` 之於 Windows：**只是外殼**。所有輸入行為都在 `mspy::Composer` 裡，
+兩邊都只是餵鍵、畫畫面。行為要改就改 `core\`，不要在任何一邊的外殼裡重寫。
+詳細規則見 `mac/CLAUDE.md`（英文），工程記錄見 `mac/docs/NOTES.md`。
+
+**四組必須同進退的接縫**（改了左邊就要看右邊）：
+
+| Windows | macOS |
+|---|---|
+| `CompositionProcessorEngine.cpp` 的 `IsVirtualKeyNeedMspy` | `mac/src/ArtInputController.mm` 的 `-handleKeyDown:client:`　**順序有意義** |
+| 同檔的 `IsVirtualKeyNeedMspyEnglish` | `-handleEnglishKeyDown:client:shift:` |
+| `MspyBridge.cpp` 的 `Load`／`SavePreferences` | `ArtBridge.mm:249-346`（`MoveFileEx`→`std::rename`） |
+| `CMakeLists.txt` 的 `mcb_engine`／`mspy_core` 來源清單 | `mac/Makefile` 的 `ENGINE_SRC`／`CORE_SRC` |
+
+前兩組是**逐條音譯**，工具查不出語意漂移，所以 `mac/upstream-alignment.txt` 記了那兩個函式 body 的 sha256。
+改完 `core\` 或 `ime\` 的鍵路由，跑 **`python scripts\check-parity.py`**（`--fix` 只修機械性的部分）。
+也可以直接用 `/mac-parity`。
+
+其他要點：
+
+- **不要在這台機器建置 `mac\`**（沒有 darwin 工具鏈）。`core/ engine/ cli/` 的改動在這裡用 `ctest` 驗；
+  `mac/src/**` 只有 CI 會編、只有使用者的 Mac 會跑。macOS 上預期 **171** 個測試（比這裡少 2 個：
+  `MemoryMappedFile` 的測試依平台二選一）。
+- **不要跑 `git add --renormalize`**。`.gitattributes` 只涵蓋 `mac/**`、`*.sh`、`*.command`、workflow YAML；
+  Windows 那半刻意不動（它是 `core.autocrlf=true` 的混雜狀態）。renormalize 是唯一能把這件事變成
+  全樹 diff 的指令。
+- **`VERSION` 是唯一版本來源**。`mac/Makefile` 蓋進 `Info.plist`、`make-package.ps1` 用它命名 zip。
+- **打 tag `vX.Y.Z` 會觸發 macOS 的 release workflow ＝ 等同發佈動作**，所以照 Git 規則要等使用者指示。
+  Windows 那半仍在本機手動打包後上傳到同一個 Release（兩份資產：`art-shuangpin-vX.Y.Z.zip` 與
+  `art-shuangpin-mac-vX.Y.Z.zip`）。
+- 詞庫在 macOS 上用 `scripts/build-data.sh` 建（`build-data.ps1` 的對應版本，實測產物位元組相同）。
+- 圖示有兩份、畫同一個「特」字：`scripts\make_icon.py`（Windows `.ico`）與 `mac/tools/make_icon.m`
+  （macOS TIFF，長寬比 1.375）。改了一邊記得看另一邊——沒有工具會提醒。
+
+**語言依讀者而非目錄。** `mac/CLAUDE.md` 與 `mac/docs/NOTES.md` 維持英文：讀者是要改 `mac/src/` 的人，
+整套詞彙（IMKInputController、marked text、TCC、code directory hash）本來就是英文，翻譯只會更難用，
+而且會切斷它們與 Windows 端英文註解逐句對照的關係。其餘一律照舊：`README.md`、根 `docs/**`、
+`mac/docs/INSTALL.md`、GitHub Release 標題與內文、以及 `*.command`／`*.txt` **印給使用者看的字**，
+全部繁體中文。
 
 ## 輸入方案規格（摘要，完整版見 docs/spec.md）
 
@@ -70,6 +113,53 @@ web\    互動教學網站＋看打練習（純 CSS/JS，GitHub Pages）
 - 程式註解一律英文；docs 與本檔繁體中文。
 
 ## 狀態記錄
+
+- 2026-08-13：**併入 macOS 版，一個 repo 管兩個平台**。原本 `D:\Claude\ArtMac`（private repo
+  `weiwei84530/art-shuangpin-mac`）是 macOS 的 InputMethodKit 外殼，透過一個唯讀鏡像 clone
+  （`vendor/art-shuangpin`）取用本專案的 `core\`／`engine\`。**合併的動機是帳密**：那台 Mac 是公司電腦，
+  而唯一需要 GitHub 認證的東西就是「shell repo 是 private」——`vendor/` 抓的核心與詞庫本來就公開免認證。
+  合併後那條路徑整段消失。
+  **前置查證（決定要不要做的依據）**：`diff -rq` 比對鏡像與本專案的 `core/`、`engine/`，**零差異**——
+  ArtMac 編的就是這裡的同一批 `.cpp`，所以沒有任何重複邏輯要調解；ArtMac 本身只有 33 個受控檔案、
+  320 KB、11 個 commit、零二進位檔（選單列圖示是 build 時畫的）。
+  **刪掉的比加上的多**：鏡像 clone、`vendor.pin`、sha256 釘選、`sync_art.py`、`make_transfer_zip.py`、
+  `bootstrap.command` 的認證路徑（191→123 行）、以及 `tools/artprobe.cpp`（它存在的兩個前提——
+  `repl.cpp` 含 `<windows.h>` 且 vendor 唯讀——同時消失，改用 `../cli/repl.cpp`）。
+  **六個 commit**：(1) 路徑限定的 `.gitattributes`；(2) `CMakeLists` 依平台選 `MemoryMappedFile` 測試
+  ＋ `repl.cpp`／`drill_gen.cpp` 改雙進入點；(3) `scripts/build-data.sh`；(4) 匯入 `mac/`；
+  (5) 拆掉 vendor 改寫 Makefile；(6) macOS CI ＋ `check-parity.py`；(7) 離線 release zip；(8) 文件。
+  **實作中踩到、值得記住的五個坑**：
+  (a) **`core.filemode=false`（兩邊都是）**：複製檔案時 6 個 `.command`／`.sh` 的執行位元會**靜默消失**，
+  `git add` 不會從磁碟撿。必須 `git update-index --chmod=+x`，否則 CI 會把 0644 的 `install.command`
+  包進 zip，重現「您沒有適當的存取權限」對話框。匯入用 `git archive | tar` 並以 **blob hash 逐檔比對**
+  驗證（31 個檔案全部相同）。
+  (b) **`repl.cpp` 的 `wmain` 不能拆掉**：`check-tutorials.mjs:83` 是把**注音當 argv** 傳進去
+  （`--shortest ㄉㄜ ㄏㄠ`），改成 `main(int, char**)` 會讓那些字在 Windows 上以 cp950 進來、
+  `--shortest` 對每個讀音靜默回答 `-`。所以是「`Run(vector<string>)` ＋ 兩個進入點」而不是換掉。
+  (c) **MSYS 的 `grep` 會在比對前吃掉 CR**：`build-data.sh` 第一版用 `if grep -q $'\r'` 當 CRLF 修正的
+  守衛，於是**永遠不觸發**，直接出貨了一份每行帶 CR 的詞庫（175686 行）。改用 Python 的 bytes replace
+  （與 PowerShell 版的 `.Replace("\r\n","\n")` 等價）。**順帶得到計劃預期不到的驗證**：`PYTHON=python`
+  在 Windows 上跑 `build-data.sh`，產物與 `build-data.ps1` **位元組相同**，sha256 `1f484ca2…`＝v0.6 出貨的那份。
+  (d) **`mac/Makefile` 的物件路徑**：來源變成 `../engine/...` 之後，`$(BUILD)/%.o` 會產生
+  `build/../engine/X.o`，`mkdir -p` 把它解析成**真正的共用原始碼目錄**，`.o` 檔會掉進 `core/`、`engine/`
+  並出現在 Windows 端的 `git status`。改用 `patsubst` 重寫物件名。
+  (e) **`.gitignore` 的 `Release/` 會吃掉 `mac/release/`**：Windows 上 git 的忽略比對**不分大小寫**，
+  那個給 MSVC 產物用的規則把整個目錄藏起來了——那些檔案正是要被打包進 release zip 的。加了
+  `!/mac/release/**` 例外。
+  **`check-parity.py` 的設計要點**：最強的一項是把 `IsVirtualKeyNeedMspy` 與
+  `IsVirtualKeyNeedMspyEnglish` 的 **body 雜湊**記在 `mac/upstream-alignment.txt`——那兩個函式被
+  `-handleKeyDown:client:` 逐條音譯且順序有意義，工具查不出語意漂移，但 hash 一變就是「去讀它」的
+  零漏報訊號。**以函式名定位而非行號**（ArtMac 註解寫的 1597 是呼叫點，定義在 1600）。
+  `--fix` 只修衍生物（Makefile 來源清單、版本號），**不得**改 ObjC++、不得重排鍵路由順序、
+  不得推進對齊標記——已用注入漂移的方式測過它做什麼與不做什麼。
+  **Release 形式**：macOS 走 GitHub Actions（`macos-15`，與 guard 同一個映像）建**通用二進位**、
+  ad-hoc 簽章、`ditto` 打包成離線 zip，使用者只要下載→解壓→**右鍵打開** `install.command`。
+  安裝腳本負責 `xattr -dr com.apple.quarantine`（下載來的 ad-hoc 簽章 app 不清會被說成「已損毀」）
+  與**無條件** `tccutil reset Accessibility`（每一版簽章都不同，System Settings 那一列即使打著勾也已失效；
+  這只影響閒置導航鍵 9/0/-/=，輸入法本體不受影響）。Windows 那半維持本機手動打包，上傳到同一個 Release。
+  **歷史保險**：刪除 private repo 前已 `git bundle create` 全歷史到 `D:\Claude\artmac-history-backup.bundle`
+  （匯入 commit 引用的 `12b9c7d` 在 repo 刪掉後就解析不出來了）。**確認 Mac 能從合併後的樹建置並執行之前，
+  不要刪那個 repo。**
 
 - 2026-08-13：**看打練習六項回饋＋一個實作後撤銷的決策**。
   (a) **ㄧ／ㄨ 音節的「母音式」拼法：實作後同日撤銷，勿再實作。**使用者打「也」的直覺是
