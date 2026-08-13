@@ -21,13 +21,6 @@ namespace mspy {
 // Returns an empty vector if the pair is structurally invalid.
 std::vector<std::string> DecodeKeyPair(char first, char second);
 
-// True if this pair is an ALTERNATE spelling: a zero-initial ㄧ/ㄨ syllable
-// typed with the final key it would take after a consonant rather than the
-// one pinyin leaves after the y/w (也 = y + x as ㄧ+ㄝ, beside Microsoft
-// double-pinyin's y + e for "ye"). Both spellings work; this exists so the
-// drills and the tutorial audit keep prescribing the Microsoft one.
-bool IsAlternateKeyPair(char first, char second);
-
 // Decodes a LONE first key into the syllable it stands for by itself, so
 // that key plus a tone digit is a whole character: 'z' -> ㄗ (字 = z4),
 // 'u' -> ㄕ (是 = u4), 'y' -> ㄧ (一 = y + Space), 'd' -> ㄉㄜ (的 =

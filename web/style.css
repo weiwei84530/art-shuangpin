@@ -120,9 +120,14 @@ body {
   position: relative; height: 260px; padding: 14px 16px;
   font-size: 24px; line-height: 1.7; letter-spacing: 1px;
   font-family: "Microsoft JhengHei", "Noto Sans TC", sans-serif;
-  white-space: pre-wrap; word-break: break-all;
+  word-break: break-all;
   overflow-y: auto; scrollbar-width: none;
 }
+/* Only the committed text has newlines to keep, and it is the only thing
+   that may preserve them: pre-wrap on the container would also render the
+   line breaks and indentation of index.html itself, which is what used to
+   push the first line in by an editor tab. */
+#committed { white-space: pre-wrap; }
 .np-body::-webkit-scrollbar { display: none; }
 /* Drill mode gives the top block less room: the notepad is a mirror of
    what the IME is doing, whereas the article and the keyboard are what the

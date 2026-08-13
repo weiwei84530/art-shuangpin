@@ -126,43 +126,6 @@ std::optional<std::string_view> WauZhuyin(std::string_view final) {
   return it->second;
 }
 
-// The same y/w syllables spelled MEDIAL-FIRST (2026-08-13). Pinyin writes a
-// zero-initial ㄧㄝ as "ye", so Microsoft double-pinyin types it y + e; but
-// the syllable is ㄧ plus ㄝ, and after a real initial that rime is the "ie"
-// key -- so a reader who thinks in bopomofo reaches for y + x instead. Both
-// spellings are accepted: every pair below is otherwise dead (nothing else
-// decodes from it), so there is no ambiguity to trade away.
-//
-// The rule, in one line: a zero-initial ㄧ/ㄨ syllable can also be typed
-// with the final key it would take after a consonant. That is why ㄧㄥ and
-// ㄩㄣ need no entry -- ying/jing share the ';' key and yun/jun share 'p',
-// so they already spell the same way both ways round.
-//
-// These live apart from YodZhuyin/WauZhuyin on purpose: the drills and the
-// tutorial audit ask KeysForSyllable for one spelling to prescribe, and
-// that has to stay the Microsoft one (要 is yk, never yc).
-std::optional<std::string_view> YodMedialZhuyin(std::string_view final) {
-  static const std::unordered_map<std::string_view, std::string_view> map = {
-      {"ia", "ㄧㄚ"},  {"ie", "ㄧㄝ"},   {"iao", "ㄧㄠ"},
-      {"iu", "ㄧㄡ"},  {"ian", "ㄧㄢ"},  {"iang", "ㄧㄤ"},
-  };
-  auto it = map.find(final);
-  if (it == map.end()) return std::nullopt;
-  return it->second;
-}
-
-std::optional<std::string_view> WauMedialZhuyin(std::string_view final) {
-  // ㄨㄥ is "ong" after an initial (dong, tong) even though it is spelled
-  // "weng" on its own, so the 's' key belongs here too.
-  static const std::unordered_map<std::string_view, std::string_view> map = {
-      {"ua", "ㄨㄚ"},   {"uai", "ㄨㄞ"}, {"ui", "ㄨㄟ"}, {"uan", "ㄨㄢ"},
-      {"uang", "ㄨㄤ"}, {"un", "ㄨㄣ"},  {"ong", "ㄨㄥ"},
-  };
-  auto it = map.find(final);
-  if (it == map.end()) return std::nullopt;
-  return it->second;
-}
-
 // Finals after a real consonant initial. `palatal` turns u-family finals
 // into ü-family (ju/jun/juan/ju e); `sibilant` makes bare "i" the buzzing
 // vowel (empty final) and forbids i/ü-medial finals.
@@ -313,23 +276,12 @@ std::string HollowFinalDisplay(char c) {
   }
 }
 
-namespace {
-
-// Shared by DecodeKeyPair and IsAlternateKeyPair: `medialOnly` reports that
-// everything decoded came out of the medial-first tables above, i.e. this
-// pair is the alternate spelling of a syllable some other pair also spells.
-std::vector<std::string> DecodeKeyPairImpl(char first, char second,
-                                           bool* medialOnly) {
-  bool sawStandard = false;
+std::vector<std::string> DecodeKeyPair(char first, char second) {
   std::vector<std::string> results;
-  auto finish = [&]() {
-    if (medialOnly) *medialOnly = !results.empty() && !sawStandard;
-    return results;
-  };
-  if (!IsFirstKey(first) || !IsSecondKey(second)) return finish();
+  if (!IsFirstKey(first) || !IsSecondKey(second)) return results;
 
   auto finalsIt = FinalKeyMap().find(second);
-  if (finalsIt == FinalKeyMap().end()) return finish();
+  if (finalsIt == FinalKeyMap().end()) return results;
   const auto& finals = finalsIt->second;
 
   // Zero-initial forms: 'o' + any standalone final; 'a'/'e' use the
@@ -337,40 +289,28 @@ std::vector<std::string> DecodeKeyPairImpl(char first, char second,
   if (first == 'o' || first == 'a' || first == 'e') {
     for (const auto& f : finals) {
       if (first != 'o' && f.front() != first) continue;
-      if (auto z = ZeroInitialZhuyin(f)) {
-        results.emplace_back(*z);
-        sawStandard = true;
-      }
+      if (auto z = ZeroInitialZhuyin(f)) results.emplace_back(*z);
     }
+    if (first != 'o' && !results.empty()) return results;
+    if (first == 'o') return results;
     // 'a'/'e' are not consonant initials; nothing else to try.
-    return finish();
+    return results;
   }
 
   auto initial = LookupInitial(first);
-  if (!initial) return finish();
+  if (!initial) return results;
 
   for (const auto& f : finals) {
     std::optional<std::string> zhuyinFinal;
     switch (initial->cls) {
       case InitialClass::kYod:
-        if (auto z = YodZhuyin(f)) {
-          zhuyinFinal = std::string(*z);
-          sawStandard = true;
-        } else if (auto alt = YodMedialZhuyin(f)) {
-          zhuyinFinal = std::string(*alt);
-        }
+        if (auto z = YodZhuyin(f)) zhuyinFinal = std::string(*z);
         break;
       case InitialClass::kWau:
-        if (auto z = WauZhuyin(f)) {
-          zhuyinFinal = std::string(*z);
-          sawStandard = true;
-        } else if (auto alt = WauMedialZhuyin(f)) {
-          zhuyinFinal = std::string(*alt);
-        }
+        if (auto z = WauZhuyin(f)) zhuyinFinal = std::string(*z);
         break;
       default:
         zhuyinFinal = ConsonantFinalZhuyin(f, initial->cls);
-        if (zhuyinFinal) sawStandard = true;
         break;
     }
     if (!zhuyinFinal) continue;
@@ -384,19 +324,7 @@ std::vector<std::string> DecodeKeyPairImpl(char first, char second,
       first != 'm' && first != 'f') {
     std::swap(results[0], results[1]);
   }
-  return finish();
-}
-
-}  // namespace
-
-std::vector<std::string> DecodeKeyPair(char first, char second) {
-  return DecodeKeyPairImpl(first, second, nullptr);
-}
-
-bool IsAlternateKeyPair(char first, char second) {
-  bool medialOnly = false;
-  DecodeKeyPairImpl(first, second, &medialOnly);
-  return medialOnly;
+  return results;
 }
 
 }  // namespace mspy

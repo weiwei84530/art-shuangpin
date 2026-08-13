@@ -1,6 +1,5 @@
 #include "double_pinyin.h"
 
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -65,33 +64,6 @@ TEST(DoublePinyinTest, YodAndWau) {
   EXPECT_EQ(DecodeKeyPair('y', 'u'), std::vector<std::string>{"ㄩ"});    // yu
   EXPECT_EQ(DecodeKeyPair('y', 's'), std::vector<std::string>{"ㄩㄥ"});  // yong
   EXPECT_EQ(DecodeKeyPair('w', 'f'), std::vector<std::string>{"ㄨㄣ"});  // wen
-}
-
-TEST(DoublePinyinTest, MedialFirstAlternates) {
-  // A zero-initial ㄧ/ㄨ syllable can also be spelled with the final key it
-  // would take after a consonant: 也 as ㄧ + ㄝ (the "ie" key) beside
-  // pinyin's ye. Both spellings have to mean exactly the same syllable.
-  for (const auto& [alt, standard] : std::vector<std::pair<const char*, const char*>>{
-           {"yw", "ya"}, {"yx", "ye"}, {"yc", "yk"}, {"yq", "yb"},
-           {"ym", "yj"}, {"yd", "yh"}, {"ww", "wa"}, {"wy", "wl"},
-           {"wv", "wz"}, {"wr", "wj"}, {"wp", "wf"}, {"wd", "wh"},
-           {"ws", "wg"}}) {
-    EXPECT_EQ(DecodeKeyPair(alt[0], alt[1]), DecodeKeyPair(standard[0], standard[1]))
-        << alt << " vs " << standard;
-    EXPECT_TRUE(IsAlternateKeyPair(alt[0], alt[1])) << alt;
-    EXPECT_FALSE(IsAlternateKeyPair(standard[0], standard[1])) << standard;
-  }
-  EXPECT_EQ(DecodeKeyPair('y', 'x'), std::vector<std::string>{"ㄧㄝ"});
-  // The alternates must not have leaked into the ü-family, which reads the
-  // same key either way round (ㄩㄝ is the 't'/'v' key with or without y).
-  EXPECT_EQ(DecodeKeyPair('y', 'v'), std::vector<std::string>{"ㄩㄝ"});
-  EXPECT_EQ(DecodeKeyPair('y', 'r'), std::vector<std::string>{"ㄩㄢ"});
-  // Nothing else became typable: no pinyin syllable is spelled yen or wao.
-  EXPECT_TRUE(DecodeKeyPair('y', 'f').empty());
-  EXPECT_TRUE(DecodeKeyPair('w', 'k').empty());
-  // And a plain consonant pair is never an "alternate".
-  EXPECT_FALSE(IsAlternateKeyPair('h', 'w'));
-  EXPECT_FALSE(IsAlternateKeyPair('z', 'x'));
 }
 
 TEST(DoublePinyinTest, MedialDependentFinals) {
