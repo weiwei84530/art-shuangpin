@@ -1,0 +1,25 @@
+/* UTF-8, no BOM. Modern macOS reads UTF-8 .strings files; only the classic
+   tooling insisted on UTF-16.
+
+   THIS FILE IS NOT OPTIONAL, and it is not "the English translation".
+   CFBundle picks a localization by the user's UI language, falling back to
+   CFBundleDevelopmentRegion (en). If neither resolves to a directory that
+   exists, localizedStringForKey: returns THE KEY ITSELF — which is why a
+   bundle shipping only zh-Hant.lproj showed, on an English-language Mac,
+   an input source literally named
+       com.mspy.inputmethod.ArtShuangpin.Chinese
+   and a menu header literally reading
+       CFBundleName
+   Both are lookups that fell through. Keep this file in step with
+   zh-Hant.lproj; the values are deliberately the same Chinese strings,
+   because the input method has one name in any UI language. */
+
+"CFBundleName" = "阿特輸入法";
+"CFBundleDisplayName" = "阿特輸入法";
+
+/* The input source picker and the menu-bar list, keyed by the input MODE id
+   declared under ComponentInputModeDict in Info.plist. The key must match
+   that id exactly, dots and all — which is why __BUNDLE_ID__ is substituted
+   by the Makefile here just as it is in Info.plist, rather than written out
+   and left to drift. */
+"__BUNDLE_ID__.Chinese" = "阿特輸入法";

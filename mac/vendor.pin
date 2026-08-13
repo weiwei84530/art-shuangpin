@@ -1,0 +1,34 @@
+# Pinned upstream coordinates for vendor/.
+#
+# vendor/ is gitignored (rule 4) and never reaches any remote, so a clone of
+# this repo is not buildable on its own. This file is what makes it
+# reconstructible instead of hand-carried: everything named here is PUBLIC and
+# fetchable with no credentials at all.
+#
+#   vendor/art-shuangpin/   git clone --depth 1 --branch $ART_TAG $ART_REPO
+#   vendor/mspy-data.txt    extracted from the release asset $ART_ASSET
+#
+# The language model is a build product (upstream's out/ is gitignored, and
+# rebuilding it from data/ needs the whole Python pipeline), but the Windows
+# install package published with every release carries the exact same bytes --
+# verified: the copy in art-shuangpin-v0.6.zip hashes to MSPY_DATA_SHA256
+# below, which is the same value the Windows build has been shipping.
+#
+# Read by tools/sync_art.py (Windows) and bootstrap.command (Mac). Format is
+# deliberately KEY=value with no spaces so `source` and a two-line Python
+# parser both work. BUMP THIS when tracking a new upstream release.
+
+# The public art-shuangpin repository and the release to track.
+ART_REPO=https://github.com/weiwei84530/art-shuangpin.git
+ART_REPO_WEB=https://github.com/weiwei84530/art-shuangpin
+ART_TAG=v0.6
+
+# Release asset holding the prebuilt language model, and the path inside it.
+# x64 and x86 ship byte-identical copies; either would do.
+ART_ASSET=art-shuangpin-v0.6.zip
+ART_DATA_IN_ASSET=art-shuangpin/x64/mspy-data.txt
+MSPY_DATA_SHA256=1f484ca26c318ebbfa845bff90a133c1267a5ebc7c62837d10b15ec33e20cea4
+
+# This repo. PRIVATE -- the one thing bootstrap.command needs credentials for.
+SHELL_REPO=https://github.com/weiwei84530/art-shuangpin-mac.git
+SHELL_REPO_SLUG=weiwei84530/art-shuangpin-mac

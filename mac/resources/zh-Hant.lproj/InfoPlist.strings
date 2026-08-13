@@ -1,0 +1,10 @@
+/* UTF-8, no BOM. See en.lproj/InfoPlist.strings for why that file has to
+   exist too — without a localization matching the user's UI language, macOS
+   displays these keys verbatim instead of their values. Keep the two in
+   step. */
+
+"CFBundleName" = "阿特輸入法";
+"CFBundleDisplayName" = "阿特輸入法";
+
+/* Input source picker entry, keyed by the input mode ID. */
+"__BUNDLE_ID__.Chinese" = "阿特輸入法";

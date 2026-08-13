@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Template: the Makefile substitutes __VERSION__, __BUNDLE_ID__, __APP_NAME__
+  and __MIN_MACOS__ on its way into the bundle.
+
+  This is the highest-uncertainty file in the repo.  If the input method
+  compiles and installs but never appears under System Settings > Keyboard >
+  Input Sources > + > Traditional Chinese, the answer is in here — almost
+  always in ComponentInputModeDict.  See docs/NOTES.md.
+-->
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleExecutable</key>
+    <string>__APP_NAME__</string>
+    <key>CFBundleIdentifier</key>
+    <string>__BUNDLE_ID__</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>__APP_NAME__</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleSignature</key>
+    <string>????</string>
+    <key>CFBundleShortVersionString</key>
+    <string>__VERSION__</string>
+    <key>CFBundleVersion</key>
+    <string>__VERSION__</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>__MIN_MACOS__</string>
+
+    <!-- An input method is a faceless agent: no Dock tile, never activated.
+         Its panels are non-activating NSPanels, which a background-only
+         process is still allowed to display. -->
+    <key>LSBackgroundOnly</key>
+    <true/>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>MIT licensed. art-shuangpin core (c) Weiwei; McBopomofo engine (c) The McBopomofo Authors.</string>
+
+    <!-- IMK wiring.  InputMethodConnectionName must match the name passed to
+         -[IMKServer initWithName:bundleIdentifier:] in src/main.mm, and
+         InputMethodServerControllerClass is looked up through the ObjC
+         runtime by name. -->
+    <key>InputMethodConnectionName</key>
+    <string>ArtShuangpin_1_Connection</string>
+    <key>InputMethodServerControllerClass</key>
+    <string>ArtInputController</string>
+
+    <key>tsInputMethodCharacterRepertoireKey</key>
+    <array>
+        <string>Hant</string>
+    </array>
+    <key>tsInputMethodIconFileKey</key>
+    <string>__APP_NAME__.tiff</string>
+
+    <!-- One input mode for now.  The Chinese/English toggle is internal
+         state plus a HUD, NOT a second input mode: getting this dictionary
+         wrong makes the input method vanish from the input source list
+         entirely, which is a far worse failure than a missing indicator.
+         Splitting it in two is the documented v2 upgrade.
+
+         The mode's DISPLAYED name is not in this file: it is looked up in
+         InfoPlist.strings keyed by the mode ID below, in every .lproj the
+         bundle ships.  With no matching localization the lookup returns the
+         key, and the input source ends up named after its own ID — see
+         docs/NOTES.md, "The name and the icon in the input menu". -->
+    <key>ComponentInputModeDict</key>
+    <dict>
+        <key>tsInputModeListKey</key>
+        <dict>
+            <key>__BUNDLE_ID__.Chinese</key>
+            <dict>
+                <key>TISInputSourceID</key>
+                <string>__BUNDLE_ID__.Chinese</string>
+                <key>TISIntendedLanguage</key>
+                <string>zh-Hant</string>
+                <key>tsInputModeCharacterRepertoireKey</key>
+                <array>
+                    <string>Hant</string>
+                </array>
+                <key>tsInputModeAlternateMenuIconFileKey</key>
+                <string>__APP_NAME__.tiff</string>
+                <key>tsInputModeMenuIconFileKey</key>
+                <string>__APP_NAME__.tiff</string>
+                <key>tsInputModePaletteIconFileKey</key>
+                <string>__APP_NAME__.tiff</string>
+                <key>tsInputModeDefaultStateKey</key>
+                <true/>
+                <key>tsInputModeIsVisibleKey</key>
+                <true/>
+                <key>tsInputModePrimaryInScriptKey</key>
+                <true/>
+                <key>tsInputModeScriptKey</key>
+                <string>smTradChinese</string>
+            </dict>
+        </dict>
+        <key>tsVisibleInputModeOrderedArrayKey</key>
+        <array>
+            <string>__BUNDLE_ID__.Chinese</string>
+        </array>
+    </dict>
+</dict>
+</plist>
