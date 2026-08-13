@@ -18,3 +18,11 @@ __pycache__/
 # Generated inside data\ by frequency_builder
 data/PhraseFreq.txt
 build32/
+
+# macOS shell (mac/). mac/build/ is already covered by the unanchored build/
+# above; mac/dist/ is not, and is anchored so a future web/dist or data/dist
+# is not swallowed silently.
+/mac/dist/
+*.dSYM/
+*.o
+.DS_Store

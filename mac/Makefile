@@ -5,10 +5,13 @@
 # This file only ever runs on the Mac; the development host is Windows.
 #
 #   make            build dist/ArtShuangpin.app
-#   make probe      build build/artprobe — exercises core+engine ONLY, no
-#                   AppKit, no InputMethodKit.  Run this first when
-#                   something is wrong: it tells you whether the problem is
-#                   in the conversion engine or in the Cocoa shell.
+#   make probe      build build/repl — the repository's own CLI harness,
+#                   exercising core+engine ONLY: no AppKit, no
+#                   InputMethodKit.  Run this first when something is wrong;
+#                   it says whether the problem is in the conversion engine
+#                   or in the Cocoa shell.  CMake is not part of Command Line
+#                   Tools, which is why it is built here by hand rather than
+#                   through the repository's CMakeLists.
 #   make install    build, then install into ~/Library/Input Methods
 #   make uninstall  remove it again
 #   make clean      remove build/ and dist/
@@ -28,7 +31,14 @@
 
 APP_NAME  := ArtShuangpin
 BUNDLE_ID := com.mspy.inputmethod.ArtShuangpin
-VERSION   := $(shell cat VERSION 2>/dev/null || echo 0.0.0)
+
+# One level up is the repository root: this directory is the macOS half of
+# art-shuangpin, sitting beside ime/, which is the Windows half.
+ROOT      := ..
+
+# The whole repository's single version, shared with make-package.ps1 so the
+# two halves of a release cannot disagree.
+VERSION   := $(shell cat $(ROOT)/VERSION 2>/dev/null || echo 0.0.0)
 
 # Localizations shipped in the bundle.  en is REQUIRED, not a translation:
 # see the InfoPlist.strings rule below.
@@ -40,10 +50,15 @@ ICON_ASPECT ?= 1.375
 
 # ---------------------------------------------------------------- layout ---
 
-VENDOR     := vendor/art-shuangpin
-CORE_DIR   := $(VENDOR)/core
-ENGINE_DIR := $(VENDOR)/engine
-DATA_FILE  := vendor/mspy-data.txt
+# The shared C++ is one directory up. There is no vendor/ and no mirror:
+# these are the very files the Windows build compiles.
+CORE_DIR   := $(ROOT)/core
+ENGINE_DIR := $(ROOT)/engine
+CLI_DIR    := $(ROOT)/cli
+
+# A build product, not a checked-in file -- out/ is gitignored, so each host
+# makes its own with scripts/build-data.sh. See preflight.
+DATA_FILE  := $(ROOT)/out/data.txt
 
 BUILD    := build
 DIST     := dist
@@ -80,7 +95,7 @@ SYSROOT    := $(if $(SDK),-isysroot $(SDK),)
 # of Info.plist, and there is no reason to make that lookup interesting.
 COMMON_FLAGS := $(ARCH_FLAGS) $(SYSROOT) -mmacosx-version-min=$(MIN_MACOS) \
                 -O2 -g -Wall -Wno-unused-parameter -MMD -MP
-INCLUDES     := -I$(CORE_DIR) -I$(ENGINE_DIR) -I$(ENGINE_DIR)/mcbopomofo -Isrc
+INCLUDES     := -I$(CORE_DIR) -I$(ENGINE_DIR) -I$(ENGINE_DIR)/mcbopomofo -I$(CLI_DIR) -Isrc
 
 CXXFLAGS    := -std=c++20 $(COMMON_FLAGS) $(INCLUDES)
 OBJCXXFLAGS := -std=c++20 $(COMMON_FLAGS) $(INCLUDES) -fobjc-arc
@@ -97,8 +112,10 @@ endif
 
 # --------------------------------------------------------------- sources ---
 
-# Mirrors vendor/art-shuangpin/CMakeLists.txt.  Listed rather than globbed:
-# the same directories hold *_test.cpp files that must not be linked in.
+# Mirrors the mcb_engine and mspy_core source lists in ../CMakeLists.txt.
+# Listed rather than globbed: the same directories hold *_test.cpp files that
+# must not be linked in.  Drift between the two lists is a link error only
+# the Mac ever sees, so scripts/check-parity.py compares them.
 ENGINE_SRC := \
   $(ENGINE_DIR)/gramambular2/reading_grid.cpp \
   $(ENGINE_DIR)/mcbopomofo/AssociatedPhrasesV2.cpp \
@@ -127,9 +144,13 @@ SHELL_SRC := \
   src/ArtModeHUD.mm \
   src/ArtNavigation.mm
 
-CPP_OBJ   := $(ENGINE_SRC:%=$(BUILD)/%.o) $(CORE_SRC:%=$(BUILD)/%.o)
+# patsubst, not a plain prefix.  $(ENGINE_SRC:%=$(BUILD)/%.o) would name the
+# target build/../engine/.../X.cpp.o, and `mkdir -p $(dir $@)` resolves that
+# to mac/../engine -- the real shared source tree.  Objects would be written
+# into core/ and engine/ and turn up in git status on the Windows host.
+CPP_OBJ   := $(patsubst $(ROOT)/%,$(BUILD)/%.o,$(ENGINE_SRC) $(CORE_SRC))
+PROBE_OBJ := $(patsubst $(ROOT)/%,$(BUILD)/%.o,$(CLI_DIR)/repl.cpp)
 SHELL_OBJ := $(SHELL_SRC:%=$(BUILD)/%.o)
-PROBE_OBJ := $(BUILD)/tools/artprobe.cpp.o
 
 # ----------------------------------------------------------------- rules ---
 
@@ -144,23 +165,26 @@ all: app
 help:
 	@sed -n '2,/^$$/p' Makefile | sed 's/^# \{0,1\}//'
 
-# The failure this build is actually likely to hit: vendor/ is gitignored,
-# so a fresh checkout has neither the core sources nor the language model.
-# Say so precisely instead of emitting 200 include errors.
+# The failure this build is actually likely to hit: out/data.txt is a build
+# product and out/ is gitignored, so a fresh clone does not carry it. Say so
+# precisely instead of emitting 200 include errors.
 preflight:
-	$(Q)missing=""; \
-	[ -f "$(CORE_DIR)/composer.cpp" ] || missing="$$missing\n  $(CORE_DIR)/  (the art-shuangpin source mirror)"; \
-	[ -f "$(DATA_FILE)" ]             || missing="$$missing\n  $(DATA_FILE)  (the 7.5 MB language model)"; \
-	if [ -n "$$missing" ]; then \
-	  printf '\nvendor/ is incomplete — missing:%b\n\n' "$$missing"; \
-	  printf 'vendor/ is gitignored, so it does not travel with a git clone.\n'; \
-	  printf 'Copy the whole vendor/ directory over from the Windows host with\n'; \
-	  printf 'something that does not rewrite line endings (mspy-data.txt needs LF).\n'; \
-	  printf 'On the Windows host it is (re)created by:  python tools/sync_art.py\n\n'; \
+	$(Q)if [ ! -f "$(CORE_DIR)/composer.cpp" ]; then \
+	  printf '\n%s\n%s\n\n' \
+	    "$(CORE_DIR)/composer.cpp is missing." \
+	    "Run make from the mac/ directory of an art-shuangpin checkout."; \
+	  exit 1; \
+	fi; \
+	if [ ! -f "$(DATA_FILE)" ]; then \
+	  printf '\n%s\n%s\n\n%s\n\n    bash ../scripts/build-data.sh\n\n%s\n\n' \
+	    "$(DATA_FILE) is missing." \
+	    "The 7.5 MB language model is a build product and out/ is gitignored," \
+	    "so a fresh clone has none. Build it once -- python3 only, no packages:" \
+	    "It takes a couple of minutes. Then run make again."; \
 	  exit 1; \
 	fi
 
-$(BUILD)/%.cpp.o: %.cpp
+$(BUILD)/%.cpp.o: $(ROOT)/%.cpp
 	@mkdir -p $(dir $@)
 	@echo "  CXX    $<"
 	$(Q)$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -181,7 +205,7 @@ $(BIN_DIR)/$(APP_NAME): $(BUILD)/$(APP_NAME)
 	@mkdir -p $(BIN_DIR)
 	$(Q)cp -f $< $@
 
-$(CONTENTS)/Info.plist: resources/Info.plist VERSION
+$(CONTENTS)/Info.plist: resources/Info.plist $(ROOT)/VERSION
 	@mkdir -p $(CONTENTS)
 	$(Q)sed -e 's/__VERSION__/$(VERSION)/g' \
 	        -e 's/__BUNDLE_ID__/$(BUNDLE_ID)/g' \
@@ -274,13 +298,19 @@ app: preflight
 	@echo "built $(APP)  ($(ARCH), min macOS $(MIN_MACOS))"
 
 # --- the core-only probe ----------------------------------------------------
+#
+# ../cli/repl.cpp, the same harness the Windows side uses.  It replaced a
+# local copy that existed only because repl.cpp used to include <windows.h>
+# while vendor/ was a read-only mirror that could not be patched; both
+# reasons are gone.  The key dialect differs from that old copy: here `#` is
+# the bare Shift tap and Enter is a literal newline.
 
 probe: preflight
-	$(Q)$(MAKE) --no-print-directory $(BUILD)/artprobe
-	@echo "built $(BUILD)/artprobe"
-	@echo "try:  $(BUILD)/artprobe --data $(DATA_FILE) --keys 'ni3hk3vs#'   (# = Enter; 'vs' stays bopomofo until settled)"
+	$(Q)$(MAKE) --no-print-directory $(BUILD)/repl
+	@echo "built $(BUILD)/repl"
+	@echo "try:  $(BUILD)/repl --data $(DATA_FILE) --keys 'ni3hk3vs'   ('vs' stays bopomofo until settled)"
 
-$(BUILD)/artprobe: $(CPP_OBJ) $(PROBE_OBJ)
+$(BUILD)/repl: $(CPP_OBJ) $(PROBE_OBJ)
 	@mkdir -p $(dir $@)
 	@echo "  LINK   $@"
 	$(Q)$(CXX) $(LDFLAGS) $^ -o $@

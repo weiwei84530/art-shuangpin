@@ -46,19 +46,32 @@ if ! xcode-select -p >/dev/null 2>&1; then
     pause 1
 fi
 
-# --- vendor/ -----------------------------------------------------------------
+# --- the language model ------------------------------------------------------
 #
+# out/ is gitignored, so the 7.5 MB model is a build product no clone carries.
 # The Makefile's preflight target says this too, but by then it has already
 # scrolled past a screen of build output; catching it here keeps the message
-# as the first thing on screen.
+# as the first thing on screen -- and unlike the old missing-vendor case, the
+# fix is one command with nothing to install, so just run it.
 
-if [ ! -f vendor/art-shuangpin/core/composer.cpp ] || [ ! -f vendor/mspy-data.txt ]; then
-    echo "vendor/ 不完整——缺少輸入核心或詞庫。"
+if [ ! -f ../core/composer.cpp ]; then
+    echo "找不到 ../core/composer.cpp。"
     echo
-    echo "這個資料夾應該是從「完整包」解壓出來的。如果你剛剛解的是"
-    echo "「更新包」（不含 vendor/），請把它解壓「覆蓋」到上一次那個"
-    echo "資料夾，而不是解到一個新的空資料夾。"
+    echo "這支程式要在 art-shuangpin 的 mac/ 目錄裡執行，"
+    echo "不能單獨搬到別的地方。"
     pause 1
+fi
+
+if [ ! -f ../out/data.txt ]; then
+    echo "還沒有詞庫，先建一份。"
+    echo "（需要 python3，不必裝任何套件，大約一兩分鐘。）"
+    echo
+    if ! bash ../scripts/build-data.sh; then
+        echo
+        echo "詞庫建不起來。上面的訊息整段複製回報即可。"
+        pause 1
+    fi
+    echo
 fi
 
 # --- signing identity --------------------------------------------------------

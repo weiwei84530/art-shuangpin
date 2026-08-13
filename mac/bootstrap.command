@@ -1,22 +1,30 @@
 #!/bin/bash
-# One-file bootstrap: clone this repo, rebuild vendor/ from public sources,
-# build and install. The only thing that has to be carried to the Mac by hand.
+# One-file bootstrap for DEVELOPMENT: clone or update the repository, build
+# the dictionary, build and install. The only thing that has to be carried to
+# the Mac by hand.
 #
 # Double-click it, or:   bash bootstrap.command [target directory]
 #
-# It works from anywhere. Sitting next to a checkout (it ships inside the repo
+# It works from anywhere. Sitting inside a checkout (it ships in the repo
 # too) it updates that checkout in place; on its own in ~/Downloads it clones
-# into ~/ArtShuangpin, or into $1 / $ARTMAC_DIR.
+# into ~/art-shuangpin, or into $1 / $ARTMAC_DIR.
 #
-# Why this can exist at all: vendor/ is gitignored and never reaches a remote,
-# but neither half of it is actually private -- see vendor.pin. The source
-# mirror is a public repo and the 7.5 MB language model rides along in the
-# public Windows release asset with the exact bytes we pin. So the only
-# credentials needed anywhere are for THIS repo.
+# NOT the normal way to install. Most people should download the release zip
+# and double-click the install.command inside it: that carries a prebuilt
+# universal app and needs no git, no Command Line Tools and no python3. This
+# path exists to run code that has not been released yet, which is why it
+# compiles from source.
+#
+# It needs no credentials at all. The repository is public, and everything
+# the build wants is in it -- the language model is built here from data/
+# rather than downloaded, so there is no pinned tag and no release asset to
+# keep in step. Before the two halves were merged this file had to clone a
+# private repo, and the failure that produced was the reason for the merge.
 #
 # See install.command for why a .command begins with a cd and avoids `set -e`.
 
 SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_URL="https://github.com/weiwei84530/art-shuangpin.git"
 
 pause() {
     echo
@@ -32,20 +40,20 @@ die() {
     pause 1
 }
 
-echo "阿特輸入法 — 一鍵取得並安裝"
+echo "阿特輸入法 — 取得原始碼並安裝（開發用）"
 echo
 
 # --- where ------------------------------------------------------------------
 #
-# Running from inside a checkout means "update this one". The vendor.pin test
-# is what distinguishes our own checkout from any other folder the file was
+# Running from inside a checkout means "update this one". mac/Makefile is
+# what distinguishes our own checkout from any other folder the file was
 # dropped into.
 
-if [ -f "$SELF_DIR/vendor.pin" ] && [ -d "$SELF_DIR/.git" ]; then
-    REPO_DIR="$SELF_DIR"
+if [ -f "$SELF_DIR/Makefile" ] && [ -d "$SELF_DIR/../.git" ]; then
+    REPO_DIR="$(cd "$SELF_DIR/.." && pwd)"
     echo "在既有的 checkout 裡執行，直接更新它："
 else
-    REPO_DIR="${1:-${ARTMAC_DIR:-$HOME/ArtShuangpin}}"
+    REPO_DIR="${1:-${ARTMAC_DIR:-$HOME/art-shuangpin}}"
     echo "安裝位置："
 fi
 echo "  $REPO_DIR"
@@ -54,7 +62,7 @@ echo
 # --- Command Line Tools -----------------------------------------------------
 
 if ! xcode-select -p >/dev/null 2>&1; then
-    echo "找不到 Command Line Tools（git 與編譯器都在裡面）。"
+    echo "找不到 Command Line Tools（git、編譯器與 python3 都在裡面）。"
     echo
     echo "請先在終端機執行一次，跳出系統視窗後按安裝："
     echo
@@ -64,16 +72,11 @@ if ! xcode-select -p >/dev/null 2>&1; then
     pause 1
 fi
 
-# --- the private repo -------------------------------------------------------
+# --- the repository ---------------------------------------------------------
 #
-# The one step that needs credentials. Try gh first (its browser login is the
-# least painful), fall back to plain git, which on macOS prompts once and then
-# remembers the answer in the keychain.
-
-# vendor.pin is not readable until the repo exists, so the clone URL is the
-# one value that has to be duplicated here.
-SHELL_REPO="https://github.com/weiwei84530/art-shuangpin-mac.git"
-SHELL_REPO_SLUG="weiwei84530/art-shuangpin-mac"
+# Public, so this never asks for a password. A full clone rather than a
+# shallow one: the whole history is under 3 MB, and `git pull --ff-only` on a
+# shallow clone has failure modes that a full one simply does not have.
 
 if [ -d "$REPO_DIR/.git" ]; then
     echo "更新程式碼…"
@@ -81,111 +84,40 @@ if [ -d "$REPO_DIR/.git" ]; then
         die "git pull 失敗。如果你在那個資料夾裡改過東西，先處理掉再跑一次。"
     fi
 else
-    echo "取得程式碼（這個 repo 是私人的，可能會要求登入）…"
+    echo "取得程式碼…"
     mkdir -p "$(dirname "$REPO_DIR")" || die "無法建立 $(dirname "$REPO_DIR")"
-    cloned=1
-    if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-        gh repo clone "$SHELL_REPO_SLUG" "$REPO_DIR" && cloned=0
-    fi
-    if [ $cloned -ne 0 ]; then
-        git clone "$SHELL_REPO" "$REPO_DIR" && cloned=0
-    fi
-    if [ $cloned -ne 0 ]; then
-        cat <<EOF
-
-取不到程式碼——這是私人 repo，需要先讓這台 Mac 有 GitHub 的存取權。
-兩種做法，選一個做一次就好：
-
-  A) 安裝 GitHub CLI 再登入（瀏覽器點一點，最省事）
-         brew install gh
-         gh auth login
-
-  B) 不裝任何東西，用個人存取權杖（PAT）
-         到 github.com → Settings → Developer settings
-            → Personal access tokens → Tokens (classic) → Generate new token
-         勾選 repo 權限，產生後把那串字複製起來。
-         再跑一次這個檔案，git 問密碼時貼上權杖（不是 GitHub 密碼）。
-         macOS 會把它記進鑰匙圈，之後不會再問。
-
-弄好之後再雙擊這個檔案一次。
-EOF
-        pause 1
+    if ! git clone "$REPO_URL" "$REPO_DIR"; then
+        die "下載不到程式碼。這個 repo 是公開的，通常是網路問題，晚點再試。"
     fi
 fi
 
-cd "$REPO_DIR" || die "進不去 $REPO_DIR"
-[ -f vendor.pin ] || die "$REPO_DIR/vendor.pin 不存在——這個資料夾看起來不是 art-shuangpin-mac。"
+cd "$REPO_DIR/mac" || die "進不去 $REPO_DIR/mac——這個資料夾看起來不是 art-shuangpin。"
 
-# shellcheck disable=SC1091
-. ./vendor.pin
-
-# --- vendor/art-shuangpin ---------------------------------------------------
+# --- the language model -----------------------------------------------------
 #
-# Public, shallow, pinned to a tag. A checkout sitting on the wrong tag is
-# thrown away rather than fetched forward: it is 3 MB, and re-cloning has one
-# failure mode instead of shallow-fetch's several.
+# A build product: out/ is gitignored, so a clone does not carry it. Built
+# from the tracked sources in data/ with python3 and nothing else. Skipped
+# when it is already there -- data/ changes rarely and this takes minutes.
 
-echo
-echo "取得輸入核心 ($ART_TAG)…"
-current=""
-if [ -d vendor/art-shuangpin/.git ]; then
-    current="$(git -C vendor/art-shuangpin describe --tags --exact-match 2>/dev/null)"
-fi
-if [ "$current" != "$ART_TAG" ]; then
-    rm -rf vendor/art-shuangpin
-    mkdir -p vendor
-    if ! git clone --depth 1 --branch "$ART_TAG" "$ART_REPO" vendor/art-shuangpin; then
-        die "下載不到輸入核心。這個 repo 是公開的，通常是網路問題，晚點再試。"
-    fi
+if [ -f ../out/data.txt ]; then
+    echo
+    echo "詞庫已經有了，跳過。"
 else
-    echo "  已經是 $ART_TAG，跳過"
-fi
-[ -f vendor/art-shuangpin/core/composer.cpp ] || die "輸入核心不完整（缺 core/composer.cpp）。"
-
-# --- vendor/mspy-data.txt ---------------------------------------------------
-#
-# The hash is checked before downloading as well as after: on a re-run the
-# file is normally already correct, and 4.5 MB is worth not re-fetching.
-
-echo
-echo "取得詞庫…"
-have=""
-if [ -f vendor/mspy-data.txt ]; then
-    have="$(shasum -a 256 vendor/mspy-data.txt | awk '{print $1}')"
-fi
-if [ "$have" = "$MSPY_DATA_SHA256" ]; then
-    echo "  已經有正確的詞庫，跳過"
-else
-    tmp="$(mktemp -d)" || die "建不出暫存資料夾"
-    url="$ART_REPO_WEB/releases/download/$ART_TAG/$ART_ASSET"
-    echo "  $url"
-    if ! curl -fL --progress-bar -o "$tmp/asset.zip" "$url"; then
-        rm -rf "$tmp"
-        die "下載失敗。這是公開的釋出檔案，通常是網路問題，晚點再試。"
+    echo
+    echo "建立詞庫（需要 python3，不必裝套件，大約一兩分鐘）…"
+    echo
+    if ! bash ../scripts/build-data.sh; then
+        die "詞庫建不起來。上面最後幾行就是原因，整段複製回報即可。"
     fi
-    if ! unzip -o -j -q "$tmp/asset.zip" "$ART_DATA_IN_ASSET" -d vendor/; then
-        rm -rf "$tmp"
-        die "解壓失敗：釋出檔裡找不到 $ART_DATA_IN_ASSET。vendor.pin 可能該更新了。"
-    fi
-    rm -rf "$tmp"
-    got="$(shasum -a 256 vendor/mspy-data.txt | awk '{print $1}')"
-    if [ "$got" != "$MSPY_DATA_SHA256" ]; then
-        die "詞庫的 sha256 對不上：
-  拿到 $got
-  預期 $MSPY_DATA_SHA256
-檔案已下載但不採信。請把這段訊息回報。"
-    fi
-    echo "  sha256 驗證通過"
 fi
 
 # --- hand over to the installer ---------------------------------------------
 #
-# exec rather than call: install.command does the CLT check, the signing
-# identity, the clean build, the install and the closing instructions, and
-# owns its own pause. Duplicating any of that here would mean two copies to
-# keep in step.
+# exec rather than call: install.command does the signing identity, the clean
+# build, the install and the closing instructions, and owns its own pause.
+# Duplicating any of that here would mean two copies to keep in step.
 
 echo
-echo "程式碼與 vendor/ 都就位了，接下來交給 install.command。"
+echo "程式碼與詞庫都就位了，接下來交給 install.command。"
 echo
-exec bash "$REPO_DIR/install.command"
+exec bash "$REPO_DIR/mac/install.command"
