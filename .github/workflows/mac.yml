@@ -1,0 +1,121 @@
+# Guards the half of this repository that the development host cannot build.
+#
+# core/, engine/ and cli/ are shared by the Windows TSF shell in ime/ and the
+# macOS InputMethodKit shell in mac/, but the Windows box has no darwin
+# toolchain -- so a change that compiles here can break the Mac silently, and
+# stay broken until someone tries to build it. This job is the only thing
+# that notices.
+name: macOS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mac/**'
+      - 'core/**'
+      - 'engine/**'
+      - 'cli/**'
+      - 'data/**'
+      - 'CMakeLists.txt'
+      - 'VERSION'
+      - 'scripts/build-data.sh'
+      - 'scripts/check-parity.py'
+      - 'scripts/check-tutorials.mjs'
+      - '.github/workflows/mac.yml'
+  pull_request:
+    paths:
+      - 'mac/**'
+      - 'core/**'
+      - 'engine/**'
+      - 'cli/**'
+      - 'data/**'
+      - 'CMakeLists.txt'
+      - 'VERSION'
+      - 'scripts/build-data.sh'
+      - 'scripts/check-parity.py'
+      - 'scripts/check-tutorials.mjs'
+      - '.github/workflows/mac.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    # Pinned, not macos-latest: this and release-mac.yml must compile against
+    # the same SDK, or the artifact users download is not what was tested.
+    # (The deployment target comes from the Makefile's -mmacosx-version-min,
+    # so the runner image only decides what is compiled against.)
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The dictionary is a build product of data/ and takes minutes. Keyed
+      # on the git tree object of data/, not hashFiles: build-data.sh writes
+      # PhraseFreq.txt back into data/, so a content hash of the directory
+      # changes as a side effect of building, and would never hit again.
+      - name: Dictionary cache key
+        id: datakey
+        run: echo "sha=$(git rev-parse HEAD:data)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        id: dictionary
+        with:
+          path: out/data.txt
+          key: mspy-data-${{ steps.datakey.outputs.sha }}
+
+      - name: Build the dictionary
+        if: steps.dictionary.outputs.cache-hit != 'true'
+        run: bash scripts/build-data.sh
+
+      # googletest arrives through FetchContent, so without this the job
+      # depends on GitHub being reachable twice.
+      - uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: gtest-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure and build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel 3
+
+      # 171 here against 173 on Windows, and that is correct: engine_tests
+      # picks its MemoryMappedFile test per platform, and the upstream POSIX
+      # file has 4 cases where the Win32 port has 6.
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      # The universal build is the guard, not just the release path: linking
+      # for both architectures is exactly what a release does, so a failure
+      # there should surface on the commit that caused it.
+      - name: Build the app
+        run: make -C mac ARCH="arm64 x86_64"
+
+      - name: Check the bundle
+        run: |
+          binary=mac/dist/ArtShuangpin.app/Contents/MacOS/ArtShuangpin
+          archs=$(lipo -archs "$binary")
+          echo "architectures: $archs"
+          for want in x86_64 arm64; do
+            case " $archs " in
+              *" $want "*) ;;
+              *) echo "::error::$want missing from the binary"; exit 1 ;;
+            esac
+          done
+          # The model has to be inside the bundle BEFORE it is signed;
+          # copying into a signed bundle invalidates the signature, and that
+          # only shows up on a user's Mac.
+          test -f mac/dist/ArtShuangpin.app/Contents/Resources/mspy-data.txt
+          codesign --verify --deep --strict --verbose=2 mac/dist/ArtShuangpin.app
+
+      # Possible for the first time now that repl builds off Windows. It is
+      # the same audit scripts/check-tutorials.ps1 runs.
+      - name: Audit the tutorial lessons
+        run: node scripts/check-tutorials.mjs --repl build/repl
+
+      # Reports rather than fails: drift between an upstream change and its
+      # Mac alignment is a legitimate state to be in for a commit or two.
+      # The one part that is always a bug -- mac/Makefile's source lists
+      # disagreeing with CMakeLists.txt -- is caught by the build above.
+      - name: Parity with the Windows shell
+        continue-on-error: true
+        run: python3 scripts/check-parity.py

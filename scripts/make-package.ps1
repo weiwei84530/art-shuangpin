@@ -10,8 +10,17 @@ $ErrorActionPreference = "Stop"
 
 $root = Split-Path $PSScriptRoot -Parent
 if (-not $Version) {
-    $Version = (& git -C $root describe --tags --always 2>$null)
-    if (-not $Version) { $Version = "dev" }
+    # The root VERSION file is the whole repository's single version: mac's
+    # Makefile stamps the same value into Info.plist, so a release cannot
+    # ship a Windows zip and a macOS app that disagree. git describe stays as
+    # the fallback, which is what a package built off an untagged commit gets.
+    $versionFile = Join-Path $root "VERSION"
+    if (Test-Path $versionFile) {
+        $Version = "v" + (Get-Content $versionFile -Raw).Trim()
+    } else {
+        $Version = (& git -C $root describe --tags --always 2>$null)
+        if (-not $Version) { $Version = "dev" }
+    }
 }
 
 $data = Join-Path $root "out\data.txt"

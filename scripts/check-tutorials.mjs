@@ -24,7 +24,7 @@
 // it is still checked.
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { argv, exit } from 'node:process';
 
 const args = argv.slice(2);
@@ -32,7 +32,14 @@ const optionAfter = (name, fallback) => {
   const i = args.indexOf(name);
   return i >= 0 && i + 1 < args.length ? args[i + 1] : fallback;
 };
-const REPL = optionAfter('--repl', 'build/Release/repl.exe');
+// build/Release/repl.exe is where the Visual Studio generator puts it;
+// build/repl is where a single-config generator does, which is every macOS
+// build. Falling back rather than branching on platform keeps a bare
+// `node scripts/check-tutorials.mjs` working on both.
+const defaultRepl = existsSync('build/Release/repl.exe')
+  ? 'build/Release/repl.exe'
+  : 'build/repl';
+const REPL = optionAfter('--repl', defaultRepl);
 const DATA = optionAfter('--data', 'out/data.txt');
 
 /* ------------------------------------------------------------ the lessons */

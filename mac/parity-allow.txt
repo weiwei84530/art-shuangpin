@@ -1,0 +1,20 @@
+# Public methods of mspy::Composer that mac/src/ArtBridge.mm deliberately
+# does not expose. Read by scripts/check-parity.py.
+#
+# Kept here rather than as a comment in core/composer.h: that header is
+# shared with the Windows build and should not carry the Mac's bookkeeping.
+#
+# Add an entry only with a reason. An unexplained line here is how a method
+# the shell genuinely needs goes missing without anyone noticing.
+
+# Both shells render from displaySegments() instead, which returns the same
+# text already split into before/unconfirmed/highlighted/after -- the split
+# is what draws the caret and the anchor, so the flat forms would have to be
+# re-split to be useful. ime/SampleIME does not call either one either.
+composedText
+unconfirmedTail
+
+# The setter is what the shell needs: ArtBridge.mm creates the store, hands
+# it over with setPreferences(), and keeps its own reference for saving. The
+# getter exists for tests and for callers that did not construct the store.
+preferences

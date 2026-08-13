@@ -1,0 +1,28 @@
+# The last point at which mac/src/ was read against the Windows side.
+#
+# A tracked file rather than a git note: notes are not fetched by default, so
+# a fresh clone would silently lose the marker and every check below would
+# start reporting the whole history as unreviewed.
+#
+# Read by scripts/check-parity.py. Format is KEY = value, the same shape the
+# old vendor.pin used, so bash and a five-line parser both cope.
+#
+# Move commit in the SAME commit that does the alignment work. Nothing may
+# advance it automatically -- not --fix, not CI. Moving it is a person
+# asserting the review happened.
+
+# The most recent commit whose changes under core/ engine/ cli/ data/ and
+# docs/spec.md were read against mac/src/.
+commit                          = 67c14d206682b834e90edbe3e600936c7596bfc8
+version                         = 0.7.0
+
+# Bodies of the two Windows key-routing functions the Mac transliterates
+# rather than shares -- ArtInputController.mm reproduces their order
+# deliberately, and no tool can check that semantically. A changed hash means
+# "go and read the function", nothing more. Whitespace-insensitive, so
+# reindenting does not trip it.
+#
+#   ime/SampleIME/CompositionProcessorEngine.cpp  IsVirtualKeyNeedMspy
+is_virtual_key_need_mspy         = abee4a2a412c1b76dd4854d36b97701ec8e13b3528f6779ab180b74f03e696fd
+#   ime/SampleIME/CompositionProcessorEngine.cpp  IsVirtualKeyNeedMspyEnglish
+is_virtual_key_need_mspy_english = 0f82fae4e820c77ef6f97609ce2bbcde94c1c217be93ff8f6d17ee08abf38c8f
