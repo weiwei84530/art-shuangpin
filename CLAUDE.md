@@ -135,6 +135,22 @@ v0.3 到 v0.6 分別是 1、1、2、1 個檔案。多數上游改動 Mac 完全�
 
 ## 狀態記錄
 
+- 2026-08-14：**tag v0.8.0 並發佈 GitHub Release**（兩個資產：`art-shuangpin-v0.8.0.zip`、
+  `art-shuangpin-mac-v0.8.0.zip`）。距 v0.7.1 共 12 個 commit，**詞庫一個位元組都沒變**
+  （`out/data.txt` sha256 仍是 `c07e7285…`，`data/` 與 `engine/` 自 v0.7.1 零改動），
+  內容純粹是按鍵行為：閒置編輯層、Tab／`-`／`=` 交還、`5`/`6` 組字中可刪、中文模式只出全形、
+  `/`＝、、教學網站的 `Alt`+`R`／`Alt`+`N` 與兩處讀音修正，外加 macOS 的 os_log 修正。
+  發佈前照規則先跑 `check-parity.py`（aligned），並確認**打 tag 前最後一次 push 的 macOS CI 是
+  success**——這輪改了 3 個 `mac/src/` 檔案而本機編不了，那個 run 是唯一的檢驗。
+  驗證：x64／x86 `ctest` 各 176 全過、check-drill-coverage 400＋11＝411、check-tutorials 12 課全綠。
+  **使用者已在真機實測**（先前那包名為 v0.7.1、內容其實是 reorder 後建置的 zip）：
+  確認 `1`/`4` 只跳到底、`2`/`3` 帶選取，且合成 Shift 沒有誤觸中英切換。
+  `release-mac.yml` 建的是 **draft**，Windows zip 由本機 `make-package.ps1` 打包後上傳同一個 release，
+  填好中文內文才 `--draft=false` 發佈。
+  **命名的坑**：`make-package.ps1` 用 `VERSION` 命名 zip，所以在 `VERSION` 升版之前打的包會與
+  已發佈的舊版**撞名但內容不同**——這次就讓使用者裝到一個叫 v0.7.1、其實是 v0.8.0 行為的檔案。
+  要在打包前先升 `VERSION`，或至少提醒。
+
 - 2026-08-14：**閒置編輯層的第二輪調整＋「那樣」讀音修正**（同日回饋）。
   (a) **`1`-`4` 重排**：`1` 行首、`2` 選到行首、`3` 選到行尾、`4` 行尾——由中間往外讀，
   左兩個往左、右兩個往右，靠內的那個帶選取（原本是 1/2 移動、3/4 選取）。
