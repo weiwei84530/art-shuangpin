@@ -32,3 +32,6 @@ build32/
 # case-insensitive on Windows and swallows this directory without it.
 !/mac/release/
 !/mac/release/**
+
+# Stray ctest run from the repo root (tests live under build/)
+/Testing/
