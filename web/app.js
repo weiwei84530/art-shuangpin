@@ -637,8 +637,9 @@ const drill = {
     if (this.si >= steps.length) {
       clearHints();
       const slips = this.slips.size;
-      const keys = '按 <kbd>R</kbd> 再練一次' +
-                   (this.di + 1 < DRILLS.length ? '，<kbd>N</kbd> 進入下一課' : '');
+      const keys = '按 <kbd>Alt</kbd>+<kbd>R</kbd> 再練一次' +
+                   (this.di + 1 < DRILLS.length
+                      ? '，<kbd>Alt</kbd>+<kbd>N</kbd> 進入下一課' : '');
       hint.innerHTML = slips === 0
         ? `<span class="cheer">完成了，全對！</span>　${keys}。`
         : `<span class="cheer">完成了！</span>　其中 <span class="slip-count">${slips}</span>` +
@@ -670,13 +671,20 @@ const drill = {
     return this.di >= 0 && this.si >= this.lesson.steps.length;
   },
 
-  // With the lesson over the keyboard has nothing else to do, so the two
-  // things anyone wants next get a key each rather than a trip to the mouse.
+  // Alt+R restarts and Alt+N moves on, saving a trip to the mouse.
+  //
+  // The modifier is not decoration: every unmodified key belongs to the
+  // drill, so a bare R could only ever have worked once the lesson was
+  // over -- and restarting is most wanted in the middle, after a bad run.
+  // Alt is the one modifier with no browser meaning of its own (Ctrl+R
+  // reloads, and losing the page mid-lesson is exactly what this avoids).
+  // `code` rather than `key`: Option+R types ® on some macOS layouts.
   shortcut(event) {
-    if (!this.finished || event.repeat) return false;
-    const k = event.key.toLowerCase();
-    if (k === 'r') { this.restart(); return true; }
-    if (k === 'n' && this.di + 1 < DRILLS.length) {
+    if (!event.altKey || event.ctrlKey || event.metaKey || event.repeat) {
+      return false;
+    }
+    if (event.code === 'KeyR' && this.di >= 0) { this.restart(); return true; }
+    if (event.code === 'KeyN' && this.finished && this.di + 1 < DRILLS.length) {
       selectDrill(this.di + 1);
       return true;
     }
@@ -805,11 +813,13 @@ $('#btnKbMode').addEventListener('click', e => {
 // The drill reads the real keyboard, so it has to stop the browser acting
 // on Space, Enter and the like -- but only for the key it actually wanted.
 window.addEventListener('keydown', e => {
-  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  // Alt+R / Alt+N are the only chords the page claims, and they are checked
+  // before the modifier guard below so they work mid-lesson too.
   if (drill.shortcut(e)) {
     e.preventDefault();
     return;
   }
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
   if (drill.handle(e)) {
     e.preventDefault();
     return;

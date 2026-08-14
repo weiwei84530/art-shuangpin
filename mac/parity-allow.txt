@@ -18,3 +18,10 @@ unconfirmedTail
 # it over with setPreferences(), and keeps its own reference for saving. The
 # getter exists for tests and for callers that did not construct the store.
 preferences
+
+# Digit 5 while composing, routed inside Composer::feedChar -- so both shells
+# reach it through feedChar('5') and neither needs a bridge method. The real
+# Delete key is NOT wired to it on either platform: while composing, VK_DELETE
+# and macOS ⌦ still pass through to the application. If that is ever fixed,
+# fix it on both sides and delete this entry.
+feedDelete

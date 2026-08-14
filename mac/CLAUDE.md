@@ -234,8 +234,8 @@ talks to both with no bridging layer, and it keeps the build to one compiler.
 The composer owns everything **while composing**. The shell owns only:
 
 * **the idle editing layer** (spec §6 「閒置編輯層」, v0.8): with nothing composing the
-  whole unshifted digit row is replayed as an editing keystroke — `1` 行首, `2` 行尾,
-  `3`/`4` select to 行首/行尾, `5` ⌦, `6` ⌫, `7`/`8` ↑/↓, `9`/`0` ←/→. **Only the
+  whole unshifted digit row is replayed as an editing keystroke — `1` 行首, `2`/`3`
+  select to 行首/行尾, `4` 行尾, `5` ⌦, `6` ⌫, `7`/`8` ↑/↓, `9`/`0` ←/→. **Only the
   unshifted digits**, so Shift+9 still types （ and Shift+1 still types ！, exactly as in
   Weasel. `-`, `=` and **Tab** are no longer intercepted at all (v0.8 removed them);
   handing Tab back is also what retires the Chromium focus-stealing failure recorded in

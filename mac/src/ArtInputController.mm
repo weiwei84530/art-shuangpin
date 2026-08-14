@@ -339,8 +339,8 @@ bool IsCaretMovementKeyCode(unsigned short code) {
 // CCompositionProcessorEngine::IsVirtualKeyNeedMspy.  With nothing composing
 // the top digit row stops typing and starts editing:
 //
-//     1 行首   2 行尾   3 選到行首   4 選到行尾   5 Delete
-//     6 Backspace       7 ↑   8 ↓   9 ←   0 →
+//     1 行首   2 選到行首   3 選到行尾   4 行尾   5 Delete
+//     6 Backspace      7 ↑   8 ↓   9 ←   0 →
 //
 // The key identity comes from charactersIgnoringModifiers so that Shift+9
 // still reads as '9' here — that is what makes "only the unshifted digits"
@@ -359,9 +359,9 @@ bool IsCaretMovementKeyCode(unsigned short code) {
     }
     switch ([bare characterAtIndex:0]) {
         case '1': [ArtNavigation inject:ArtNavigationKeyLineStart shiftHeld:NO]; return YES;
-        case '2': [ArtNavigation inject:ArtNavigationKeyLineEnd shiftHeld:NO]; return YES;
-        case '3': [ArtNavigation inject:ArtNavigationKeySelectToLineStart shiftHeld:NO]; return YES;
-        case '4': [ArtNavigation inject:ArtNavigationKeySelectToLineEnd shiftHeld:NO]; return YES;
+        case '2': [ArtNavigation inject:ArtNavigationKeySelectToLineStart shiftHeld:NO]; return YES;
+        case '3': [ArtNavigation inject:ArtNavigationKeySelectToLineEnd shiftHeld:NO]; return YES;
+        case '4': [ArtNavigation inject:ArtNavigationKeyLineEnd shiftHeld:NO]; return YES;
         case '5': [ArtNavigation inject:ArtNavigationKeyForwardDelete shiftHeld:NO]; return YES;
         case '6': [ArtNavigation inject:ArtNavigationKeyBackspace shiftHeld:NO]; return YES;
         case '7': [ArtNavigation inject:ArtNavigationKeyUp shiftHeld:NO]; return YES;

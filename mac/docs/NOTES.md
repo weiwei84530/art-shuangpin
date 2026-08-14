@@ -382,7 +382,7 @@ has to be switched.
 **Digits `1`–`4` post Cmd+Left / Cmd+Right, not Home / End.** The spec asks
 for 行首/行尾. On macOS, Home and End mean document start/end and in many apps
 only scroll; line start/end is Cmd+arrow. The meaning is ported, not the key
-code. `3`/`4` add Shift to that, giving the selection Windows gets from
+code. `2`/`3` add Shift to that, giving the selection Windows gets from
 Shift+Home / Shift+End.
 
 **The Chinese/English indicator is a HUD plus a menu checkmark, not a

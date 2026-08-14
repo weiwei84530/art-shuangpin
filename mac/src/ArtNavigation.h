@@ -23,10 +23,10 @@
 NS_ASSUME_NONNULL_BEGIN
 
 typedef NS_ENUM(NSInteger, ArtNavigationKey) {
-    ArtNavigationKeyLineStart,        // '1'
-    ArtNavigationKeyLineEnd,          // '2'
-    ArtNavigationKeySelectToLineStart,  // '3'
-    ArtNavigationKeySelectToLineEnd,    // '4'
+    ArtNavigationKeyLineStart,          // '1'
+    ArtNavigationKeySelectToLineStart,  // '2'
+    ArtNavigationKeySelectToLineEnd,    // '3'
+    ArtNavigationKeyLineEnd,            // '4'
     ArtNavigationKeyForwardDelete,    // '5'
     ArtNavigationKeyBackspace,        // '6'
     ArtNavigationKeyUp,               // '7'

@@ -406,6 +406,32 @@ TEST_F(ComposerTest, CursorWrapsAtBothEnds) {
   EXPECT_EQ(segments.highlighted, "好");
 }
 
+TEST_F(ComposerTest, DigitsFiveAndSixDeleteOnceSettled) {
+  // 6 is Backspace and 5 is Delete, so deleting inside the composition never
+  // takes a hand off the main block.
+  Type("ni3hk3");
+  EXPECT_EQ(composer_->composedText(), "你好");
+  Type("6");
+  EXPECT_EQ(composer_->composedText(), "你");
+
+  Type("hk3");
+  Type("9");  // cursor back between 你 and 好
+  Type("5");  // forward delete removes 好
+  EXPECT_EQ(composer_->composedText(), "你");
+  Type("5");  // nothing to the right any more
+  EXPECT_EQ(composer_->composedText(), "你");
+}
+
+TEST_F(ComposerTest, DigitsFiveAndSixStayTonesWhileBopomofoShows) {
+  // The rule is unchanged: bopomofo on screen means every digit is a tone.
+  // 5 and its mirror 6 are the only 輕聲 keys, so they must survive.
+  Type("d5");  // ㄉㄜ˙ -> 的
+  EXPECT_EQ(composer_->composedText(), "的");
+  composer_->feedEsc();
+  Type("d6");  // 6 is 5's mirror, so it must reach the same reading
+  EXPECT_EQ(composer_->composedText(), "的");
+}
+
 TEST_F(ComposerTest, MinusEqualsDoNothing) {
   // '-'/'=' no longer jump the cursor to the ends (2026-08-14). They have no
   // full-width meaning either, so in Chinese mode they are simply eaten --
@@ -761,10 +787,11 @@ TEST_F(ComposerTest, MenuOpensAtLastCharWhenCursorAtEnd) {
 }
 
 TEST_F(ComposerTest, NonControlDigitsEatenOnceSettled) {
-  // Settled, only 8/9/0 mean anything; 1-7 are eaten with no output.
+  // Settled, only 5/6 (delete) and 8/9/0 mean anything; the rest are eaten
+  // with no output.
   Type("vs");
   Settle();
-  for (char digit = '1'; digit <= '7'; ++digit) {
+  for (const char digit : {'1', '2', '3', '4', '7'}) {
     auto r = composer_->feedChar(digit);
     EXPECT_TRUE(r.consumed) << digit;
     EXPECT_EQ(r.commitText, "") << digit;

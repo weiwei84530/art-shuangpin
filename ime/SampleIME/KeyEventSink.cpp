@@ -61,10 +61,12 @@ __inline UINT VKeyFromVKPacketAndWchar(UINT vk, WCHAR wch)
 // screen the top digit row stops typing and starts editing, so the whole of
 // it is within reach of the home row:
 //
-//     1 Home   2 End   3 Shift+Home   4 Shift+End   5 Delete
-//     6 Backspace      7 Up   8 Down  9 Left        0 Right
+//     1 Home   2 Shift+Home   3 Shift+End   4 End   5 Delete
+//     6 Backspace     7 Up   8 Down   9 Left   0 Right
 //
-// 3 and 4 wrap the movement in a synthetic Shift to extend the selection.
+// 1-4 read outwards from the middle: the two on the left go left, the two on
+// the right go right, and the inner pair of each is the one that selects.
+// 2 and 3 wrap the movement in a synthetic Shift to extend the selection.
 // That is safe next to the bare-Shift-tap language switch: the Home/End in
 // between reaches Global::UpdateModifiers, whose default arm clears
 // IsShiftKeyDownOnly, so CheckShiftKeyOnly declines the preserved key.
@@ -75,9 +77,9 @@ static void InjectNavigationKey(UINT code)
     switch (code)
     {
     case '1': vk = VK_HOME;   break;
-    case '2': vk = VK_END;    break;
-    case '3': vk = VK_HOME;   withShift = true; break;
-    case '4': vk = VK_END;    withShift = true; break;
+    case '2': vk = VK_HOME;   withShift = true; break;
+    case '3': vk = VK_END;    withShift = true; break;
+    case '4': vk = VK_END;    break;
     case '5': vk = VK_DELETE; break;
     case '6': vk = VK_BACK;   break;
     case '7': vk = VK_UP;     break;

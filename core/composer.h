@@ -154,6 +154,8 @@ class Composer {
   // Feeds a printable character (letters, ';', digits, space, ',', '.').
   Result feedChar(char c);
   Result feedBackspace();
+  // Forward delete (digit 5 while composing).
+  Result feedDelete();
   Result feedEnter();
   // Esc cancels the whole composition (closing the menu first if open).
   Result feedEsc();

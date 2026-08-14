@@ -555,8 +555,16 @@ Composer::Result Composer::feedChar(char c) {
       updateStateAfterMutation();
       return {true, ""};
     }
-    if (!composing) return {true, ""};  // idle: the digit row is disabled
+    if (!composing) return {true, ""};  // idle: the shell owns the digit row
     switch (c) {
+      case '5':
+        // Delete and Backspace, reachable without leaving the main block
+        // (2026-08-14). They are only here once the syllable has settled --
+        // while bopomofo is still on screen every digit is a tone, which is
+        // what keeps 輕聲 typable on 5 and its mirror 6.
+        return feedDelete();
+      case '6':
+        return feedBackspace();
       case '8':
         return openCandidateMenu();
       case '9':
@@ -565,7 +573,7 @@ Composer::Result Composer::feedChar(char c) {
       case '0':
         moveCursor(+1);
         return {true, ""};
-      default:  // 1-7 have no control meaning
+      default:  // 1-4 and 7 have no control meaning
         return {true, ""};
     }
   }
@@ -641,6 +649,26 @@ Composer::Result Composer::feedChar(char c) {
   // at all rather than leaking a half-width character into the document --
   // the same bargain the digit row already makes. `@ # $ % & * | - = +` all
   // land here; Shift switches to English mode when they are wanted.
+  return {true, ""};
+}
+
+// Forward delete: the counterpart of feedBackspace, for digit 5. A pending
+// syllable sits AT the cursor, so there is nothing to its right to remove --
+// that case is a no-op rather than an error. (The digit branch only calls
+// this once everything is settled, but callers should not have to know.)
+Composer::Result Composer::feedDelete() {
+  if (state_ == State::kSelecting) {
+    dismissMenu();
+  }
+  if (state_ == State::kEmpty) return {false, ""};
+
+  if (pending_.empty() && grid_.length() > 0) {
+    grid_.deleteReadingAfterCursor();
+    walk_ = grid_.walk();
+    applyLearnedOverrides();
+  }
+  unsettled_ = {};
+  updateStateAfterMutation();
   return {true, ""};
 }
 
