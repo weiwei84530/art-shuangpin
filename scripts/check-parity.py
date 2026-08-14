@@ -209,11 +209,18 @@ def check_bridge_surface(problems):
 
 def check_upstream_drift(problems, marker):
     commit = marker.get("commit", "")
+    shallow = git("rev-parse", "--is-shallow-repository") == "true"
     if not commit:
         problems.append("mac/upstream-alignment.txt has no commit= value")
     elif not git("cat-file", "-t", commit):
-        problems.append("mac/upstream-alignment.txt points at %s, which is "
-                        "not a commit in this repository" % commit)
+        if shallow:
+            # Not drift: a shallow clone simply does not contain the marker's
+            # commit. Say which it is, or the report reads as a broken marker.
+            print("note: shallow clone, so the drift log is unavailable "
+                  "(checkout with fetch-depth: 0 to enable it)")
+        else:
+            problems.append("mac/upstream-alignment.txt points at %s, which "
+                            "is not a commit in this repository" % commit)
     else:
         log = git("log", "--oneline", "%s..HEAD" % commit, "--", *WATCHED)
         if log:

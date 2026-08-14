@@ -46,7 +46,12 @@ jobs:
     runs-on: macos-15
 
     steps:
+      # Full history: check-parity.py's drift log asks what has changed since
+      # the commit in mac/upstream-alignment.txt, and the default shallow
+      # clone does not contain it. 3 MB packed, so this costs nothing.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # The dictionary is a build product of data/ and takes minutes. Keyed
       # on the git tree object of data/, not hashFiles: build-data.sh writes
