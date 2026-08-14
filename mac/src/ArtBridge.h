@@ -125,9 +125,13 @@ typedef NS_ENUM(NSInteger, ArtComposerState) {
 
 @end
 
-/// NSLog wrapper gated on
+/// Logging wrapper gated on
 ///     defaults write com.mspy.inputmethod.ArtShuangpin debug -bool YES
 /// The equivalent of MSPY_DEBUG_LOG in the Windows build.
 extern void ArtLog(NSString *format, ...) NS_FORMAT_FUNCTION(1, 2);
+
+/// The same, but always emitted: for the handful of failures a user has to
+/// be able to diagnose from Console.app with no debug flag set.
+extern void ArtLogAlways(NSString *format, ...) NS_FORMAT_FUNCTION(1, 2);
 
 NS_ASSUME_NONNULL_END

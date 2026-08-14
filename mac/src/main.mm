@@ -64,8 +64,8 @@ int main(int argc, const char *argv[]) {
         NSString *connectionName =
             [bundle objectForInfoDictionaryKey:@"InputMethodConnectionName"];
         if (connectionName.length == 0) {
-            NSLog(@"[ArtShuangpin] Info.plist has no "
-                  @"InputMethodConnectionName; cannot start");
+            ArtLogAlways(@"Info.plist has no InputMethodConnectionName; "
+                         @"cannot start");
             return 1;
         }
 
@@ -73,8 +73,7 @@ int main(int argc, const char *argv[]) {
             [[IMKServer alloc] initWithName:connectionName
                            bundleIdentifier:bundle.bundleIdentifier];
         if (server == nil) {
-            NSLog(@"[ArtShuangpin] IMKServer '%@' would not start",
-                  connectionName);
+            ArtLogAlways(@"IMKServer '%@' would not start", connectionName);
             return 1;
         }
 

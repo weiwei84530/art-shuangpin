@@ -5,6 +5,8 @@
 #import <Cocoa/Cocoa.h>
 #import <Carbon/Carbon.h>  // kVK_* virtual key codes
 
+#import "ArtBridge.h"  // ArtLogAlways
+
 // Set once the "not trusted" complaint has been made, cleared as soon as a
 // key is posted successfully, so a grant that lapses later complains again.
 static BOOL sWarnedUntrusted = NO;
@@ -46,12 +48,13 @@ static BOOL sWarnedUntrusted = NO;
         // goes on showing it. Say that here rather than leave four dead keys.
         if (!sWarnedUntrusted) {
             sWarnedUntrusted = YES;
-            NSLog(@"[ArtShuangpin] idle navigation (9/0/-/=/Tab) is off: this build "
-                  @"is not trusted for Accessibility. An entry already ticked "
-                  @"in System Settings > Privacy & Security > Accessibility may "
-                  @"belong to a previous build — remove it with the − button "
-                  @"and grant it again, or run: tccutil reset Accessibility %@",
-                  [[NSBundle mainBundle] bundleIdentifier] ?: @"");
+            ArtLogAlways(@"idle navigation (9/0/-/=/Tab) is off: this build "
+                         @"is not trusted for Accessibility. An entry already "
+                         @"ticked in System Settings > Privacy & Security > "
+                         @"Accessibility may belong to a previous build — "
+                         @"remove it with the − button and grant it again, or "
+                         @"run: tccutil reset Accessibility %@",
+                         [[NSBundle mainBundle] bundleIdentifier] ?: @"");
         }
         [self promptForTrustIfNeeded];
         return NO;

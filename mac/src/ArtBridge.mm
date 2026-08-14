@@ -6,6 +6,8 @@
 // preference store gets its last chance to be written.
 #import <AppKit/AppKit.h>
 
+#include <os/log.h>
+
 #include <cstdio>
 #include <fstream>
 #include <iterator>
@@ -19,11 +21,27 @@
 
 // ---------------------------------------------------------------- logging --
 
+// os_log with an explicit {public} rather than NSLog. The unified logging
+// system redacts the arguments of %@ -- Console.app shows the line, with
+// every value replaced by <private> -- which quietly made this whole
+// facility useless, the always-on failure messages included. A format
+// specifier is the only thing that decides it; there is no defaults key.
+static void ArtEmit(NSString *message) {
+    os_log(OS_LOG_DEFAULT, "[ArtShuangpin] %{public}s",
+           message.UTF8String ?: "(null)");
+}
+
 void ArtLog(NSString *format, ...) {
     static BOOL enabled = NO;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         enabled = [[NSUserDefaults standardUserDefaults] boolForKey:@"debug"];
+        // Says so once, so "is the flag on?" is answerable from the log
+        // itself rather than by trusting that the app was restarted after
+        // the defaults write.
+        if (enabled) {
+            ArtEmit(@"debug logging is ON");
+        }
     });
     if (!enabled) {
         return;
@@ -32,7 +50,15 @@ void ArtLog(NSString *format, ...) {
     va_start(args, format);
     NSString *message = [[NSString alloc] initWithFormat:format arguments:args];
     va_end(args);
-    NSLog(@"[ArtShuangpin] %@", message);
+    ArtEmit(message);
+}
+
+void ArtLogAlways(NSString *format, ...) {
+    va_list args;
+    va_start(args, format);
+    NSString *message = [[NSString alloc] initWithFormat:format arguments:args];
+    va_end(args);
+    ArtEmit(message);
 }
 
 // ------------------------------------------------------------ conversions --
@@ -241,9 +267,9 @@ NSString *ArtStringFromUTF8(const std::string &utf8) {
     _loadError = reason;
     // Always logged, debug flag or not: this is the one failure the user
     // has to be able to diagnose from Console.app alone.
-    NSLog(@"[ArtShuangpin] language model NOT loaded: %@ (%@). The input "
-          @"method will pass every key through to the application.",
-          _dataPath, reason);
+    ArtLogAlways(@"language model NOT loaded: %@ (%@). The input method "
+                 @"will pass every key through to the application.",
+                 _dataPath, reason);
 }
 
 // --- user preferences ------------------------------------------------------
