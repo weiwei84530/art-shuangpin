@@ -15,3 +15,4 @@
 - `engine\` 原樣保留（含各 *Test.cpp），唯一修改：`MemoryMappedFile.cpp` 由 POSIX mmap 移植為 Win32 file mapping。修改處以 `// [MspyIME]` 註解標記。
 - 排除未 vendor：`AssociatedPhrasesV2`、`VariantAnnotator`、`Mandarin/`（不需要——本專案的輸入核心直接產生注音字串）、各 *Benchmark.cpp。
 - `data\` 原樣保留（含 curation Python 套件），由 `scripts\build-data.ps1` 建置 `out\data.txt`。
+  唯一修改：`Postprocess.txt` 檔尾追加一段以 `# [MspyIME]` 標示的提升指令，用來把輸給「同音單字加總」的詞拉回首選（機制是上游自己的 `promote-over-single-syllables`，每條都附 `assert` 釘住不該被動到的斷詞）。
