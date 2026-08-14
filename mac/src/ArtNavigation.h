@@ -1,30 +1,38 @@
-// Idle navigation keys (spec §6 「閒置導航鍵」).
+// Idle editing layer (spec §6 「閒置編輯層」).
 //
-// With no composition in progress the shell eats 9/0/-/= and Tab and replays
-// them as the keystroke they stand for.  This is the macOS counterpart of
-// InjectNavigationKey() in ime/SampleIME/KeyEventSink.cpp:55 — SendInput
-// there, CGEventPost here.  The injected key lands back in our own
-// controller, which is harmless: arrows are always passed through while
-// idle, so there is nothing to guard against.
+// With no composition in progress the shell eats the unshifted top digit row
+// and replays each key as the keystroke it stands for.  This is the macOS
+// counterpart of InjectNavigationKey() in ime/SampleIME/KeyEventSink.cpp —
+// SendInput there, CGEventPost here.  The injected key lands back in our own
+// controller, which is harmless: arrows and deletes are always passed
+// through while idle, so there is nothing to guard against.
 //
-// Note the deliberate difference from the Windows build: `-`/`=` post
+// Note the deliberate difference from the Windows build: line start/end post
 // Cmd+Left / Cmd+Right, not Home / End.  On macOS, Home and End mean
 // "document start/end" (and in many apps only scroll), while the line-start
 // and line-end movements are Cmd+arrow.  The spec calls for 行首/行尾, so
-// the meaning is ported rather than the key code.  A physically held Shift
-// is carried onto the injected event, which turns the movement into a
-// selection exactly as it does on Windows.
+// the meaning is ported rather than the key code.
+//
+// SelectToLineStart/End carry Shift themselves; the rest take it from
+// `shiftHeld`, which is always NO now that the layer only claims unshifted
+// digits, but is kept because the parameter costs nothing and the Windows
+// side has the same shape.
 
 #import <Foundation/Foundation.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
 typedef NS_ENUM(NSInteger, ArtNavigationKey) {
-    ArtNavigationKeyLeft,       // '9'
-    ArtNavigationKeyRight,      // '0'
-    ArtNavigationKeyLineStart,  // '-'
-    ArtNavigationKeyLineEnd,    // '='
-    ArtNavigationKeyBackspace,  // Tab (spec §6, upstream v0.5)
+    ArtNavigationKeyLineStart,        // '1'
+    ArtNavigationKeyLineEnd,          // '2'
+    ArtNavigationKeySelectToLineStart,  // '3'
+    ArtNavigationKeySelectToLineEnd,    // '4'
+    ArtNavigationKeyForwardDelete,    // '5'
+    ArtNavigationKeyBackspace,        // '6'
+    ArtNavigationKeyUp,               // '7'
+    ArtNavigationKeyDown,             // '8'
+    ArtNavigationKeyLeft,             // '9'
+    ArtNavigationKeyRight,            // '0'
 };
 
 @interface ArtNavigation : NSObject

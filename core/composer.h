@@ -231,8 +231,6 @@ class Composer {
   void insertLiteralText(const std::string& utf8);
   // Moves the cursor by delta with wrap-around at both ends.
   void moveCursor(int delta);
-  // Jumps the cursor to the start or the end of the grid ('-'/'=').
-  void jumpCursor(bool toStart);
   // Opens the candidate menu at the cursor span (digit 8).
   Result openCandidateMenu();
   // Clears menu state and returns to kComposing.

@@ -250,14 +250,16 @@ bool IsCaretMovementKeyCode(unsigned short code) {
         return NO;
     }
 
-    // English mode with nothing composing = every key passes through,
-    // exactly like the Windows build's "keyboard closed" compartment state.
-    // A LIVE composition is the exception since upstream v0.5: it survives
-    // the language switch, so English has to be typed into it rather than
-    // past it (spec §6 中英切換 v5).
+    // English mode with nothing composing = every key passes through, except
+    // the idle editing layer, which is deliberately the same in both modes
+    // (2026-08-14) so the habit never has to be switched. A LIVE composition
+    // is the other exception, since upstream v0.5: it survives the language
+    // switch, so English has to be typed into it rather than past it
+    // (spec §6 中英切換 v5) -- digits included, which is what keeps a run
+    // like "user123" typable without reaching for a numeric keypad.
     if (!sChineseMode) {
         if (!active) {
-            return NO;
+            return [self injectIdleEditingKeyIfWanted:event] ? YES : NO;
         }
         return [self handleEnglishKeyDown:event client:client shift:shift];
     }
@@ -283,21 +285,11 @@ bool IsCaretMovementKeyCode(unsigned short code) {
             }
             [self syncWithResult:[bridge feedBackspace] client:client];
             return YES;
-        case kVK_Tab:
-            // Tab is a second Backspace (spec §6, upstream v0.5), so
-            // deleting never takes a hand off the main block. Shift+Tab is
-            // left alone — reverse focus navigation is the safety valve —
-            // and while idle it is replayed as a real Backspace, exactly the
-            // way 9/0 are replayed as arrows.
-            if (shift) {
-                return NO;
-            }
-            if (!active) {
-                [ArtNavigation inject:ArtNavigationKeyBackspace shiftHeld:NO];
-                return YES;
-            }
-            [self syncWithResult:[bridge feedBackspace] client:client];
-            return YES;
+        // Tab is absent on purpose (2026-08-14): it belongs to the
+        // application. It used to be a second Backspace, a job digit 6 does
+        // now, and handing it back also retires the one failure this shell
+        // could never fix — a Chromium host moving the focus anyway, no
+        // matter what we returned (see mac/docs/NOTES.md).
         case kVK_Return:
         case kVK_ANSI_KeypadEnter:
             if (!active) {
@@ -315,34 +307,10 @@ bool IsCaretMovementKeyCode(unsigned short code) {
             break;
     }
 
-    // Idle navigation keys (spec §6 「閒置導航鍵」). This has to come before
+    // Idle editing layer (spec §6 「閒置編輯層」). This has to come before
     // wouldConsume(), which claims every idle digit and punctuation mark.
-    //
-    // The key identity is taken from charactersIgnoringModifiers so that
-    // Shift+9 still reads as '9' here — that is what makes "do not
-    // intercept 9/0 while Shift is held" expressible, leaving （）typable.
-    if (!active) {
-        NSString *bare = event.charactersIgnoringModifiers;
-        unichar key = bare.length > 0 ? [bare characterAtIndex:0] : 0;
-        ArtNavigationKey navigation = ArtNavigationKeyLeft;
-        BOOL isNavigation = NO;
-        if (key == '-') {
-            navigation = ArtNavigationKeyLineStart;
-            isNavigation = YES;  // intercepted regardless of Shift
-        } else if (key == '=') {
-            navigation = ArtNavigationKeyLineEnd;
-            isNavigation = YES;
-        } else if (!shift && key == '9') {
-            navigation = ArtNavigationKeyLeft;
-            isNavigation = YES;
-        } else if (!shift && key == '0') {
-            navigation = ArtNavigationKeyRight;
-            isNavigation = YES;
-        }
-        if (isNavigation) {
-            [ArtNavigation inject:navigation shiftHeld:shift];
-            return YES;
-        }
+    if (!active && [self injectIdleEditingKeyIfWanted:event]) {
+        return YES;
     }
 
     // Everything else: ask the composer, then feed it. Note `characters`
@@ -366,6 +334,44 @@ bool IsCaretMovementKeyCode(unsigned short code) {
     return YES;
 }
 
+// The idle editing layer, shared by both language modes — the counterpart of
+// the `if (!active)` digit block in
+// CCompositionProcessorEngine::IsVirtualKeyNeedMspy.  With nothing composing
+// the top digit row stops typing and starts editing:
+//
+//     1 行首   2 行尾   3 選到行首   4 選到行尾   5 Delete
+//     6 Backspace       7 ↑   8 ↓   9 ←   0 →
+//
+// The key identity comes from charactersIgnoringModifiers so that Shift+9
+// still reads as '9' here — that is what makes "only the unshifted digits"
+// expressible, leaving （）！…… typable exactly as in Weasel.
+//
+// Returns YES when the key was claimed and replayed.
+- (BOOL)injectIdleEditingKeyIfWanted:(NSEvent *)event {
+    NSEventModifierFlags flags =
+        event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
+    if (flags & NSEventModifierFlagShift) {
+        return NO;
+    }
+    NSString *bare = event.charactersIgnoringModifiers;
+    if (bare.length != 1) {
+        return NO;
+    }
+    switch ([bare characterAtIndex:0]) {
+        case '1': [ArtNavigation inject:ArtNavigationKeyLineStart shiftHeld:NO]; return YES;
+        case '2': [ArtNavigation inject:ArtNavigationKeyLineEnd shiftHeld:NO]; return YES;
+        case '3': [ArtNavigation inject:ArtNavigationKeySelectToLineStart shiftHeld:NO]; return YES;
+        case '4': [ArtNavigation inject:ArtNavigationKeySelectToLineEnd shiftHeld:NO]; return YES;
+        case '5': [ArtNavigation inject:ArtNavigationKeyForwardDelete shiftHeld:NO]; return YES;
+        case '6': [ArtNavigation inject:ArtNavigationKeyBackspace shiftHeld:NO]; return YES;
+        case '7': [ArtNavigation inject:ArtNavigationKeyUp shiftHeld:NO]; return YES;
+        case '8': [ArtNavigation inject:ArtNavigationKeyDown shiftHeld:NO]; return YES;
+        case '9': [ArtNavigation inject:ArtNavigationKeyLeft shiftHeld:NO]; return YES;
+        case '0': [ArtNavigation inject:ArtNavigationKeyRight shiftHeld:NO]; return YES;
+        default: return NO;
+    }
+}
+
 // English mode over a live composition — the transliteration of
 // CCompositionProcessorEngine::IsVirtualKeyNeedMspyEnglish in the Windows
 // build. The editing keys act on the buffer, printable ASCII joins it with
@@ -382,12 +388,7 @@ bool IsCaretMovementKeyCode(unsigned short code) {
         case kVK_Delete:  // Backspace
             [self syncWithResult:[bridge feedBackspace] client:client];
             return YES;
-        case kVK_Tab:
-            if (shift) {
-                return NO;
-            }
-            [self syncWithResult:[bridge feedBackspace] client:client];
-            return YES;
+        // Tab is the application's, as in Chinese mode.
         case kVK_Return:
         case kVK_ANSI_KeypadEnter:
             [self syncWithResult:[bridge feedEnter] client:client];

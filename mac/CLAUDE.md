@@ -233,11 +233,15 @@ talks to both with no bridging layer, and it keeps the build to one compiler.
 
 The composer owns everything **while composing**. The shell owns only:
 
-* **idle** `9`→←, `0`→→, `-`→Home, `=`→End, and **Tab→Backspace** (spec §6 「閒置導航鍵」,
-  Tab added in v0.5). `-`/`=` are intercepted regardless of Shift; `9`/`0` are not
-  intercepted when Shift is held (Shift+9 stays （); **Shift+Tab is never intercepted**,
-  in either mode — reverse focus navigation is the safety valve for taking Tab away.
-  While composing, Tab is simply a second `feedBackspace()`.
+* **the idle editing layer** (spec §6 「閒置編輯層」, v0.8): with nothing composing the
+  whole unshifted digit row is replayed as an editing keystroke — `1` 行首, `2` 行尾,
+  `3`/`4` select to 行首/行尾, `5` ⌦, `6` ⌫, `7`/`8` ↑/↓, `9`/`0` ←/→. **Only the
+  unshifted digits**, so Shift+9 still types （ and Shift+1 still types ！, exactly as in
+  Weasel. `-`, `=` and **Tab** are no longer intercepted at all (v0.8 removed them);
+  handing Tab back is also what retires the Chromium focus-stealing failure recorded in
+  docs/NOTES.md. This layer is the one thing English mode shares with Chinese mode, so
+  the habit never has to be switched — see `-injectIdleEditingKeyIfWanted:`, which both
+  branches call.
 * **bare Shift tap** → `switchLanguage(toEnglish)` + toggle 中/英. Since v0.5 it
   **commits nothing** (spec §6 「中英切換」v5): the composition survives the switch and the
   composer inserts the separator space into its own buffer. The shell must never try to
@@ -246,10 +250,11 @@ The composer owns everything **while composing**. The shell owns only:
   deleted with this change, and wanting it back means the change belongs elsewhere.
 * **English-mode keys while a composition is live** →
   `-handleEnglishKeyDown:client:shift:`, the transliteration of upstream's
-  `IsVirtualKeyNeedMspyEnglish`: Backspace/Tab delete, Enter commits, Esc clears, arrows
-  are eaten, printable ASCII (Space included, case kept) goes to `feedEnglishChar`.
-  With **nothing** composing, English mode still passes every key straight through — that
-  is not an optimisation, it is the rule.
+  `IsVirtualKeyNeedMspyEnglish`: Backspace deletes, Enter commits, Esc clears, arrows
+  are eaten, printable ASCII (Space and **digits** included, case kept) goes to
+  `feedEnglishChar` — which is what keeps a run like "user123" typable without a numeric
+  keypad. With **nothing** composing, English mode passes every key straight through
+  except the idle editing layer above.
 * **per-application 中/英 memory** (spec §6, upstream v0.3). Every application starts in
   **English** and keeps its own mode, restored silently in `-activateServer:`. The Windows
   build gets this nearly free — a TSF text service runs inside the application's process,

@@ -23,6 +23,6 @@ version                         = 0.7.1
 # reindenting does not trip it.
 #
 #   ime/SampleIME/CompositionProcessorEngine.cpp  IsVirtualKeyNeedMspy
-is_virtual_key_need_mspy         = abee4a2a412c1b76dd4854d36b97701ec8e13b3528f6779ab180b74f03e696fd
+is_virtual_key_need_mspy         = 2534b68cd66ef6bd99fd41e80ffed3e89b411f66e192540d82e94680cac6212b
 #   ime/SampleIME/CompositionProcessorEngine.cpp  IsVirtualKeyNeedMspyEnglish
-is_virtual_key_need_mspy_english = 0f82fae4e820c77ef6f97609ce2bbcde94c1c217be93ff8f6d17ee08abf38c8f
+is_virtual_key_need_mspy_english = e4a91c49bc9f173bef233a1aba6ab786a249353a5731ce0a5f3b7452b798870c

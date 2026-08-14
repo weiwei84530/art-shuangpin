@@ -10,7 +10,7 @@
 // longer matches. Two escape hatches, both read by that script:
 //   alt: true     the step deliberately shows a longer way round
 //   audit: false  the engine cannot model this step (it is TSF-layer
-//                 behaviour, like an idle Tab deleting committed text);
+//                 behaviour, like an idle digit injecting a keystroke);
 //                 the replay of that lesson stops here
 //
 // Lesson fields: id, stage, title, steps.
@@ -82,8 +82,8 @@ const FINALS = {
 const CONTROLS = {
   '1':'ˉ', '2':'ˊ', '3':'ˇ', '4':'ˋ', '5':'˙',
   '6':'˙', '7':'ˋ頁', '8':'ˇ選', '9':'ˊ◂', '0':'ˉ▸',
-  ',':'，', '.':'。', '/':'？', '[':'「', ']':'」', "'":'『』', '`':'注音',
-  'Space':'定案', 'Tab':'⌫'
+  ',':'，', '.':'。', '/':'、', '[':'「', ']':'」', "'":'『』', '`':'注音',
+  'Space':'定案'
 };
 
 const TUTORIALS = [
@@ -225,7 +225,7 @@ const TUTORIALS = [
       { keys: ['n','i','3','h','k','3'], screen: { comp: [['你','s'],['好','s']] },
         cap: '先打出「你好」。兩個音節都給了聲調，也就是<b>都已經定案</b>了。' },
       { keys: [], screen: {  },
-        cap: '這時<b>數字鍵換了一種身分</b>。判斷法很簡單：<b>畫面上還是注音</b>→數字全是聲調鍵；<b>畫面上已經是字</b>→數字是控制鍵。<kbd>9</kbd>/<kbd>0</kbd> 移游標、<kbd>8</kbd> 開選單、<kbd>-</kbd>/<kbd>=</kbd> 跳到頭／尾。' },
+        cap: '這時<b>數字鍵換了一種身分</b>。判斷法很簡單：<b>畫面上還是注音</b>→數字全是聲調鍵；<b>畫面上已經是字</b>→數字是控制鍵。<kbd>9</kbd>/<kbd>0</kbd> 移游標、<kbd>8</kbd> 開選單。' },
       { keys: ['9'], screen: { anchor: 1, cur: 1 },
         cap: '<kbd>9</kbd>＝游標左移。<b>反白的字就是選字對象</b>（游標右邊那個）。' },
       { keys: ['9'], screen: { anchor: 0, cur: 0 },
@@ -295,7 +295,7 @@ const TUTORIALS = [
       { keys: ['Enter'], screen: { text: '你好，再見。', comp: [], anchor: null, cur: null, menu: null },
         cap: '<kbd>Enter</kbd> 才整段上屏。閒置時打標點＝<b>直接開一段新的組字串</b>，一樣不會馬上送出去。' },
       { keys: [], screen: {  },
-        cap: '對應表：<kbd>,</kbd>，　<kbd>.</kbd>。　<kbd>?</kbd>？　<kbd>!</kbd>！　<kbd>:</kbd>：　<kbd>\\</kbd>、　<kbd>[</kbd><kbd>]</kbd>「」　<kbd>{</kbd><kbd>}</kbd>『』　<kbd>(</kbd><kbd>)</kbd>（）　<kbd>&lt;</kbd><kbd>&gt;</kbd>《》　<kbd>^</kbd>……　<kbd>_</kbd>——　<kbd>~</kbd>～；引號 <kbd>"</kbd> 與 <kbd>\'</kbd> 開閉交替。<kbd>;</kbd> 單獨按是「；」，組字中仍是 ㄧㄥ 韻母鍵。' }
+        cap: '對應表：<kbd>,</kbd>，　<kbd>.</kbd>。　<kbd>?</kbd>？　<kbd>!</kbd>！　<kbd>:</kbd>：　<kbd>/</kbd> 或 <kbd>\\</kbd>、　<kbd>[</kbd><kbd>]</kbd>「」　<kbd>{</kbd><kbd>}</kbd>『』　<kbd>(</kbd><kbd>)</kbd>（）　<kbd>&lt;</kbd><kbd>&gt;</kbd>《》　<kbd>^</kbd>……　<kbd>_</kbd>——　<kbd>~</kbd>～；引號 <kbd>"</kbd> 與 <kbd>\'</kbd> 開閉交替。<kbd>;</kbd> 單獨按是「；」，組字中仍是 ㄧㄥ 韻母鍵。' }
     ]
   },
   {
@@ -329,17 +329,19 @@ const TUTORIALS = [
     id: 'homerow', stage: '情境', title: '不離開主鍵區：刪除與游標',
     steps: [
       { keys: [], screen: {  },
-        cap: '這套輸入法把數字排和 <kbd>Tab</kbd> 借來做編輯，手不用移到方向鍵區。<b>組字中</b>：<kbd>9</kbd>/<kbd>0</kbd> 移游標、<kbd>-</kbd>/<kbd>=</kbd> 跳頭／尾、<kbd>8</kbd> 開選單、<kbd>Tab</kbd>＝<kbd>⌫</kbd>。' },
+        cap: '這套輸入法把數字排借來做編輯，手不用移到方向鍵區。數字排有<b>兩種身分</b>，分界是「畫面上還有沒有組字串」。' },
       { keys: ['n','i','3','h','k','3'], screen: { comp: [['你','s'],['好','s']] },
-        cap: '打「你好」試試。' },
-      { keys: ['Tab'], screen: { comp: [['你','s']] },
-        cap: '<kbd>Tab</kbd> 就是 Backspace，刪掉「好」。（音節打到一半時是<b>逐鍵</b>刪，已經成字則是<b>逐字</b>刪。）' },
+        cap: '先打「你好」。<b>組字中</b>：<kbd>9</kbd>/<kbd>0</kbd> 移游標、<kbd>8</kbd> 開選單。' },
+      { keys: ['Backspace'], screen: { comp: [['你','s']] },
+        cap: '<kbd>⌫</kbd> 刪掉「好」。（音節打到一半時是<b>逐鍵</b>刪，已經成字則是<b>逐字</b>刪。）' },
       { keys: ['Enter'], screen: { text: '你', comp: [] },
-        cap: '<kbd>Enter</kbd> 上屏「你」。' },
-      { keys: ['Tab'], screen: { text: '' }, audit: false,
-        cap: '<b>沒有組字串的時候</b>，<kbd>Tab</kbd> 會代送一個真正的 Backspace——連已經上屏的字都刪得掉。同理閒置時 <kbd>9</kbd>/<kbd>0</kbd>＝←/→、<kbd>-</kbd>/<kbd>=</kbd>＝Home/End，按著實體 Shift 就變成選取。' },
+        cap: '<kbd>Enter</kbd> 上屏「你」。組字串沒了，數字排立刻換上另一個身分。' },
+      { keys: [], screen: { text: '你' }, audit: false,
+        cap: '<b>沒有組字串的時候</b>，整排數字都是編輯鍵：<kbd>1</kbd> 行首、<kbd>2</kbd> 行尾、<kbd>3</kbd>/<kbd>4</kbd> 選取到行首／行尾、<kbd>5</kbd> Delete、<kbd>6</kbd> Backspace、<kbd>7</kbd>/<kbd>8</kbd> ↑／↓、<kbd>9</kbd>/<kbd>0</kbd> ←／→。' },
+      { keys: [], screen: { text: '你' }, audit: false,
+        cap: '這排編輯鍵<b>中英文模式都一樣</b>，習慣不用切換。<kbd>Tab</kbd>、<kbd>-</kbd>、<kbd>=</kbd> 完全沒有被攔截，切換欄位照常。' },
       { keys: [], screen: {  },
-        cap: '代價是中文模式下 <kbd>Tab</kbd> 不能切換欄位、數字排打不出數字。要用的時候<b>按 Shift 切英文</b>就好，英文模式一切照常。<kbd>Shift</kbd>+<kbd>Tab</kbd> 不攔，反向切換欄位隨時可用；<b>數字鍵盤（NumPad）也不受影響</b>，隨時打得出數字。' }
+        cap: '代價是中文模式下數字排打不出數字。要打就用<b>鍵盤右邊的數字鍵</b>（完全不受影響），或<b>按 Shift 切英文</b>——英文模式下只要已經在打一串字，數字鍵就是數字，<code>user123</code> 一路打完不用切。' }
     ]
   },
   {

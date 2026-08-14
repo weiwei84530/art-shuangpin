@@ -301,24 +301,16 @@ class Runner {
            SplitCodePoints(s.after).size();
   }
 
-  // Walks the cursor to `target` by the cheapest route that does NOT wrap.
-  // 9/0 do wrap around both ends, but a drill that sends the cursor off one
-  // end to come back at the other teaches nothing and reads as a glitch;
-  // '-' and '=' jump to the ends and are usually no more keystrokes anyway.
+  // Walks the cursor to `target` one span at a time. 9/0 do wrap around both
+  // ends, but a drill that sends the cursor off one end to come back at the
+  // other teaches nothing and reads as a glitch, so the walk always goes the
+  // direct way. ('-'/'=' used to jump to the ends; they mean nothing as of
+  // 2026-08-14.)
   void MoveCursorTo(size_t target) {
     const size_t at = CursorPosition();
     if (at == target) return;
     const size_t length = GridLength();
 
-    const size_t direct = at > target ? at - target : target - at;
-    const size_t viaStart = 1 + target;
-    const size_t viaEnd = 1 + (length - target);
-
-    if (viaStart < direct && viaStart <= viaEnd) {
-      Press('-');
-    } else if (viaEnd < direct) {
-      Press('=');
-    }
     for (int guard = 0; guard <= static_cast<int>(length) + 1; ++guard) {
       const size_t now = CursorPosition();
       if (now == target) return;
@@ -520,10 +512,12 @@ bool LoadLessons(const std::string& path, const ReadingIndex& index,
 
 // The punctuation keys the IME turns into full-width symbols, reversed so a
 // lesson can spell 「，」 and the drill knows to press ','.
+// 、 has two keys since 2026-08-14; the drill teaches '/' rather than the
+// backslash because it is a far shorter reach for the right little finger.
 char PunctuationKey(const std::string& symbol) {
   static const std::map<std::string, char> map = {
       {"，", ','}, {"。", '.'}, {"？", '?'}, {"！", '!'}, {"：", ':'},
-      {"；", ';'}, {"、", '\\'}, {"「", '['}, {"」", ']'}, {"『", '{'},
+      {"；", ';'}, {"、", '/'}, {"「", '['}, {"」", ']'}, {"『", '{'},
       {"』", '}'}, {"（", '('}, {"）", ')'}, {"《", '<'}, {"》", '>'},
       {"～", '~'},
   };

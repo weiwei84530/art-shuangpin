@@ -1626,21 +1626,26 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeedMspy(UINT uCode, _In_reads_(1)
 
     selecting;  // selection keys are all plain chars routed through feedChar
 
+    // [MspyIME] Ctrl and Alt chords are the application's, always. This has
+    // to be checked up front now that the composer claims every remaining
+    // printable character (2026-08-14): Ctrl+A arrives as 0x01 and Ctrl+1
+    // as '1', so without this guard Select All would be swallowed and
+    // Ctrl+1 would navigate instead of switching browser tabs.
+    if (Global::ModifiersValue & (TF_MOD_RCONTROL | TF_MOD_LCONTROL | TF_MOD_CONTROL | TF_MOD_RALT | TF_MOD_LALT | TF_MOD_ALT))
+    {
+        return FALSE;
+    }
+
+    // [MspyIME] Tab is absent from the switch on purpose (2026-08-14): it
+    // belongs to the application. It used to be a second Backspace so that
+    // deleting never took a hand off the main block, a job digit 6 does now,
+    // and handing it back restores field navigation -- which also retires
+    // the one case macOS could never make work, where a Chromium host moved
+    // the focus regardless of what the input method returned.
     switch (uCode)
     {
     case VK_BACK:
         return active ? eat(CATEGORY_COMPOSING, FUNCTION_BACKSPACE) : FALSE;
-    case VK_TAB:
-        // [MspyIME] Tab is a second Backspace (2026-08-08), so deleting
-        // never takes a hand off the main block. Shift+Tab is left alone so
-        // reverse focus navigation stays reachable; idle it is replayed as
-        // a real Backspace, the way 9/0 are replayed as arrows.
-        if (Global::ModifiersValue & (TF_MOD_SHIFT | TF_MOD_LSHIFT | TF_MOD_RSHIFT))
-        {
-            return FALSE;
-        }
-        return active ? eat(CATEGORY_COMPOSING, FUNCTION_BACKSPACE)
-                      : eat(CATEGORY_COMPOSING, FUNCTION_NAV_INJECT);
     case VK_RETURN:
         return active ? eat(CATEGORY_COMPOSING, FUNCTION_FINALIZE_TEXTSTORE) : FALSE;
     case VK_ESCAPE:
@@ -1670,17 +1675,17 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeedMspy(UINT uCode, _In_reads_(1)
         return active ? eat(CATEGORY_COMPOSING, FUNCTION_NUMPAD_COMMIT) : FALSE;
     }
 
-    // [MspyIME] Idle navigation keys (spec §6.5): with no composition, 9/0
-    // (Shift up) and -/= (any Shift state) are replayed as injected
-    // Left/Right/Home/End keystrokes; a physically held Shift then extends
-    // the selection for free. Shift+9/0 falls through to the char path so
-    // （）stay typable. ModifiersValue is refreshed by every sink call
-    // before we run, so reading it here is side-effect free.
+    // [MspyIME] Idle navigation layer (2026-08-14, spec §6.5). With no
+    // composition the whole top digit row is replayed as injected editing
+    // keystrokes -- see InjectNavigationKey() for the map. Only the
+    // UNSHIFTED digits are taken: Shift+digit falls through to the char path
+    // so （）！…… stay typable, exactly as they are in Weasel.
+    // ModifiersValue is refreshed by every sink call before we run, so
+    // reading it here is side-effect free.
     if (!active)
     {
         const bool shiftHeld = (Global::ModifiersValue & (TF_MOD_SHIFT | TF_MOD_LSHIFT | TF_MOD_RSHIFT)) != 0;
-        if ((!shiftHeld && (uCode == '9' || uCode == '0')) ||
-            uCode == VK_OEM_MINUS || uCode == VK_OEM_PLUS)
+        if (!shiftHeld && uCode >= '0' && uCode <= '9')
         {
             return eat(CATEGORY_COMPOSING, FUNCTION_NAV_INJECT);
         }
@@ -1708,12 +1713,15 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeedMspy(UINT uCode, _In_reads_(1)
     return FALSE;
 }
 
-// [MspyIME] Key routing in ENGLISH mode (2026-08-08). The system keyboard
-// is closed, so this only runs while a composition is still live: those keys
-// keep coming to us and join the buffer literally instead of going to the
-// application, which is what lets one uncommitted string hold Chinese and
-// English at once. With nothing composing every key passes through and plain
-// English typing behaves exactly as if the IME were not loaded.
+// [MspyIME] Key routing in ENGLISH mode (2026-08-08). The system keyboard is
+// closed, but TSF keeps offering us the keys, so we choose what to take. A
+// live composition takes everything printable: those keys join the buffer
+// literally instead of going to the application, which is what lets one
+// uncommitted string hold Chinese and English at once -- digits included, so
+// a run like "user123" needs no detour. With nothing composing the only keys
+// taken are the unshifted digit row (the navigation layer, 2026-08-14);
+// everything else passes through and plain English typing behaves exactly as
+// if the IME were not loaded.
 BOOL CCompositionProcessorEngine::IsVirtualKeyNeedMspyEnglish(UINT uCode, _In_reads_(1) WCHAR *pwch, _Out_opt_ _KEYSTROKE_STATE *pKeyState)
 {
     if (pKeyState)
@@ -1725,10 +1733,8 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeedMspyEnglish(UINT uCode, _In_re
     {
         return FALSE;
     }
-    if (_pMspyBridge->Composer()->state() == mspy::Composer::State::kEmpty)
-    {
-        return FALSE;
-    }
+    const bool active =
+        _pMspyBridge->Composer()->state() != mspy::Composer::State::kEmpty;
 
     auto eat = [pKeyState](KEYSTROKE_CATEGORY cat, KEYSTROKE_FUNCTION fn) -> BOOL
     {
@@ -1740,15 +1746,31 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeedMspyEnglish(UINT uCode, _In_re
         return TRUE;
     };
 
+    // Ctrl/Alt chords are the application's here too.
+    if (Global::ModifiersValue & (TF_MOD_RCONTROL | TF_MOD_LCONTROL | TF_MOD_CONTROL | TF_MOD_RALT | TF_MOD_LALT | TF_MOD_ALT))
+    {
+        return FALSE;
+    }
+
+    // The idle navigation layer is the one thing English mode shares with
+    // Chinese mode (2026-08-14): with nothing composing, the unshifted digit
+    // row edits rather than types, in both modes, so the habit never has to
+    // be switched. Everything else about idle English mode is unchanged --
+    // every other key passes straight through.
+    if (!active)
+    {
+        const bool shiftHeld = (Global::ModifiersValue & (TF_MOD_SHIFT | TF_MOD_LSHIFT | TF_MOD_RSHIFT)) != 0;
+        if (!shiftHeld && uCode >= '0' && uCode <= '9')
+        {
+            return eat(CATEGORY_COMPOSING, FUNCTION_NAV_INJECT);
+        }
+        return FALSE;
+    }
+
+    // Tab is the application's, exactly as in Chinese mode.
     switch (uCode)
     {
     case VK_BACK:
-        return eat(CATEGORY_COMPOSING, FUNCTION_BACKSPACE);
-    case VK_TAB:
-        if (Global::ModifiersValue & (TF_MOD_SHIFT | TF_MOD_LSHIFT | TF_MOD_RSHIFT))
-        {
-            return FALSE;
-        }
         return eat(CATEGORY_COMPOSING, FUNCTION_BACKSPACE);
     case VK_RETURN:
         return eat(CATEGORY_COMPOSING, FUNCTION_FINALIZE_TEXTSTORE);

@@ -120,7 +120,7 @@ reason: they are read by the person installing, not by whoever is editing the
 repo. The comments in them are English like everything else.
 
 Everything the composer decides stays in the composer. The shell owns the
-idle navigation keys (`9`/`0`/`-`/`=`, and Tab since v0.5), the bare-Shift
+idle editing layer (the unshifted digit row, v0.8), the bare-Shift
 toggle plus the per-application memory of what it set, the numpad exemption,
 "arrows do nothing while composing", routing English-mode keys into the same
 composition, and drawing. That list is complete; if something outside it
@@ -197,7 +197,7 @@ committing, a user clicking away would lose a paragraph rather than a word.
 | no more un-toning: Backspace deletes the whole syllable | none — `feedBackspace()` |
 | lone first keys are syllables (字 = `z4`, 知 = `v` + Space) | none — `feedChar()` |
 | a key pair the dictionary rejects is eaten instead of shown as fake bopomofo (`hy` = ㄏㄨㄞ, not ㄏㄩ) | none — `feedChar()` |
-| **Tab = Backspace** | **shell** — composing it is `feedBackspace()`; idle it injects a real Backspace |
+| **Tab, `-` and `=` handed back to the application; the idle digit row edits instead** | **shell** — `-injectIdleEditingKeyIfWanted:` |
 | **the Shift switch no longer commits; English joins the composition** | **shell + bridge** — `switchLanguage()`, `feedEnglishChar()` |
 
 The last row is the one with teeth. English mode used to mean "pass every key
@@ -363,32 +363,27 @@ Two macOS-specific details in the same function:
 Since v0.5 there is a second, much shorter routing function beside it.
 `-handleEnglishKeyDown:client:shift:` runs only when the mode is English
 *and* something is composing, and it mirrors
-`CCompositionProcessorEngine::IsVirtualKeyNeedMspyEnglish`: Backspace and Tab
-delete, Enter commits, Esc clears, arrows are eaten so the caret cannot leave
+`CCompositionProcessorEngine::IsVirtualKeyNeedMspyEnglish`: Backspace
+deletes, Enter commits, Esc clears, arrows are eaten so the caret cannot leave
 the buffer, printable ASCII joins it with its case intact, and everything
 else — function keys, anything carrying Cmd/Ctrl/Opt — belongs to the
 application. Space counts as printable on purpose: it is a literal space
 there, which is what makes a multi-word English run possible inside one
-composition.
+composition. So are digits, which is what keeps "user123" typable on a
+machine with no numeric keypad.
 
-Tab is worth one more line. In Chinese mode it is a second Backspace while
-composing and an *injected* Backspace while idle — the only idle navigation
-key that deletes rather than moves. Shift+Tab is never intercepted in either
-mode; reverse focus navigation is the safety valve for having taken Tab
-away.
-
-The idle half of that does not survive contact with Chromium-based hosts,
-which run their own focus navigation even after we return YES. Measured,
-with the reasoning for leaving it alone, under "What to check first" item 6.
+Since v0.8 the idle branch of English mode is no longer a bare `return NO`:
+it runs `-injectIdleEditingKeyIfWanted:`, the same call the Chinese branch
+makes. The layer is deliberately identical in both modes so the habit never
+has to be switched.
 
 ## Deliberate differences from the Windows build
 
-**`-` / `=` post Cmd+Left / Cmd+Right, not Home / End.** The spec asks for
-行首/行尾. On macOS, Home and End mean document start/end and in many apps
+**Digits `1`–`4` post Cmd+Left / Cmd+Right, not Home / End.** The spec asks
+for 行首/行尾. On macOS, Home and End mean document start/end and in many apps
 only scroll; line start/end is Cmd+arrow. The meaning is ported, not the key
-code. A physically held Shift is carried onto the injected event, so
-Shift+`-` extends the selection to the start of the line exactly as
-Shift+Home does on Windows.
+code. `3`/`4` add Shift to that, giving the selection Windows gets from
+Shift+Home / Shift+End.
 
 **The Chinese/English indicator is a HUD plus a menu checkmark, not a
 menu-bar icon.** English mode on Windows is the system's own keyboard-open
@@ -486,19 +481,20 @@ corner reads as a bug while a slightly stale position does not.
    `LSBackgroundOnly` for `LSUIElement` in `Info.plist` — that is the one
    plist key worth trying blind.
 
-5. **Idle 9/0/-/= or Tab do nothing.** Accessibility trust. The menu item
+5. **The idle digit row does nothing.** Accessibility trust. The menu item
    reports the current state, and the first press prompts. A row sitting in
    System Settings — even a ticked one — proves nothing; if pressing `9`
    still raises the permission prompt, it is stale. See "Ad-hoc signing and
-   Accessibility" below, which is the usual answer. Note that idle Tab is
-   *eaten* either way, so without the grant it neither deletes nor moves
-   focus — same shape as the other four, except in the hosts of item 6,
-   where the focus moves regardless.
+   Accessibility" below, which is the usual answer. Without the grant the
+   digits are still *eaten*, so they type nothing either — ten dead keys,
+   which is why the failure is logged unconditionally.
 
-6. **Idle Tab moves the focus instead of deleting, but ONLY in
-   Chromium-based applications** — Slack, LINE, VS Code, Chrome. Not our
-   bug, and not fixable from IMK. Measured 2026-08-14 with key-routing logs
-   in Slack, every step correct on our side:
+6. **(Historical, fixed in v0.8) Idle Tab moved the focus instead of
+   deleting, but ONLY in Chromium-based applications** — Slack, LINE, VS
+   Code, Chrome. Never our bug, and never fixable from IMK. Kept here
+   because the measurement is the clearest evidence in the repo of what a
+   Chromium host does with a consumed key. Measured 2026-08-14 with
+   key-routing logs in Slack, every step correct on our side:
 
    ```
    10.990540  event type=10 keyCode=48         Tab arrives
@@ -512,18 +508,17 @@ corner reads as a bug while a slightly stale position does not.
    `-handleEvent:` returned YES, and Chromium ran its focus navigation
    regardless: it treats a key the input method consumed without producing
    text or marked text as unused. AppKit hosts honour the same return value,
-   which is why TextEdit deletes correctly. The Windows half cannot show
+   which is why TextEdit deleted correctly. The Windows half cannot show
    this at all — a TSF keystroke sink sits ahead of the application, so a
    key it eats never reaches one.
 
-   Scope is narrower than it first looks: **composing** Tab is correct
-   everywhere, Chromium included, because marked text exists at that moment
-   and the return value is then honoured. Only deleting *already committed*
-   text with idle Tab is lost, and a real Backspace does that job. The one
-   thing that would fix it is a CGEventTap taking Tab before the host sees
-   it — considered and declined 2026-08-14: it is a global interceptor for
-   one key in one situation, and any gap in its enable/disable conditions
-   costs the user Tab system-wide.
+   A CGEventTap taking Tab before the host saw it was considered and
+   declined on 2026-08-14: a global interceptor for one key in one
+   situation, where any gap in its enable/disable conditions costs the user
+   Tab system-wide. **v0.8 retired the problem instead of fixing it** — Tab
+   is no longer intercepted at all, in either mode, and digit `6` is the
+   Backspace that never leaves the main block. If a future change is ever
+   tempted to take Tab back, this is what it is signing up for.
 
 7. **The input source name shows as the raw mode ID, or a menu header reads
    `CFBundleName`.** A localization lookup fell through — see "The name and
@@ -731,7 +726,7 @@ build/repl --data ../out/data.txt --keys "ni3hk3vs 99"
 ```
 
 Establish what the composer *should* do there before debugging the shell.
-Control tokens inside `--keys`: `<` Backspace (which is also what Tab does),
+Control tokens inside `--keys`: `<` Backspace,
 `!` Esc, a literal newline for Enter, and **`#` for the bare-Shift language
 switch** — everything after a `#` is fed through `feedEnglishChar` until the
 next one, so

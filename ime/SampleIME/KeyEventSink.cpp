@@ -57,31 +57,64 @@ __inline UINT VKeyFromVKPacketAndWchar(UINT vk, WCHAR wch)
 // so the injected key is processed after the current one and re-enters our
 // key sink in the idle state, where these VKs always pass through to the
 // app. A physically held Shift modifies the injected key into a selection.
+// [MspyIME] The idle editing layer (2026-08-14). With no composition on
+// screen the top digit row stops typing and starts editing, so the whole of
+// it is within reach of the home row:
+//
+//     1 Home   2 End   3 Shift+Home   4 Shift+End   5 Delete
+//     6 Backspace      7 Up   8 Down  9 Left        0 Right
+//
+// 3 and 4 wrap the movement in a synthetic Shift to extend the selection.
+// That is safe next to the bare-Shift-tap language switch: the Home/End in
+// between reaches Global::UpdateModifiers, whose default arm clears
+// IsShiftKeyDownOnly, so CheckShiftKeyOnly declines the preserved key.
 static void InjectNavigationKey(UINT code)
 {
     WORD vk = 0;
+    bool withShift = false;
     switch (code)
     {
-    case '9':          vk = VK_LEFT;  break;
-    case '0':          vk = VK_RIGHT; break;
-    case VK_OEM_MINUS: vk = VK_HOME;  break;
-    case VK_OEM_PLUS:  vk = VK_END;   break;
-    case VK_TAB:       vk = VK_BACK;  break;
-    default:           return;
+    case '1': vk = VK_HOME;   break;
+    case '2': vk = VK_END;    break;
+    case '3': vk = VK_HOME;   withShift = true; break;
+    case '4': vk = VK_END;    withShift = true; break;
+    case '5': vk = VK_DELETE; break;
+    case '6': vk = VK_BACK;   break;
+    case '7': vk = VK_UP;     break;
+    case '8': vk = VK_DOWN;   break;
+    case '9': vk = VK_LEFT;   break;
+    case '0': vk = VK_RIGHT;  break;
+    default:  return;
     }
 
-    // Backspace lives on the main block; only the navigation keys are the
-    // extended (grey-block) variants.
+    // Backspace lives on the main block; the rest are the extended
+    // (grey-block) variants.
     const DWORD extended = (vk == VK_BACK) ? 0 : KEYEVENTF_EXTENDEDKEY;
 
-    INPUT inputs[2] = {};
-    inputs[0].type = INPUT_KEYBOARD;
-    inputs[0].ki.wVk = vk;
-    inputs[0].ki.dwFlags = extended;
-    inputs[1].type = INPUT_KEYBOARD;
-    inputs[1].ki.wVk = vk;
-    inputs[1].ki.dwFlags = extended | KEYEVENTF_KEYUP;
-    SendInput(ARRAYSIZE(inputs), inputs, sizeof(INPUT));
+    INPUT inputs[4] = {};
+    UINT n = 0;
+    if (withShift)
+    {
+        inputs[n].type = INPUT_KEYBOARD;
+        inputs[n].ki.wVk = VK_SHIFT;
+        ++n;
+    }
+    inputs[n].type = INPUT_KEYBOARD;
+    inputs[n].ki.wVk = vk;
+    inputs[n].ki.dwFlags = extended;
+    ++n;
+    inputs[n].type = INPUT_KEYBOARD;
+    inputs[n].ki.wVk = vk;
+    inputs[n].ki.dwFlags = extended | KEYEVENTF_KEYUP;
+    ++n;
+    if (withShift)
+    {
+        inputs[n].type = INPUT_KEYBOARD;
+        inputs[n].ki.wVk = VK_SHIFT;
+        inputs[n].ki.dwFlags = KEYEVENTF_KEYUP;
+        ++n;
+    }
+    SendInput(n, inputs, sizeof(INPUT));
 }
 
 //+---------------------------------------------------------------------------

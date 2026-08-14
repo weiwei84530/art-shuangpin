@@ -138,7 +138,8 @@ TEST_F(ComposerTest, MirroredToneDigits) {
 
 TEST_F(ComposerTest, DigitsAreTonesUntilTheSyllableSettles) {
   // While the syllable shows bopomofo every digit is a tone digit, so the
-  // cursor keys are out of reach; '-'/'=' are eaten for the same reason.
+  // cursor keys are out of reach; '-'/'=' are eaten because they now mean
+  // nothing at all.
   Type("ni3hk");
   EXPECT_EQ(composer_->composedText(), "你ㄏㄠ");
   for (const char* key : {"-", "="}) {
@@ -405,46 +406,63 @@ TEST_F(ComposerTest, CursorWrapsAtBothEnds) {
   EXPECT_EQ(segments.highlighted, "好");
 }
 
-TEST_F(ComposerTest, MinusJumpsCursorToStart) {
-  Type("ni3hk3");  // 你好, cursor at the right end
-  Type("-");
-  auto segments = composer_->displaySegments();
-  EXPECT_EQ(segments.before, "");
-  EXPECT_EQ(segments.highlighted, "你");
-  EXPECT_EQ(segments.after, "好");
-}
-
-TEST_F(ComposerTest, EqualsJumpsCursorToEnd) {
+TEST_F(ComposerTest, MinusEqualsDoNothing) {
+  // '-'/'=' no longer jump the cursor to the ends (2026-08-14). They have no
+  // full-width meaning either, so in Chinese mode they are simply eaten --
+  // the cursor still moves one span at a time with 9/0.
   Type("ni3hk3");
-  Type("-");  // cursor jumped to the front
-  Type("=");
+  Type("-");
   auto segments = composer_->displaySegments();
   EXPECT_EQ(segments.before, "你好");
   EXPECT_EQ(segments.highlighted, "");
-  EXPECT_EQ(segments.after, "");
+  Type("=");
+  segments = composer_->displaySegments();
+  EXPECT_EQ(segments.before, "你好");
+  EXPECT_EQ(composer_->composedText(), "你好");
 }
 
-TEST_F(ComposerTest, MinusWhileSelectingDismissesMenuAndJumps) {
+TEST_F(ComposerTest, MinusWhileSelectingOnlyDismissesTheMenu) {
   Type("ni3hk3");
   Type("9");  // cursor between 你 and 好
   Type("8");
   ASSERT_EQ(composer_->state(), Composer::State::kSelecting);
-  // Like 9/0, '-' closes the menu and then performs its normal function.
+  // Any key that is not a selection key closes the menu; '-' then does
+  // nothing of its own, so the cursor stays where the menu left it.
   Type("-");
   EXPECT_EQ(composer_->state(), Composer::State::kComposing);
   auto segments = composer_->displaySegments();
-  EXPECT_EQ(segments.before, "");
-  EXPECT_EQ(segments.highlighted, "你");
+  EXPECT_EQ(segments.before, "你");
+  EXPECT_EQ(segments.highlighted, "好");
 }
 
-TEST_F(ComposerTest, MinusEqualsPassThroughWhenIdle) {
-  // Idle '-'/'=' belong to the shell (Home/End navigation keys); the
-  // composer must not consume them.
-  auto r = composer_->feedChar('-');
-  EXPECT_FALSE(r.consumed);
-  r = composer_->feedChar('=');
-  EXPECT_FALSE(r.consumed);
-  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
+TEST_F(ComposerTest, HalfWidthOnlySymbolsAreEatenEvenWhenIdle) {
+  // Chinese mode emits full-width text or nothing at all: a symbol with no
+  // full-width mapping must not leak into the document. Typing these
+  // requires English mode (Shift).
+  for (const char c : {'-', '=', '+', '@', '#', '$', '%', '&', '*', '|'}) {
+    auto r = composer_->feedChar(c);
+    EXPECT_TRUE(r.consumed) << c;
+    EXPECT_EQ(r.commitText, "") << c;
+    EXPECT_EQ(composer_->state(), Composer::State::kEmpty) << c;
+  }
+}
+
+TEST_F(ComposerTest, ControlCharactersAreNeverConsumed) {
+  // Ctrl chords reach the shell as control codes; the composer must decline
+  // them or Ctrl+A would be swallowed instead of selecting all.
+  EXPECT_FALSE(composer_->wouldConsume(''));
+  EXPECT_FALSE(composer_->wouldConsume(''));
+  EXPECT_FALSE(composer_->wouldConsume(''));
+  Type("ni3");
+  EXPECT_FALSE(composer_->wouldConsume(''));
+}
+
+TEST_F(ComposerTest, SlashTypesTheEnumerationComma) {
+  // Rime maps both '\' and '/' to 、; '/' is the shorter reach.
+  Type("/");
+  EXPECT_EQ(composer_->composedText(), "、");
+  Type("\\");
+  EXPECT_EQ(composer_->composedText(), "、、");
 }
 
 TEST_F(ComposerTest, PunctuationSettlesAndJoinsTheComposition) {
@@ -490,7 +508,7 @@ TEST_F(ComposerTest, PunctuationIsSelectableAndDeletable) {
   composer_->closeCandidateMenu();
 
   // Backspace deletes it one symbol at a time.
-  Type("=");
+  Type("00");  // walk the cursor back to the end
   composer_->feedBackspace();
   EXPECT_EQ(composer_->composedText(), "你好");
 }
@@ -582,9 +600,9 @@ TEST_F(ComposerTest, SelectionFlow) {
 }
 
 TEST_F(ComposerTest, SelectionMovesCursorPastTheFixedSpan) {
-  // 你好你好 with the cursor jumped back to the front.
+  // 你好你好 with the cursor walked back to the front.
   Type("ni3hk3ni3hk3");
-  Type("-");
+  Type("9999");
   ASSERT_EQ(composer_->displaySegments().highlighted, "你");
 
   // Picking the two-character 妳好 parks the cursor after the whole span,

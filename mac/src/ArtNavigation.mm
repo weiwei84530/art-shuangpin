@@ -45,10 +45,10 @@ static BOOL sWarnedUntrusted = NO;
         // AND ticked and still not apply, because an ad-hoc signature is
         // identified by its code directory hash — which changes on every
         // rebuild — so the tick belongs to an earlier build while the list
-        // goes on showing it. Say that here rather than leave four dead keys.
+        // goes on showing it. Say that here rather than leave ten dead keys.
         if (!sWarnedUntrusted) {
             sWarnedUntrusted = YES;
-            ArtLogAlways(@"idle navigation (9/0/-/=/Tab) is off: this build "
+            ArtLogAlways(@"the idle digit-row editing layer is off: this build "
                          @"is not trusted for Accessibility. An entry already "
                          @"ticked in System Settings > Privacy & Security > "
                          @"Accessibility may belong to a previous build — "
@@ -64,12 +64,6 @@ static BOOL sWarnedUntrusted = NO;
     CGKeyCode code = 0;
     CGEventFlags flags = 0;
     switch (key) {
-        case ArtNavigationKeyLeft:
-            code = (CGKeyCode)kVK_LeftArrow;
-            break;
-        case ArtNavigationKeyRight:
-            code = (CGKeyCode)kVK_RightArrow;
-            break;
         case ArtNavigationKeyLineStart:
             code = (CGKeyCode)kVK_LeftArrow;
             flags |= kCGEventFlagMaskCommand;
@@ -78,8 +72,31 @@ static BOOL sWarnedUntrusted = NO;
             code = (CGKeyCode)kVK_RightArrow;
             flags |= kCGEventFlagMaskCommand;
             break;
+        case ArtNavigationKeySelectToLineStart:
+            code = (CGKeyCode)kVK_LeftArrow;
+            flags |= kCGEventFlagMaskCommand | kCGEventFlagMaskShift;
+            break;
+        case ArtNavigationKeySelectToLineEnd:
+            code = (CGKeyCode)kVK_RightArrow;
+            flags |= kCGEventFlagMaskCommand | kCGEventFlagMaskShift;
+            break;
+        case ArtNavigationKeyForwardDelete:
+            code = (CGKeyCode)kVK_ForwardDelete;
+            break;
         case ArtNavigationKeyBackspace:
             code = (CGKeyCode)kVK_Delete;
+            break;
+        case ArtNavigationKeyUp:
+            code = (CGKeyCode)kVK_UpArrow;
+            break;
+        case ArtNavigationKeyDown:
+            code = (CGKeyCode)kVK_DownArrow;
+            break;
+        case ArtNavigationKeyLeft:
+            code = (CGKeyCode)kVK_LeftArrow;
+            break;
+        case ArtNavigationKeyRight:
+            code = (CGKeyCode)kVK_RightArrow;
             break;
     }
     if (shiftHeld) {

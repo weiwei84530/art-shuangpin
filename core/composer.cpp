@@ -27,6 +27,7 @@ const char* DirectPunctuation(char c) {
     case ':': return "：";
     case ';': return "；";  // only reachable when not part of a syllable
     case '\\': return "、";
+    case '/': return "、";  // Rime maps both '\' and '/' to 、; '/' is the shorter reach
     case '[': return "「";
     case ']': return "」";
     case '{': return "『";
@@ -375,11 +376,6 @@ void Composer::moveCursor(int delta) {
   }
 }
 
-void Composer::jumpCursor(bool toStart) {
-  unsettled_ = {};  // moving away settles the syllable
-  grid_.setCursor(toStart ? 0 : grid_.length());
-}
-
 bool Composer::finalizePendingBare() {
   if (!pending_.convertible()) return false;
   for (const auto& syllable : pending_.candidates()) {
@@ -478,6 +474,11 @@ void Composer::updateStateAfterMutation() {
 }
 
 bool Composer::wouldConsume(char c) const {
+  // Printable ASCII only. Everything else -- control codes from Ctrl chords,
+  // anything above 0x7E -- belongs to the application. This matters now that
+  // the fall-through below claims every remaining printable: without it a
+  // Ctrl+A arriving as 0x01 would be swallowed.
+  if (c < 0x20 || c >= 0x7F) return false;
   if (state_ == State::kSelecting) return true;
   if (hollowFinal_) return true;
   if (c == '`') return true;  // settles/hollows bopomofo
@@ -485,12 +486,16 @@ bool Composer::wouldConsume(char c) const {
   if (c >= 'a' && c <= 'z') return true;
   if (DirectPunctuation(c) != nullptr || c == '"' || c == '\'') return true;
   if (c >= '0' && c <= '9') {
-    // Digits are tone/control keys while composing and DISABLED when
-    // idle: typing literal digits requires English mode (Shift).
+    // Digits are tone/control keys while composing. When idle the shell
+    // claims them first as the navigation layer, so this only answers for
+    // callers that have no shell (the REPL): eaten, never typed.
     return true;
   }
-  // Space and everything else printable.
-  return composing;
+  // Space is the one printable that still passes through when idle -- it is
+  // a word separator, not a symbol. Everything else is eaten either way, so
+  // that Chinese mode cannot emit half-width text (see feedChar's tail).
+  if (c == ' ') return composing;
+  return true;
 }
 
 Composer::Result Composer::feedChar(char c) {
@@ -600,17 +605,6 @@ Composer::Result Composer::feedChar(char c) {
     // fall through: lone ';' becomes full-width punctuation
   }
 
-  // '-'/'=' jump the cursor to the start/end of the composition. They are
-  // eaten while a syllable is unsettled, for the same reason 9/0 are: no
-  // cursor key moves until the syllable in progress is settled. When idle
-  // they pass through: the shell owns them as Home/End navigation keys.
-  if (c == '-' || c == '=') {
-    if (!composing) return {false, ""};
-    if (anythingUnsettled()) return {true, ""};
-    jumpCursor(c == '-');
-    return {true, ""};
-  }
-
   // Quotes alternate between opening and closing forms.
   if (c == '"' || c == '\'') {
     bool& open = (c == '"') ? doubleQuoteOpen_ : singleQuoteOpen_;
@@ -642,9 +636,11 @@ Composer::Result Composer::feedChar(char c) {
     return settleOrCommit();
   }
 
-  // Everything else printable: pass through when idle; eaten while
-  // composing (digits are controls now, so nothing may leak mid-buffer).
-  if (!composing) return {false, ""};
+  // Everything else printable is EATEN, idle or not. Chinese mode only ever
+  // emits full-width text, so a key with no full-width meaning types nothing
+  // at all rather than leaking a half-width character into the document --
+  // the same bargain the digit row already makes. `@ # $ % & * | - = +` all
+  // land here; Shift switches to English mode when they are wanted.
   return {true, ""};
 }
 
