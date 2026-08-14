@@ -133,6 +133,33 @@ v0.3 到 v0.6 分別是 1、1、2、1 個檔案。多數上游改動 Mac 完全�
 
 ## 狀態記錄
 
+- 2026-08-14：**詞庫長度加權修正——整句轉換品質的最大單一改善**。使用者回報「對齊」永遠打成「對其」，
+  要開選單挑第一個候選。根因不是「對齊」不在詞庫，而是 **unigram 模型的加總比較**：
+  對齊 −6.3640（語料只出現 8 次）輸給 對 −2.6914 ＋ 其 −2.9019 ＝ −5.5933。
+  上游自己的 `data/curation/analyzers/find_cover_issues.py` 就是在數這件事：**22980 個多字詞（15.8%）
+  永遠當不了首選**。查下去發現真正的病灶在 `curation/builders/frequency_builder.py`：
+  加權寫的是 `fscale ** (len(k) / 3 - 1)`，那個 `/3` 是 **Python 2 數 UTF-8 位元組**的遺跡
+  （一個漢字 3 bytes → 單字 `3/3-1=0`、雙字詞 `6/3-1=1`＝×2.7 的長詞加分）。改跑 Python 3 之後
+  `len()` 數的是字元，單字變成 `1/3-1=-0.667`、雙字詞 `-0.333`——**長詞加分變成長詞扣分**。
+  已 `curl` 對過 **上游 master 早已修成 `len(k) - 1`**（本專案 vendor 的是修正前的快照 ee9941a6），
+  所以這是補上游的修，不是自創偏離。
+  **量化驗證**：抽 22010 個「詞庫裡該讀音的首選多字詞」，單獨打那串讀音會不會就出這個詞——
+  **87.5% → 93.1%（修好 1224 個，弄壞 0 個）**。真實散文那一側是中性的：用 `drills/lessons.txt`
+  重跑 drill_gen，步數與開選單修字的次數完全相同，`web/drills.js` 只差兩個「下一鍵按下去就會被改掉」
+  的中間畫面（是→市、明→銘）。上游 `Postprocess.txt` 的 12 條 `promote-over-single-syllables`
+  有 **10 條自動變成多餘**（沒事 好險 依舊 中醫 西醫 各式 試著 視野 步道 面試，postprocess 會硬性
+  報 `no need to promote`），已註解掉並保留其 `assert` 當回歸測試；`before` 行同步更新成修正後的斷詞。
+  **「對齊」修正後仍然不夠**（−6.2714 vs −5.9833），所以另外加了本專案第一條
+  `promote-over-single-syllables 對齊 ㄉㄨㄟˋ-ㄑㄧˊ`，附 assert 釘住 `對-其他` 與
+  `請-將-文字-對齊` 不被動到。
+  **連帶要動的一處**：`scripts/make-filler-lessons.py` 的 `MIN_CHAR_SCORE` 從 −6.3 放寬到 **−6.5**。
+  修正把所有單字分數往下推約 0.19，ㄉㄧㄚ 唯一可用的「嗲」掉到 −6.324 而被濾掉，看打練習少掉一個鍵位。
+  重新量過兩組校準字仍乾淨分開（可接受的最低 嗲 −6.32、不可接受的最高 衲 −6.65），
+  放寬後 `drills/filler.txt` 與修正前**完全相同**。
+  驗證：`ctest` 173 全過、check-tutorials 12 課全綠、check-drill-coverage 401＋10＝411 全覆蓋。
+  **尚未部署**：`C:\Program Files\ArtShuangpin\{x64,x86}\mspy-data.txt` 仍是舊詞庫，
+  要以管理員複製新的 `out\data.txt` 過去（只有詞庫變，DLL 不用重建）。
+
 - 2026-08-13：**併入 macOS 版，一個 repo 管兩個平台**。原本 `D:\Claude\ArtMac`（private repo
   `weiwei84530/art-shuangpin-mac`）是 macOS 的 InputMethodKit 外殼，透過一個唯讀鏡像 clone
   （`vendor/art-shuangpin`）取用本專案的 `core\`／`engine\`。**合併的動機是帳密**：那台 Mac 是公司電腦，

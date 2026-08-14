@@ -8,14 +8,17 @@ epsilon 0.001
 
 # before 用來確認後製修改之前的詞庫狀態
 
-before ㄓㄜˋ-ㄧㄤˋ-ㄇㄟˊ-ㄕˋ-ㄐㄧㄡˋ-ㄏㄠˇ 這樣-沒-是-就好
+# [MspyIME] 長度加權修正前是：這樣-沒-是-就好
+before ㄓㄜˋ-ㄧㄤˋ-ㄇㄟˊ-ㄕˋ-ㄐㄧㄡˋ-ㄏㄠˇ 這樣-沒事-就好
 
 
 # promote-over-single-syllables 的意思是，給定多字詞，這個多字詞的分數，應該
 # 高於同數量同音單字的加總。例如打「沒事」但出現「沒是」，是因為在 unigram
 # model 下，P_log(沒) + P_log(是) > P_log(沒事)
 
-promote-over-single-syllables 沒事 ㄇㄟˊ-ㄕˋ
+# [MspyIME] 長度加權修正後（frequency_builder 的 fscale 指數 len(k)/3-1 → len(k)-1）
+#           這個詞自己就贏了，postprocess 會回報 "no need to promote"，故停用。
+# promote-over-single-syllables 沒事 ㄇㄟˊ-ㄕˋ
 
 
 # assert 用於確認修改之後的詞庫狀態
@@ -23,7 +26,9 @@ promote-over-single-syllables 沒事 ㄇㄟˊ-ㄕˋ
 assert ㄇㄟˊ-ㄕˋ 沒事
 assert ㄓㄜˋ-ㄧㄤˋ-ㄇㄟˊ-ㄕˋ-ㄐㄧㄡˋ-ㄏㄠˇ 這樣-沒事-就好
 
-promote-over-single-syllables 好險 ㄏㄠˇ-ㄒㄧㄢˇ
+# [MspyIME] 長度加權修正後（frequency_builder 的 fscale 指數 len(k)/3-1 → len(k)-1）
+#           這個詞自己就贏了，postprocess 會回報 "no need to promote"，故停用。
+# promote-over-single-syllables 好險 ㄏㄠˇ-ㄒㄧㄢˇ
 assert ㄏㄠˇ-ㄒㄧㄢˇ-ㄇㄟˊ-ㄕˋ-ㄦˊ-ㄑㄧㄝˇ-ㄏㄠˇ-ㄒㄧㄢˇ-ㄒㄧㄢˇ-ㄕˋ-ㄑㄧˋ-ㄇㄟˊ-ㄏㄨㄞˋ 好險-沒事-而且-好險-顯示器-沒-壞
 
 
@@ -61,7 +66,9 @@ assert ㄧˋ-ㄎㄜ-ㄘㄞˋ 一顆-菜
 # promote-over-peers 裡裡 ㄌㄧˇ-ㄌㄧˇ
 # assert ㄌㄧˇ-ㄌㄧˇ-ㄨㄞˋ-ㄨㄞˋ 裡裡外外
 
-promote-over-single-syllables 依舊 ㄧ-ㄐㄧㄡˋ
+# [MspyIME] 長度加權修正後（frequency_builder 的 fscale 指數 len(k)/3-1 → len(k)-1）
+#           這個詞自己就贏了，postprocess 會回報 "no need to promote"，故停用。
+# promote-over-single-syllables 依舊 ㄧ-ㄐㄧㄡˋ
 assert ㄓㄜˋ-ㄨㄣˋ-ㄊㄧˊ-ㄧ-ㄐㄧㄡˋ-ㄘㄨㄣˊ-ㄗㄞˋ 這-問題-依舊-存在
 
 # 這個問題目前還不能解決
@@ -71,8 +78,12 @@ assert ㄓㄜˋ-ㄨㄣˋ-ㄊㄧˊ-ㄧ-ㄐㄧㄡˋ-ㄘㄨㄣˊ-ㄗㄞˋ 這-問�
 # 提升後，斷詞仍然是「青山-一-就在」
 # assert ㄑㄧㄥ-ㄕㄢ-ㄧ-ㄐㄧㄡˋ-ㄗㄞˋ 青山-依舊在
 
-promote-over-single-syllables 中醫 ㄓㄨㄥ-ㄧ
-promote-over-single-syllables 西醫 ㄒㄧ-ㄧ
+# [MspyIME] 長度加權修正後（frequency_builder 的 fscale 指數 len(k)/3-1 → len(k)-1）
+#           這個詞自己就贏了，postprocess 會回報 "no need to promote"，故停用。
+# promote-over-single-syllables 中醫 ㄓㄨㄥ-ㄧ
+# [MspyIME] 長度加權修正後（frequency_builder 的 fscale 指數 len(k)/3-1 → len(k)-1）
+#           這個詞自己就贏了，postprocess 會回報 "no need to promote"，故停用。
+# promote-over-single-syllables 西醫 ㄒㄧ-ㄧ
 assert ㄓㄨㄥ-ㄧ-ㄩˇ-ㄒㄧ-ㄧ 中醫-與-西醫
 
 # 以下兩例用來確保修改後，不會影響其他同音但詞界不同詞
@@ -84,15 +95,20 @@ assert ㄊㄞˊ-ㄓㄨㄥ-ㄧ-ㄓㄨㄥ 台中一中
 # 導致唸一聲的「一+在」分數高於首字唸一聲的「一再」，而唸二聲的「一+在」
 # 反而分數低於首字唸二聲的「一再」，因此「一再」其實不是個問題詞
 # （因為這個詞一般首字都唸二聲），因此我們選擇不 boost
-before ㄧ-ㄗㄞˋ 一-在
+# [MspyIME] 長度加權修正前是：一-在
+before ㄧ-ㄗㄞˋ 一再
 before ㄧˊ-ㄗㄞˋ-ㄔㄨ-ㄒㄧㄢˋ 一再-出現
 before ㄧ-ㄗㄞˋ-ㄔㄨ-ㄒㄧㄢˋ 一-再出現
-before ㄧ-ㄗㄞˋ-ㄈㄚ-ㄕㄥ 一-在-發生
+# [MspyIME] 長度加權修正前是：一-在-發生
+before ㄧ-ㄗㄞˋ-ㄈㄚ-ㄕㄥ 一再-發生
 before ㄧˊ-ㄗㄞˋ-ㄈㄚ-ㄕㄥ 一再-發生
 
-before ㄍㄜˋ-ㄕˋ-ㄔㄢˇ-ㄆㄧㄣˇ 個-是-產品
+# [MspyIME] 長度加權修正前是：個-是-產品
+before ㄍㄜˋ-ㄕˋ-ㄔㄢˇ-ㄆㄧㄣˇ 各式-產品
 before ㄍㄜˋ-ㄕˋ-ㄍㄜˋ-ㄧㄤˋ 各式各樣
-promote-over-single-syllables 各式 ㄍㄜˋ-ㄕˋ
+# [MspyIME] 長度加權修正後（frequency_builder 的 fscale 指數 len(k)/3-1 → len(k)-1）
+#           這個詞自己就贏了，postprocess 會回報 "no need to promote"，故停用。
+# promote-over-single-syllables 各式 ㄍㄜˋ-ㄕˋ
 assert ㄍㄜˋ-ㄕˋ-ㄔㄢˇ-ㄆㄧㄣˇ 各式-產品
 
 # 「是用」是一個詞，而「試用」雖然分數低於「是」「用」，但其實是被「是用」遮蓋
@@ -102,17 +118,26 @@ promote-over-peers 試用 ㄕˋ-ㄩㄥˋ
 assert ㄕˋ-ㄩㄥˋ-ㄏㄡˋ-ㄗㄞˋ-ㄇㄞˇ 試用-後-在-買
 
 # 其實這個「作」應該是「做」，但語料當中「作」分數高於「做」
-before ㄕˋ-ㄓㄜ˙-ㄗㄨㄛˋ-ㄎㄢˋ-ㄎㄢˋ 是-著-作-看看
-promote-over-single-syllables 試著 ㄕˋ-ㄓㄜ˙
+# [MspyIME] 長度加權修正前是：是-著-作-看看
+before ㄕˋ-ㄓㄜ˙-ㄗㄨㄛˋ-ㄎㄢˋ-ㄎㄢˋ 試著-作-看看
+# [MspyIME] 長度加權修正後（frequency_builder 的 fscale 指數 len(k)/3-1 → len(k)-1）
+#           這個詞自己就贏了，postprocess 會回報 "no need to promote"，故停用。
+# promote-over-single-syllables 試著 ㄕˋ-ㄓㄜ˙
 assert ㄕˋ-ㄓㄜ˙-ㄗㄨㄛˋ-ㄎㄢˋ-ㄎㄢˋ 試著-作-看看
 
-before ㄎㄨㄢ-ㄎㄨㄛˋ-ㄉㄜ˙-ㄕˋ-ㄧㄝˇ 寬闊-的-是-也
-promote-over-single-syllables 視野 ㄕˋ-ㄧㄝˇ
+# [MspyIME] 長度加權修正前是：寬闊-的-是-也
+before ㄎㄨㄢ-ㄎㄨㄛˋ-ㄉㄜ˙-ㄕˋ-ㄧㄝˇ 寬闊-的-視野
+# [MspyIME] 長度加權修正後（frequency_builder 的 fscale 指數 len(k)/3-1 → len(k)-1）
+#           這個詞自己就贏了，postprocess 會回報 "no need to promote"，故停用。
+# promote-over-single-syllables 視野 ㄕˋ-ㄧㄝˇ
 assert ㄎㄨㄢ-ㄎㄨㄛˋ-ㄉㄜ˙-ㄕˋ-ㄧㄝˇ 寬闊-的-視野
 
 # 「不到」的「不」讀為二聲，但四聲的語音干擾了更常用的「步道」
-before ㄒㄧㄥˊ-ㄖㄣˊ-ㄅㄨˋ-ㄉㄠˋ 行人-不-到
-promote-over-single-syllables 步道 ㄅㄨˋ-ㄉㄠˋ
+# [MspyIME] 長度加權修正前是：行人-不-到
+before ㄒㄧㄥˊ-ㄖㄣˊ-ㄅㄨˋ-ㄉㄠˋ 行人-步道
+# [MspyIME] 長度加權修正後（frequency_builder 的 fscale 指數 len(k)/3-1 → len(k)-1）
+#           這個詞自己就贏了，postprocess 會回報 "no need to promote"，故停用。
+# promote-over-single-syllables 步道 ㄅㄨˋ-ㄉㄠˋ
 assert ㄒㄧㄥˊ-ㄖㄣˊ-ㄅㄨˋ-ㄉㄠˋ 行人-步道
 
 before ㄗˋ-ㄏㄨㄟˋ-ㄓㄥˇ-ㄌㄧˇ 自-會-整理
@@ -127,8 +152,10 @@ before ㄓㄜˋ-ㄉㄟˇ-ㄕˋ-ㄕˋ-ㄘㄞˊ-ㄓ-ㄉㄠˋ 這-得-是-是-才-�
 promote-over-single-syllables 試試 ㄕˋ-ㄕˋ
 assert ㄓㄜˋ-ㄉㄟˇ-ㄕˋ-ㄕˋ-ㄘㄞˊ-ㄓ-ㄉㄠˋ 這-得-試試-才-知道
 
-before ㄓㄨㄣˇ-ㄅㄟˋ-ㄇㄧㄢˋ-ㄕˋ-ㄘㄞˊ-ㄓ-ㄉㄠˋ-ㄑㄧㄡˊ-ㄓˊ-ㄅㄨˊ-ㄧˋ 準備-面-是-才-知道-求職-不易
-promote-over-single-syllables 面試 ㄇㄧㄢˋ-ㄕˋ
+# [MspyIME] 長度加權修正後（frequency_builder 的 fscale 指數 len(k)/3-1 → len(k)-1）
+#           這個詞自己就贏了，postprocess 會回報 "no need to promote"，故停用。
+#           修正前這句斷成：準備-面-是-才-知道-求職-不易
+# promote-over-single-syllables 面試 ㄇㄧㄢˋ-ㄕˋ
 before ㄓㄨㄣˇ-ㄅㄟˋ-ㄇㄧㄢˋ-ㄕˋ-ㄘㄞˊ-ㄓ-ㄉㄠˋ-ㄑㄧㄡˊ-ㄓˊ-ㄅㄨˊ-ㄧˋ 準備-面試-才-知道-求職-不易
 
 

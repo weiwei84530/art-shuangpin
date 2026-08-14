@@ -12,6 +12,12 @@ def main():
         sys.exit('This command does not take any argument')
 
     norm = 0.0
+    # [MspyIME] The exponent below is len(k) - 1, not the len(k) / 3 - 1 of
+    # the vendored snapshot. That /3 counted UTF-8 bytes and only worked on
+    # Python 2; under Python 3 len() counts characters, so the intended
+    # bonus for longer phrases turned into a penalty and 15.8% of the
+    # multi-character entries could never win the walk. Upstream master has
+    # since corrected it the same way.
     fscale = 2.7
     phrases = {}
     exclusion = {}
@@ -53,7 +59,7 @@ def main():
                 phrases[k] = phrases[k] - phrases[v]
 
     for k in phrases:
-        norm += fscale ** (len(k) / 3 - 1) * phrases[k]
+        norm += fscale ** (len(k) - 1) * phrases[k]
 
     try:
         handle = open('PhraseFreq.txt', "w")
@@ -61,9 +67,9 @@ def main():
         print("({})".format(e))
     for k in phrases:
         if phrases[k] < 1:
-            handle.write('%s %.8f\n' % (k, math.log(fscale ** (len(k) / 3 - 1) * 0.5 / norm, 10)))
+            handle.write('%s %.8f\n' % (k, math.log(fscale ** (len(k) - 1) * 0.5 / norm, 10)))
         else:
-            handle.write('%s %.8f\n' % (k, math.log(fscale ** (len(k) / 3 - 1) * phrases[k] / norm, 10)))
+            handle.write('%s %.8f\n' % (k, math.log(fscale ** (len(k) - 1) * phrases[k] / norm, 10)))
     handle.close()
 
 

@@ -35,11 +35,16 @@ MIN_WORD_SCORE = -8.0
 FALLBACK_WORD_SCORE = -13.0
 # A word is only as readable as its rarest character. Measured against
 # out/data.txt: the characters the user picked out as unreadable (耒 耨 欻
-# 裒 煢 衲) all sit at -6.4 or below, while everything they were happy with
-# (虐 咱 倆 唷 嗲 剖 僧 窮) is above -6.2. This floor holds in BOTH passes:
-# a syllable with no readable word is better left out of the drills than
-# taught with a character nobody can read.
-MIN_CHAR_SCORE = -6.3
+# 裒 煢 衲) all sit at -6.65 or below, while everything they were happy with
+# (虐 咱 倆 唷 嗲 剖 僧 窮) is at -6.33 or above. This floor holds in BOTH
+# passes: a syllable with no readable word is better left out of the drills
+# than taught with a character nobody can read.
+#
+# Was -6.3 until the length weighting in data/curation/builders/
+# frequency_builder.py was corrected to fscale ** (len(k) - 1); that shifts
+# every single-character score down by about 0.19, and 嗲 (the only word for
+# ㄉㄧㄚ) fell through. The two groups are still cleanly separated.
+MIN_CHAR_SCORE = -6.5
 # Used only when --targets is not given: how much of single-character usage
 # the drills should reach.
 USAGE_TARGET = 0.99
