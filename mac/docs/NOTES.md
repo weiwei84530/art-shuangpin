@@ -120,7 +120,7 @@ reason: they are read by the person installing, not by whoever is editing the
 repo. The comments in them are English like everything else.
 
 Everything the composer decides stays in the composer. The shell owns the
-idle editing layer (the unshifted digit row, v0.8), the bare-Shift
+idle editing layer (the unshifted digit row, v0.8.0), the bare-Shift
 toggle plus the per-application memory of what it set, the numpad exemption,
 "arrows do nothing while composing", routing English-mode keys into the same
 composition, and drawing. That list is complete; if something outside it
@@ -372,7 +372,7 @@ there, which is what makes a multi-word English run possible inside one
 composition. So are digits, which is what keeps "user123" typable on a
 machine with no numeric keypad.
 
-Since v0.8 the idle branch of English mode is no longer a bare `return NO`:
+Since v0.8.0 the idle branch of English mode is no longer a bare `return NO`:
 it runs `-injectIdleEditingKeyIfWanted:`, the same call the Chinese branch
 makes. The layer is deliberately identical in both modes so the habit never
 has to be switched.
@@ -489,7 +489,7 @@ corner reads as a bug while a slightly stale position does not.
    digits are still *eaten*, so they type nothing either — ten dead keys,
    which is why the failure is logged unconditionally.
 
-6. **(Historical, fixed in v0.8) Idle Tab moved the focus instead of
+6. **(Historical, fixed in v0.8.0) Idle Tab moved the focus instead of
    deleting, but ONLY in Chromium-based applications** — Slack, LINE, VS
    Code, Chrome. Never our bug, and never fixable from IMK. Kept here
    because the measurement is the clearest evidence in the repo of what a
@@ -515,7 +515,7 @@ corner reads as a bug while a slightly stale position does not.
    A CGEventTap taking Tab before the host saw it was considered and
    declined on 2026-08-14: a global interceptor for one key in one
    situation, where any gap in its enable/disable conditions costs the user
-   Tab system-wide. **v0.8 retired the problem instead of fixing it** — Tab
+   Tab system-wide. **v0.8.0 retired the problem instead of fixing it** — Tab
    is no longer intercepted at all, in either mode, and digit `6` is the
    Backspace that never leaves the main block. If a future change is ever
    tempted to take Tab back, this is what it is signing up for.
