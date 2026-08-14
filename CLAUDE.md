@@ -133,6 +133,23 @@ v0.3 到 v0.6 分別是 1、1、2、1 個檔案。多數上游改動 Mac 完全�
 
 ## 狀態記錄
 
+- 2026-08-14：**tag v0.7.1 並發佈 GitHub Release**（兩個資產：`art-shuangpin-v0.7.1.zip`、
+  `art-shuangpin-mac-v0.7.1.zip`）。距 v0.7.0 共 5 個 commit，**程式碼一行沒動**——
+  `core/`／`engine/`／`ime/`／`mac/src/` 與 v0.7.0 相同，內容是詞庫長度加權修正、
+  `對齊` 的 postprocess 提升、看打練習的「麼」改單鍵，以及 PROVENANCE 與 .gitignore。
+  發佈前照規則先跑 `check-parity.py`：回報落後兩個 commit，但查證後那兩個只動 `data/`
+  與教材腳本（`git diff --name-only <marker>..HEAD -- core/ engine/ cli/ docs/spec.md` 為空），
+  而 `release-mac.yml` 自己跑 `build-data.sh` 從同一份 `data/` 建詞庫，**mac/src/ 零改動**，
+  故補齊＝推進 `mac/upstream-alignment.txt` 的 commit／version 兩行。使用者裁示補齊後兩平台一起發。
+  驗證：`build-data.ps1` 重跑產物 sha256 不變（`c07e7285…`）、x64 與 x86 `ctest` 各 173 全過、
+  check-drill-coverage 400＋11＝411 全覆蓋、check-tutorials 12 課全綠。兩個架構的 IME DLL 以
+  msbuild 重建後 `make-package.ps1` 打包。**Release 內文的敘事重點是「只換詞庫但值得升級」**：
+  用「對齊 vs 對＋其」的分數對照講清楚為什麼多字詞會輸，並附 87.5%→93.1% 的量化表。
+  **一個未決的本機狀態**：`C:\Program Files\ArtShuangpin` 裝的 DLL 建於 2026-08-13 15:04，
+  而 `0d4b2a9`（撤銷母音式拼法）的 commit 時間是 15:13——無法從時間戳斷定它是撤銷前還是撤銷後的
+  建置（本專案常「先建置測試、後 commit」）。詞庫已是最新（hash 相同）。要確定就以管理員重跑
+  `install.ps1`。
+
 - 2026-08-14：**看打練習的「麼」改用單鍵 `m`＋空白（推翻 2026-08-10 的讀音裁示）**。
   使用者裁示：**教學規則就是單鍵優先**，「這跟省不省鍵沒有關係，主要是強調單音節的習慣性；
   為此而特地記一個肌肉例外，不划算」。原本〈單鍵音節〉課的「什麼」與另一課的「怎麼」
@@ -170,8 +187,8 @@ v0.3 到 v0.6 分別是 1、1、2、1 個檔案。多數上游改動 Mac 完全�
   重新量過兩組校準字仍乾淨分開（可接受的最低 嗲 −6.32、不可接受的最高 衲 −6.65），
   放寬後 `drills/filler.txt` 與修正前**完全相同**。
   驗證：`ctest` 173 全過、check-tutorials 12 課全綠、check-drill-coverage 401＋10＝411 全覆蓋。
-  **尚未部署**：`C:\Program Files\ArtShuangpin\{x64,x86}\mspy-data.txt` 仍是舊詞庫，
-  要以管理員複製新的 `out\data.txt` 過去（只有詞庫變，DLL 不用重建）。
+  **已於 v0.7.1 發佈時部署**：`C:\Program Files\ArtShuangpin\{x64,x86}\mspy-data.txt` 的 sha256
+  已與 `out\data.txt` 相同（`c07e7285…`）。
 
 - 2026-08-13：**併入 macOS 版，一個 repo 管兩個平台**。原本 `D:\Claude\ArtMac`（private repo
   `weiwei84530/art-shuangpin-mac`）是 macOS 的 InputMethodKit 外殼，透過一個唯讀鏡像 clone
