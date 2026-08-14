@@ -112,6 +112,38 @@ jobs:
           test -f mac/dist/ArtShuangpin.app/Contents/Resources/mspy-data.txt
           codesign --verify --deep --strict --verbose=2 mac/dist/ArtShuangpin.app
 
+      # A downloadable build of the half this repository cannot build on the
+      # development host. Without it the only way to try a change to mac/src
+      # is to tag a release, and a tag is a publishing act.
+      #
+      # ditto first and upload the archive rather than the directory:
+      # upload-artifact rezips whatever it is given with its own writer,
+      # which drops the executable bit from the .command files and the
+      # extended attributes the ad-hoc signature rides on. Same reasoning as
+      # release-mac.yml, and verify_zip.py checks exactly those things.
+      #
+      # NOT a release: this is unsigned beyond ad-hoc, untested on a Mac, and
+      # expires. Every build has a different code directory hash, so the
+      # Accessibility grant does not carry over -- install.command resets it.
+      - name: Pack a testable build
+        run: |
+          stage=stage/art-shuangpin-mac
+          mkdir -p "$stage"
+          cp -R mac/dist/ArtShuangpin.app "$stage/"
+          cp mac/release/install.command mac/release/uninstall.command "$stage/"
+          cp mac/release/README.txt "$stage/"
+          chmod +x "$stage"/*.command
+          mkdir -p out
+          ditto -c -k --sequesterRsrc --keepParent             "$stage" out/art-shuangpin-mac-dev.zip
+          python3 mac/tools/verify_zip.py out/art-shuangpin-mac-dev.zip
+
+      - name: Upload it
+        uses: actions/upload-artifact@v4
+        with:
+          name: art-shuangpin-mac-dev-${{ github.sha }}
+          path: out/art-shuangpin-mac-dev.zip
+          retention-days: 14
+
       # Possible for the first time now that repl builds off Windows. It is
       # the same audit scripts/check-tutorials.ps1 runs.
       - name: Audit the tutorial lessons
