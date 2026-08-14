@@ -284,6 +284,31 @@ whole syllables; v0.6 extended that to **all 26 letter keys** (`d`+Space = 的, 
 and stopped a candidate pick re-wording the rest of the sentence. All of it is invisible from
 here — `wouldConsume`/`feedChar`/`selectCandidate` absorb every one.
 
+## Things that look like defects and are not
+
+Each of these reads as "the Mac has fallen behind Windows". Report them if you
+must, but do not change them without being asked.
+
+* **The order of the tests in `-handleKeyDown:client:`.** It is load-bearing:
+  the idle navigation keys have to be taken off the table before
+  `wouldConsume()` is asked, because that claims every idle digit. Reordering
+  it looks like a tidy-up and is a bug.
+* **`-`/`=` post ⌘← / ⌘→ rather than Home/End.** On macOS, Home and End mean
+  document start and end, not line start and end.
+* **Per-application 中/英 is an explicit dictionary keyed by bundle id.** The
+  Windows build gets the same behaviour for free because a text service runs
+  inside each application's process; one IMKServer serves every application,
+  so the slot has to be explicit here.
+* **The marked-text underline is solid where spec §6 asks for dotted.**
+  Chromium hosts reduce the attribute to `[style intValue] > 1`, and
+  `NSUnderlineStyleSingle | NSUnderlinePatternDot` is 257 — dotting it flattens
+  every character to "thick" and the anchor disappears.
+* **`resources/Info.plist`'s `ComponentInputModeDict`.** Getting it wrong makes
+  the input method vanish from the input-source list entirely.
+* **`commit` and the two function hashes in `upstream-alignment.txt`.** Moving
+  those is a person asserting the review happened. `check-parity.py --fix`
+  refuses to touch them and so should you.
+
 ## Cutting a release
 
 One release page, two assets, one `VERSION` at the repository root. `git push` of a tag

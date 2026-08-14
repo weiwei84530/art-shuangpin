@@ -300,7 +300,8 @@ def main():
             print("Some of this is mechanical -- try --fix. The rest is a")
         else:
             print("None of this is auto-fixable by design: each one is a")
-        print("judgement about behaviour. See .claude/skills/mac-parity/SKILL.md.")
+        print("judgement about behaviour -- read the change against mac/src/.")
+        print("Before a release, stop and ask rather than deciding alone.")
         return 1
     print("ok: mac/ is aligned with the Windows side")
     return 0

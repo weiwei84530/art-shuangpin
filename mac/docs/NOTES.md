@@ -133,7 +133,8 @@ There is no upstream any more, in the sense of another repository to track:
 this shell the moment it is committed. What replaced the mirror bump is
 `upstream-alignment.txt` plus `../scripts/check-parity.py`, which report what
 has moved on the shared side since anyone last read it against `src/`. Run
-`python scripts/check-parity.py` from the repository root, or `/mac-parity`.
+`python scripts/check-parity.py` from the repository root. The root CLAUDE.md
+makes running it a precondition for cutting a release.
 
 The strongest check there is worth understanding rather than trusting blindly:
 `-handleKeyDown:client:` is a transliteration of the Windows

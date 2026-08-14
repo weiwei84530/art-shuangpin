@@ -41,7 +41,7 @@ web\    互動教學網站＋看打練習（純 CSS/JS，GitHub Pages）
 
 前兩組是**逐條音譯**，工具查不出語意漂移，所以 `mac/upstream-alignment.txt` 記了那兩個函式 body 的 sha256。
 改完 `core\` 或 `ime\` 的鍵路由，跑 **`python scripts\check-parity.py`**（`--fix` 只修機械性的部分）。
-也可以直接用 `/mac-parity`。
+**發佈前一定要跑**，見下面 Git 約定那一節。
 
 其他要點：
 
@@ -97,6 +97,25 @@ web\    互動教學網站＋看打練習（純 CSS/JS，GitHub Pages）
     理由：這些是寫給使用者看的說明，性質與 docs 相同；且 v0.2 起每一版 Release 內文都是中文，
     版本頁的語言必須前後一致。
   - Release 內文沿用前一版的結構（安裝步驟 → 執行階段需求 → 本次改變），可用 `gh release view v0.4` 對照。
+
+### 發佈前一定要先查 Mac 版有沒有跟上
+
+**使用者一說要 release，第一件事是跑 `python scripts\check-parity.py`，在打 tag 之前。**
+打 tag 會觸發 macOS 的建置與發佈，所以那之後才發現沒對齊就太遲了。
+
+- **回報「aligned」** → 照常進行。
+- **回報有落差** → **停下來問使用者**，不要自作主張。用中文說清楚三件事：
+  差在哪、補起來大概要動幾個檔案、以及兩個選項——(a) 先把 Mac 補齊再一起發，
+  (b) 這次只發 Windows 版，Mac 版留待下一版。
+  **等使用者回答再動作。**
+
+判斷「還差多遠」的參考：`mac/docs/NOTES.md` 的〈Tracking upstream〉逐版記了實際成本，
+v0.3 到 v0.6 分別是 1、1、2、1 個檔案。多數上游改動 Mac 完全不用動，
+因為行為在共用的 `core\` 裡、`ArtBridge.mm` 只是轉手。真的要動時通常是兩類：
+`mspy::Composer` 多了方法（補 `ArtBridge.mm` 一行）、或鍵路由變了（照著改
+`-handleKeyDown:client:`，**順序有意義**）。
+
+**只有 Windows 版的發佈是可以的**，但要是使用者選的，不是預設。
 
 ## 建置與開發迴圈（詳見 docs/dev-loop.md）
 
