@@ -188,14 +188,6 @@ bool IsCaretMovementKeyCode(unsigned short code) {
 - (BOOL)handleEvent:(NSEvent *)event client:(id)sender {
     id<IMKTextInput> client = (id<IMKTextInput>)(sender ?: [self client]);
 
-    // The first question about any key that "does nothing" is whether it
-    // reached the input method at all: a host that handles a key itself
-    // leaves no line here, and no amount of reading the routing below will
-    // show that. Only -characters is unsafe on a non-key event, so keyCode
-    // is logged for every type.
-    ArtLog(@"event type=%lu keyCode=%hu", (unsigned long)event.type,
-           event.keyCode);
-
     if (event.type == NSEventTypeFlagsChanged) {
         [self handleFlagsChanged:event client:client];
         return NO;  // modifier events are never eaten
@@ -253,11 +245,6 @@ bool IsCaretMovementKeyCode(unsigned short code) {
     const unsigned short keyCode = event.keyCode;
     const BOOL active = bridge.state != ArtComposerStateEmpty;
 
-    ArtLog(@"keyDown keyCode=%hu chars=%@ mode=%@ active=%d shift=%d cmd=%d",
-           keyCode, event.charactersIgnoringModifiers,
-           sChineseMode ? @"chinese" : @"english", (int)active, (int)shift,
-           (int)hasCommandLike);
-
     // Shortcuts belong to the application.
     if (hasCommandLike) {
         return NO;
@@ -303,16 +290,12 @@ bool IsCaretMovementKeyCode(unsigned short code) {
             // and while idle it is replayed as a real Backspace, exactly the
             // way 9/0 are replayed as arrows.
             if (shift) {
-                ArtLog(@"tab: shift held, passed to the application");
                 return NO;
             }
             if (!active) {
-                BOOL injected = [ArtNavigation inject:ArtNavigationKeyBackspace
-                                            shiftHeld:NO];
-                ArtLog(@"tab: idle, backspace injected=%d", (int)injected);
+                [ArtNavigation inject:ArtNavigationKeyBackspace shiftHeld:NO];
                 return YES;
             }
-            ArtLog(@"tab: composing, feedBackspace");
             [self syncWithResult:[bridge feedBackspace] client:client];
             return YES;
         case kVK_Return:

@@ -133,6 +133,31 @@ v0.3 到 v0.6 分別是 1、1、2、1 個檔案。多數上游改動 Mac 完全�
 
 ## 狀態記錄
 
+- 2026-08-14：**Mac 的閒置 Tab 在 Chromium 系程式失效——查到根因、決定不修、只寫進文件**。
+  使用者回報 Mac 上 Tab 刪不掉字。逐步縮小：組字中 Tab 正常、閒置 9/0 正常、**文字編輯（TextEdit）
+  閒置 Tab 也正常**，只有 Slack／LINE／VS Code／Chrome 不行且**焦點會跳走**。
+  我最初推論「Tab 沒送達輸入法」，**錯了**——加了按鍵層 log 實測，證據推翻推論：
+  Tab 有到（`keyCode=48`）、被吃掉、`CGEventPost` 也成功（`injected=1`）、注入的 Backspace
+  2.4ms 後回到輸入法並被放行（`keyCode=51`），**291ms 後 `activateServer` 被重新呼叫＝焦點仍然跳走**。
+  真因：**Chromium 在輸入法回傳 YES 之後仍自行執行焦點導航**——它把「消耗了按鍵卻沒產生文字或
+  marked text」視為未使用。AppKit host 尊重同一個回傳值，所以文字編輯正常；Windows 完全看不到
+  這個問題，因為 TSF 的 keystroke sink 排在應用程式之前。
+  **範圍比想像小**：組字中的 Tab 在所有程式都正常（那時有 marked text，Chromium 會尊重），
+  壞掉的只有「刪已上屏的字」，而真正的 Backspace 能做同一件事。
+  **唯一的修法是 CGEventTap**（在 host 之前攔 Tab）。使用者一度決定要做，評估後改為不做：
+  那是為了一個鍵在一種情境而裝的全域攔截器，啟停條件只要有一個情境沒想到，使用者就會在整個系統
+  失去 Tab。決策與 log 時序記在 `mac/docs/NOTES.md`〈What to check first〉第 6 條，
+  使用者向的說明在 `docs/guide.md` §11 與 `mac/docs/INSTALL.md`。
+  **順帶修掉一個真正的缺陷**：`ArtLog` 走 `NSLog(@"...%@", msg)`，而統一日誌系統會把 `%@` 的參數
+  塗成 `<private>`——Console.app 看得到行、看不到內容。**三個「永遠會印」的訊息**（詞庫載入失敗、
+  Accessibility 授權失效、IMKServer 起不來）因此從來沒人讀得到。改用
+  `os_log(..., "%{public}s", ...)`（唯一的開關就是格式指示字，沒有 defaults key 可調），
+  並新增不看 debug 旗標的 `ArtLogAlways` 給那三處用；debug 開啟時會先印一行
+  `debug logging is ON`，「到底有沒有生效」因此可以從 log 本身回答。
+  **CI 也改了**：`mac.yml` 建完後用 `ditto` 打包並 upload-artifact（14 天）。
+  在此之前，要試一個 `mac/src` 的改動只能打 tag，而**打 tag 等於發佈**。
+  按鍵層的診斷 log 用完即還原，os_log 修正與 CI 產物保留。
+
 - 2026-08-14：**tag v0.7.1 並發佈 GitHub Release**（兩個資產：`art-shuangpin-v0.7.1.zip`、
   `art-shuangpin-mac-v0.7.1.zip`）。距 v0.7.0 共 5 個 commit，**程式碼一行沒動**——
   `core/`／`engine/`／`ime/`／`mac/src/` 與 v0.7.0 相同，內容是詞庫長度加權修正、

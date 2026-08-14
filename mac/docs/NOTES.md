@@ -377,6 +377,10 @@ key that deletes rather than moves. Shift+Tab is never intercepted in either
 mode; reverse focus navigation is the safety valve for having taken Tab
 away.
 
+The idle half of that does not survive contact with Chromium-based hosts,
+which run their own focus navigation even after we return YES. Measured,
+with the reasoning for leaving it alone, under "What to check first" item 6.
+
 ## Deliberate differences from the Windows build
 
 **`-` / `=` post Cmd+Left / Cmd+Right, not Home / End.** The spec asks for
@@ -488,9 +492,40 @@ corner reads as a bug while a slightly stale position does not.
    still raises the permission prompt, it is stale. See "Ad-hoc signing and
    Accessibility" below, which is the usual answer. Note that idle Tab is
    *eaten* either way, so without the grant it neither deletes nor moves
-   focus — same shape as the other four.
+   focus — same shape as the other four, except in the hosts of item 6,
+   where the focus moves regardless.
 
-6. **The input source name shows as the raw mode ID, or a menu header reads
+6. **Idle Tab moves the focus instead of deleting, but ONLY in
+   Chromium-based applications** — Slack, LINE, VS Code, Chrome. Not our
+   bug, and not fixable from IMK. Measured 2026-08-14 with key-routing logs
+   in Slack, every step correct on our side:
+
+   ```
+   10.990540  event type=10 keyCode=48         Tab arrives
+   10.990588  keyDown keyCode=48 active=0      Chinese, idle, no modifiers
+   10.990654  tab: idle, backspace injected=1  eaten; CGEventPost succeeded
+   10.993061  event type=10 keyCode=51         the injected Backspace, 2.4ms later
+   10.993098  keyDown keyCode=51 active=0      passed through to the app
+   11.285659  activate com.tinyspeck.slackmacgap   ← the focus moved anyway
+   ```
+
+   `-handleEvent:` returned YES, and Chromium ran its focus navigation
+   regardless: it treats a key the input method consumed without producing
+   text or marked text as unused. AppKit hosts honour the same return value,
+   which is why TextEdit deletes correctly. The Windows half cannot show
+   this at all — a TSF keystroke sink sits ahead of the application, so a
+   key it eats never reaches one.
+
+   Scope is narrower than it first looks: **composing** Tab is correct
+   everywhere, Chromium included, because marked text exists at that moment
+   and the return value is then honoured. Only deleting *already committed*
+   text with idle Tab is lost, and a real Backspace does that job. The one
+   thing that would fix it is a CGEventTap taking Tab before the host sees
+   it — considered and declined 2026-08-14: it is a global interceptor for
+   one key in one situation, and any gap in its enable/disable conditions
+   costs the user Tab system-wide.
+
+7. **The input source name shows as the raw mode ID, or a menu header reads
    `CFBundleName`.** A localization lookup fell through — see "The name and
    the icon in the input menu" below. It is not a keying mistake; both
    symptoms come from the bundle having no `.lproj` matching the user's UI
