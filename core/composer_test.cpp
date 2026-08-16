@@ -75,7 +75,7 @@ class ComposerTest : public ::testing::Test {
   // Space with a TONELESS syllable in progress: settles it into its
   // character without committing. A toned syllable settles itself, so this
   // is only for the tone-1/neutral default — with nothing left to settle
-  // Space would commit the buffer instead.
+  // Space types a half-width space into the buffer instead.
   void Settle() { composer_->feedChar(' '); }
 
   std::shared_ptr<RelaxedToneLM> lm_;
@@ -318,26 +318,44 @@ TEST_F(ComposerTest, DigitsDisabledWhenIdle) {
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
 }
 
-TEST_F(ComposerTest, SpacePassesThroughWhenIdleAndCommitsOnceSettled) {
+TEST_F(ComposerTest, SpacePassesThroughWhenIdleAndTypesASpaceOnceSettled) {
   auto idle = composer_->feedChar(' ');
   EXPECT_FALSE(idle.consumed);
 
-  // First Space settles the syllable, second Space (nothing left to
-  // settle) commits the buffer like Enter.
+  // First Space settles the syllable. The second has nothing left to
+  // settle, so it types a half-width space into the buffer -- it does not
+  // commit (2026-08-16). Only Enter commits.
   Type("vs");
   auto r = composer_->feedChar(' ');
   EXPECT_TRUE(r.consumed);
   EXPECT_EQ(r.commitText, "");
+  EXPECT_EQ(composer_->composedText(), "中");
   r = composer_->feedChar(' ');
   EXPECT_TRUE(r.consumed);
-  EXPECT_EQ(r.commitText, "中");
-  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
+  EXPECT_EQ(r.commitText, "");
+  EXPECT_EQ(composer_->composedText(), "中 ");
+  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
 
-  // A toned syllable settled itself, so one Space commits it.
+  // The space is ordinary buffer content: Backspace takes it back and
+  // Enter is what finally sends the lot.
+  composer_->feedBackspace();
+  EXPECT_EQ(composer_->composedText(), "中");
+  EXPECT_EQ(composer_->feedEnter().commitText, "中");
+
+  // A toned syllable settled itself, so Space after it is a space.
   Type("vs3");
   EXPECT_EQ(composer_->composedText(), "種");
   r = composer_->feedChar(' ');
-  EXPECT_EQ(r.commitText, "種");
+  EXPECT_EQ(r.commitText, "");
+  EXPECT_EQ(composer_->composedText(), "種 ");
+  composer_->feedEsc();
+
+  // Space still cannot open a composition of its own: idle it is the
+  // application's, and a lone backtick dropped by Space leaves nothing.
+  Type("`");
+  r = composer_->feedChar(' ');
+  EXPECT_TRUE(r.consumed);
+  EXPECT_EQ(r.commitText, "");
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
 }
 

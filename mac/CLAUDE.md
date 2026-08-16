@@ -269,11 +269,12 @@ The composer owns everything **while composing**. The shell owns only:
 
 Everything else: call `wouldConsume(c)` to decide eat/pass, then `feedChar(c)`.
 
-**Since v0.4, nothing auto-commits — and since v0.5 the Shift switch does not either.**
-Punctuation settles and joins the composition instead of sending it to the application, so a
-composition can run indefinitely; only Enter, Space with nothing left to settle, a NumPad key
-or losing focus produce text. Two consequences for the shell, both already handled — do not
-undo them:
+**Since v0.4, nothing auto-commits — not the Shift switch (v0.5) and not Space (2026-08-16).**
+Punctuation settles and joins the composition instead of sending it to the application, and
+Space with nothing left to settle now types a half-width space into the buffer rather than
+flushing it, so a composition can run indefinitely; only **Enter, a NumPad key and losing
+focus** produce text. Two consequences for the shell, both already handled — do not undo
+them:
 
 * *consumed* very often means an **empty** `commitText` with the composer still composing.
   Never write a handler that assumes consumed implies committed.

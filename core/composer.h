@@ -259,7 +259,7 @@ class Composer {
   // Space: settles the syllable in progress (default tone, or its bopomofo
   // when no reading fits) and commits the buffer only when there is
   // nothing left to settle.
-  Result settleOrCommit();
+  Result settleOrSpace();
   // Commits the current buffer (dropping a half-typed syllable) and resets.
   std::string takeCommitText();
   void reset();

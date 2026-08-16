@@ -648,11 +648,12 @@ Composer::Result Composer::feedChar(char c) {
   // Space settles the syllable in progress WITHOUT committing: the default
   // tone-1/neutral reading wins (ㄏㄠ -> 蒿) and bopomofo no reading
   // accepts settles as symbols (ㄋ, ㄋㄧㄠ). With nothing left to settle it
-  // commits the whole buffer like Enter. A plain space when idle passes
-  // through to the application.
+  // types a half-width space into the buffer -- it does NOT commit
+  // (2026-08-16). A plain space when idle still passes through to the
+  // application.
   if (c == ' ') {
     if (!composing) return {false, ""};
-    return settleOrCommit();
+    return settleOrSpace();
   }
 
   // Everything else printable is EATEN, idle or not. A key with no symbol of
@@ -822,26 +823,34 @@ Composer::Result Composer::feedHollowFinal(char c) {
     // The hollow slot has nothing to settle: drop it and let Space act on
     // the rest of the buffer.
     hollowFinal_ = false;
-    return settleOrCommit();
+    return settleOrSpace();
   }
   // Anything else while the sub-state is active: eaten (Backspace, Enter
   // and Esc are handled by their dedicated feeds).
   return {true, ""};
 }
 
-Composer::Result Composer::settleOrCommit() {
+Composer::Result Composer::settleOrSpace() {
   if (anythingUnsettled()) {
     settlePending();
     updateStateAfterMutation();
     return {true, ""};
   }
-  std::string commit = takeCommitText();
-  if (commit.empty()) {
-    // Nothing at all (e.g. a bare '`'): consumed, back to idle.
+  // Everything is settled already, so Space has no syllable to finish. It
+  // used to commit the buffer here; since 2026-08-16 it types a plain
+  // half-width space instead, joining the composition the way punctuation
+  // and English letters do. Enter is the only key that sends text to the
+  // application now (Esc still throws it away, losing focus still flushes
+  // it). The buffer is meant to run as long as the user wants, and a word
+  // separator was the one printable left that broke that promise.
+  if (grid_.length() == 0) {
+    // Nothing at all -- a bare '`' that was just dropped, say. Back to
+    // idle rather than opening a composition that holds only a space.
     updateStateAfterMutation();
     return {true, ""};
   }
-  return {true, commit};
+  insertLiteralText(" ");
+  return {true, ""};
 }
 
 Composer::Result Composer::selectCandidate(size_t index) {
