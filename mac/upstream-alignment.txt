@@ -13,7 +13,7 @@
 
 # The most recent commit whose changes under core/ engine/ cli/ data/ and
 # docs/spec.md were read against mac/src/.
-commit                          = 091aced29b0a4fe7e5222ca2328dc68e4601f868
+commit                          = a769ffa5d2f92269868978335c0dcc73047b9957
 version                         = 0.8.1
 
 # Bodies of the two Windows key-routing functions the Mac transliterates
