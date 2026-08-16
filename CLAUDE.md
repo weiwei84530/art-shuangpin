@@ -135,6 +135,20 @@ v0.3 到 v0.6 分別是 1、1、2、1 個檔案。多數上游改動 Mac 完全�
 
 ## 狀態記錄
 
+- 2026-08-16：**tag v0.8.1 並發佈 GitHub Release**（兩個資產：`art-shuangpin-v0.8.1.zip`、
+  `art-shuangpin-mac-v0.8.1.zip`）。距 v0.8.0 共 2 個 commit，內容就是同日那兩件事
+  （`-` `=` `+` 半形解禁、工作列提示帶版本號），**詞庫仍是 `c07e7285…`**。
+  發佈前照規則跑 `check-parity.py`：報 1 個 commit 落差 → 讀過確認 `mac/src/` 零改動 →
+  推進 marker → 再跑一次 aligned。打 tag 前確認 push 的 macOS CI 是 success。
+  **打包前先升 `VERSION` 再建 DLL**（v0.8.0 那次撞名的教訓）：這次順序是
+  升版 → 重建兩架構 → `make-package.ps1`，zip 名稱與 DLL 裡的版本字串一致。
+  **建置的坑**：`make-package.ps1` 的預設來源是 `imed\Release` 與 `ime\Release`，
+  那是用 **`.sln`** 建才會產出的位置；直接對 `SampleIME.vcxproj` 下 msbuild 會掉到
+  `ime\SampleIME\{x64\,}Release\`（`$(SolutionDir)` 退化成 `$(ProjectDir)`），
+  打包會拿到舊 DLL。要打包就走 `.sln`（x86 的 Platform 名稱是 **Win32**，不是 x86）。
+  **本機尚未重裝**：提示裡的版本號只在 `regsvr32` 重新註冊時才寫進註冊表，
+  所以要看到「v0.8.1」必須跑 `install.ps1`（dev 註冊則是 `register-dev.ps1`）。
+
 - 2026-08-16：**`-` `=` `+` 解禁成半形＋工作列提示帶版本號；VERSION 升到 0.8.1**。
   (a) **符號**：2026-08-14 的「中文模式只輸出全形」把 `@ # $ % & * | - = +` 全部吃掉，
   使用者要求把 `-` `=` `+` 放出來。查 `rime-prelude/punctuation.yaml` 的 `half_shape`：
