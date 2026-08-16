@@ -263,6 +263,28 @@ The one behavioural note is not in the app: a downloaded release is
 quarantined and ad-hoc signed, so the installer has to strip the attribute and
 reset the Accessibility grant. See "Ad-hoc signing and Accessibility".
 
+### v0.7.1 through v0.8.1 — no shell work at all
+
+Three releases in a row needed nothing here, which is the point of the
+arrangement rather than luck: v0.7.1 was a dictionary rebuild from the same
+`data/`, v0.8.0 was the idle editing layer, and v0.8.1 gives `-` `=` `+` their
+Rime half-width meanings. Every one of them landed in `core/`.
+
+The editing layer is the one worth a second look, because it did change key
+routing: `ArtNavigation`'s enum grew from five cases to ten, and both
+`-handleKeyDown:client:` and the English branch call the new
+`-injectIdleEditingKeyIfWanted:`. That work shipped inside v0.8.0 and both
+body hashes in `upstream-alignment.txt` moved with it.
+
+v0.8.1 by contrast touches only `DirectPunctuation` in `core/composer.cpp`.
+`-handleKeyDown:` hands every printable character to
+`wouldConsumeChar:`/`feedChar:`, and the idle editing layer claims only the
+digit row, so the three keys arrive at the composer here exactly as they do on
+Windows. The version number Windows now appends to its TSF profile description
+has no counterpart here on purpose: the macOS input source name comes from
+`Info.plist`, which already carries `CFBundleShortVersionString` from the same
+root `VERSION` file, and the menu bar is not the place to repeat it.
+
 ## The preference store (v0.6)
 
 `ArtBridge.mm` is a port of upstream's `CMspyBridge::LoadPreferences` /

@@ -135,6 +135,32 @@ v0.3 到 v0.6 分別是 1、1、2、1 個檔案。多數上游改動 Mac 完全�
 
 ## 狀態記錄
 
+- 2026-08-16：**`-` `=` `+` 解禁成半形＋工作列提示帶版本號；VERSION 升到 0.8.1**。
+  (a) **符號**：2026-08-14 的「中文模式只輸出全形」把 `@ # $ % & * | - = +` 全部吃掉，
+  使用者要求把 `-` `=` `+` 放出來。查 `rime-prelude/punctuation.yaml` 的 `half_shape`：
+  這三個鍵在小狼毫（同一套微軟雙拼鍵位）下就是**原樣送出半形**，`_` 則是 `——`（我們本來就有）。
+  **使用者裁示採半形**（另一個選項是全形 `－＝＋`，會維持「只出全形」的原則但與小狼毫不同）。
+  實作只是 `core/composer.cpp` 的 `DirectPunctuation` 多三個 case，所以行為與其他標點完全一致：
+  定案未定案音節、以 literal 讀音融入組字串、**不 commit**。`@ # $ % & * |` 維持吃掉。
+  **提醒**：數字排在中文模式仍然是聲調鍵／編輯鍵，所以整條算式（`1+1=2`）還是打不出來——
+  文件已標明，別把「算式」寫成解禁的理由。
+  (b) **工作列提示顯示版本號**：那一行是 TSF 的 profile description（同時也是「設定 → 語言」
+  清單的名稱），改成 `阿特雙拼輸入法 v0.8.1`。`VERSION` 仍是唯一來源：新增
+  `SampleIME.vcxproj` 的 `MspyGenerateVersionHeader` target，用純 MSBuild
+  （`System.IO.File::ReadAllText` ＋ `WriteLinesToFile WriteOnlyWhenDifferent`）產生
+  `ime/SampleIME/Version.h`，**不進版控**（已加 .gitignore），版本沒變就不會逼重編。
+  **坑：字串只在重新註冊 DLL 時才寫進註冊表**——`install.ps1` 每次都會 `regsvr32`，
+  但只換 DLL 的 `deploy-dev.ps1` 不會，提示會停在舊版本號。
+  (c) **Mac 對齊**：`check-parity.py` 報 1 個 commit 落差，讀過後**確認 `mac/src/` 零改動**——
+  `-handleKeyDown:` 把每個可見字元交給 `wouldConsumeChar:`／`feedChar:`，
+  閒置編輯層只認數字排，所以三個鍵原封不動走到共用的 composer。marker 已推進到 `091aced`＋0.8.1。
+  版本號則刻意**不**加到 macOS 的輸入來源名稱：那個名字來自 `Info.plist`，
+  裡面的 `CFBundleShortVersionString` 已經是同一份 `VERSION`。
+  順手修掉 `mac/CLAUDE.md` 兩處過期敘述（「`-`/`=` 送 ⌘←/⌘→」、測試數 171/173 → 174/176）。
+  (d) 驗證：core `ctest` x64／x86 各 **176 全過**（改了 4 個測試：`-`/`=` 不再是 no-op、
+  選單中按 `-` 會關窗並打字、半形黑名單少三個鍵）、兩架構 IME DLL 重建、
+  check-tutorials 12 課全綠、check-drill-coverage 400＋11＝411、check-parity aligned。
+
 - 2026-08-14：**tag v0.8.0 並發佈 GitHub Release**（兩個資產：`art-shuangpin-v0.8.0.zip`、
   `art-shuangpin-mac-v0.8.0.zip`）。距 v0.7.1 共 12 個 commit，**詞庫一個位元組都沒變**
   （`out/data.txt` sha256 仍是 `c07e7285…`，`data/` 與 `engine/` 自 v0.7.1 零改動），

@@ -33,7 +33,7 @@ its output.
    `../core`, `../engine` and `../cli`, and `../cli/repl.exe` answers any composer-behaviour
    question without a Mac. Everything under `src/` compiles only in
    `../.github/workflows/mac.yml` and behaves only on the user's Mac — write it, push it,
-   read the CI log. Expect **171** tests on macOS against 173 here: `engine_tests` picks its
+   read the CI log. Expect **174** tests on macOS against 176 here: `engine_tests` picks its
    `MemoryMappedFile` test per platform and the POSIX file has two fewer cases.
 2. **Command Line Tools only.** The user has `xcode-select --install`, not full Xcode. Build
    with plain `clang++` driven by a `Makefile`, assemble the `.app` by hand, ad-hoc
@@ -298,8 +298,11 @@ must, but do not change them without being asked.
   the idle navigation keys have to be taken off the table before
   `wouldConsume()` is asked, because that claims every idle digit. Reordering
   it looks like a tidy-up and is a bug.
-* **`-`/`=` post ⌘← / ⌘→ rather than Home/End.** On macOS, Home and End mean
-  document start and end, not line start and end.
+* **The idle editing layer posts ⌘← / ⌘→ rather than Home/End.** On macOS,
+  Home and End mean document start and end, not line start and end. (This
+  used to be `-`/`=`; since v0.8.0 the layer is the digit row, and since
+  v0.8.1 `-` `=` `+` type themselves as half-width characters — a
+  `DirectPunctuation` entry in the shared core, so nothing here changes.)
 * **Per-application 中/英 is an explicit dictionary keyed by bundle id.** The
   Windows build gets the same behaviour for free because a text service runs
   inside each application's process; one IMKServer serves every application,
