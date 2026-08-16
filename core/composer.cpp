@@ -15,9 +15,9 @@ namespace {
 // runs into.
 constexpr size_t kMaxLearnedSpan = 4;
 
-// Punctuation committed directly as full-width symbols, following the
-// user's Rime (rime-ice default) habits. Quotes are handled separately
-// because they alternate between opening and closing forms.
+// Punctuation settled directly as symbols, following the user's Rime
+// (rime-ice default) habits. Quotes are handled separately because they
+// alternate between opening and closing forms.
 const char* DirectPunctuation(char c) {
   switch (c) {
     case ',': return "，";
@@ -39,6 +39,16 @@ const char* DirectPunctuation(char c) {
     case '^': return "……";
     case '_': return "——";
     case '~': return "～";
+    // The three half-width exceptions to "Chinese mode emits full-width text
+    // or nothing" (2026-08-16). Rime's half_shape table -- what 小狼毫 types
+    // under the same 微軟雙拼 layout -- leaves these alone ('-' -> '-',
+    // '=' -> '=', '+' -> '+'), and they are wanted inside Chinese text often
+    // enough (ranges, arithmetic, identifiers) that a detour through English
+    // mode was the wrong trade. '_' -> —— above is Rime's mapping too. Every
+    // other half-width-only key (@ # $ % & * |) still types nothing.
+    case '-': return "-";
+    case '=': return "=";
+    case '+': return "+";
     default: return nullptr;
   }
 }
@@ -493,7 +503,8 @@ bool Composer::wouldConsume(char c) const {
   }
   // Space is the one printable that still passes through when idle -- it is
   // a word separator, not a symbol. Everything else is eaten either way, so
-  // that Chinese mode cannot emit half-width text (see feedChar's tail).
+  // that Chinese mode emits no half-width text beyond the three keys named
+  // in DirectPunctuation (see feedChar's tail).
   if (c == ' ') return composing;
   return true;
 }
@@ -644,11 +655,12 @@ Composer::Result Composer::feedChar(char c) {
     return settleOrCommit();
   }
 
-  // Everything else printable is EATEN, idle or not. Chinese mode only ever
-  // emits full-width text, so a key with no full-width meaning types nothing
-  // at all rather than leaking a half-width character into the document --
-  // the same bargain the digit row already makes. `@ # $ % & * | - = +` all
-  // land here; Shift switches to English mode when they are wanted.
+  // Everything else printable is EATEN, idle or not. A key with no symbol of
+  // its own types nothing at all rather than leaking a half-width character
+  // into the document -- the same bargain the digit row already makes.
+  // `@ # $ % & * |` all land here; Shift switches to English mode when they
+  // are wanted. (`- = +` used to as well, until 2026-08-16 gave them their
+  // Rime half-width meanings.)
   return {true, ""};
 }
 

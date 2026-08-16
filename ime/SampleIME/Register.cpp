@@ -7,13 +7,20 @@
 
 #include "Private.h"
 #include "Globals.h"
+#include "Version.h"
 
 static const WCHAR RegInfo_Prefix_CLSID[] = L"CLSID\\";
 static const WCHAR RegInfo_Key_InProSvr32[] = L"InProcServer32";
 static const WCHAR RegInfo_Key_ThreadModel[] = L"ThreadingModel";
 
-// [MspyIME]
-static const WCHAR TEXTSERVICE_DESC[] = L"阿特雙拼輸入法";
+// [MspyIME] The profile description is the name Windows shows in the language
+// list and in the tray tooltip, so the version rides along with it (2026-08-16):
+// hovering the tray icon answers "which build am I actually running?" without
+// digging through Program Files. MSPY_VERSION_STRING comes from the repository
+// root VERSION file via the project's MspyGenerateVersionHeader target, and it
+// only reaches the registry when the DLL is (re)registered -- which install.ps1
+// always does.
+static const WCHAR TEXTSERVICE_DESC[] = L"阿特雙拼輸入法 v" MSPY_VERSION_STRING;
 
 static const GUID SupportCategories[] = {
     GUID_TFCAT_TIP_KEYBOARD,

@@ -270,4 +270,17 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
+  <!-- [MspyIME] The repository root VERSION file is the single source of the
+       version number (mac/Makefile stamps Info.plist from it, make-package.ps1
+       names the zip after it). Register.cpp needs it too, because the profile
+       description is what Windows shows when the tray icon is hovered, so the
+       header is generated here rather than checked in and kept in sync by hand.
+       WriteOnlyWhenDifferent keeps an unchanged version from forcing a rebuild. -->
+  <Target Name="MspyGenerateVersionHeader" BeforeTargets="ClCompile">
+    <PropertyGroup>
+      <MspyVersion>$([System.IO.File]::ReadAllText('$(ProjectDir)..\..\VERSION').Trim())</MspyVersion>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(ProjectDir)Version.h" Overwrite="true" WriteOnlyWhenDifferent="true"
+                      Lines="// Generated from the repository root VERSION file. Do not edit.;#pragma once;#define MSPY_VERSION_STRING L&quot;$(MspyVersion)&quot;" />
+  </Target>
 </Project>

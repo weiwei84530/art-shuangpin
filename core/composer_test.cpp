@@ -138,16 +138,9 @@ TEST_F(ComposerTest, MirroredToneDigits) {
 
 TEST_F(ComposerTest, DigitsAreTonesUntilTheSyllableSettles) {
   // While the syllable shows bopomofo every digit is a tone digit, so the
-  // cursor keys are out of reach; '-'/'=' are eaten because they now mean
-  // nothing at all.
+  // control meanings (menu, cursor, delete) are all out of reach.
   Type("ni3hk");
   EXPECT_EQ(composer_->composedText(), "你ㄏㄠ");
-  for (const char* key : {"-", "="}) {
-    auto r = composer_->feedChar(key[0]);
-    EXPECT_TRUE(r.consumed) << key;
-    EXPECT_EQ(r.commitText, "") << key;
-    EXPECT_EQ(composer_->composedText(), "你ㄏㄠ") << key;
-  }
 
   // 8 is tone 3 here, not the menu key — and it settles the syllable.
   Type("8");
@@ -432,40 +425,49 @@ TEST_F(ComposerTest, DigitsFiveAndSixStayTonesWhileBopomofoShows) {
   EXPECT_EQ(composer_->composedText(), "的");
 }
 
-TEST_F(ComposerTest, MinusEqualsDoNothing) {
-  // '-'/'=' no longer jump the cursor to the ends (2026-08-14). They have no
-  // full-width meaning either, so in Chinese mode they are simply eaten --
-  // the cursor still moves one span at a time with 9/0.
+TEST_F(ComposerTest, MinusEqualsPlusTypeThemselves) {
+  // '-' '=' '+' are the three deliberate half-width exceptions (2026-08-16):
+  // Rime's half_shape table types them literally under the same layout, so we
+  // do too. They behave like every other punctuation key -- settle whatever is
+  // pending, join the composition, never commit on their own.
   Type("ni3hk3");
   Type("-");
-  auto segments = composer_->displaySegments();
-  EXPECT_EQ(segments.before, "你好");
-  EXPECT_EQ(segments.highlighted, "");
+  EXPECT_EQ(composer_->composedText(), "你好-");
   Type("=");
-  segments = composer_->displaySegments();
-  EXPECT_EQ(segments.before, "你好");
-  EXPECT_EQ(composer_->composedText(), "你好");
+  Type("+");
+  EXPECT_EQ(composer_->composedText(), "你好-=+");
+  EXPECT_EQ(composer_->feedEnter().commitText, "你好-=+");
+
+  // A pending syllable settles first, exactly as a comma settles it.
+  Type("hk");
+  EXPECT_EQ(composer_->composedText(), "ㄏㄠ");
+  Type("=");
+  EXPECT_EQ(composer_->unconfirmedTail(), "");
+  composer_->feedEsc();
+
+  // Idle they open a fresh composition rather than committing.
+  Type("+");
+  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
+  EXPECT_EQ(composer_->composedText(), "+");
 }
 
-TEST_F(ComposerTest, MinusWhileSelectingOnlyDismissesTheMenu) {
+TEST_F(ComposerTest, MinusWhileSelectingDismissesTheMenuThenTypes) {
   Type("ni3hk3");
   Type("9");  // cursor between 你 and 好
   Type("8");
   ASSERT_EQ(composer_->state(), Composer::State::kSelecting);
-  // Any key that is not a selection key closes the menu; '-' then does
-  // nothing of its own, so the cursor stays where the menu left it.
+  // Any key that is not a selection key closes the menu and then performs
+  // its own function -- for '-' that is typing itself at the cursor.
   Type("-");
   EXPECT_EQ(composer_->state(), Composer::State::kComposing);
-  auto segments = composer_->displaySegments();
-  EXPECT_EQ(segments.before, "你");
-  EXPECT_EQ(segments.highlighted, "好");
+  EXPECT_EQ(composer_->composedText(), "你-好");
 }
 
 TEST_F(ComposerTest, HalfWidthOnlySymbolsAreEatenEvenWhenIdle) {
-  // Chinese mode emits full-width text or nothing at all: a symbol with no
-  // full-width mapping must not leak into the document. Typing these
-  // requires English mode (Shift).
-  for (const char c : {'-', '=', '+', '@', '#', '$', '%', '&', '*', '|'}) {
+  // A symbol key with no meaning of its own must not leak a half-width
+  // character into the document. Typing these requires English mode (Shift).
+  // ('-' '=' '+' left this list on 2026-08-16; they now type themselves.)
+  for (const char c : {'@', '#', '$', '%', '&', '*', '|'}) {
     auto r = composer_->feedChar(c);
     EXPECT_TRUE(r.consumed) << c;
     EXPECT_EQ(r.commitText, "") << c;
