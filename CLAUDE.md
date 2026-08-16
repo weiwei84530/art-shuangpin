@@ -142,7 +142,7 @@ v0.3 到 v0.6 分別是 1、1、2、1 個檔案。多數上游改動 Mac 完全�
   推進 marker → 再跑一次 aligned。打 tag 前確認 push 的 macOS CI 是 success。
   **打包前先升 `VERSION` 再建 DLL**（v0.8.0 那次撞名的教訓）：這次順序是
   升版 → 重建兩架構 → `make-package.ps1`，zip 名稱與 DLL 裡的版本字串一致。
-  **建置的坑**：`make-package.ps1` 的預設來源是 `imed\Release` 與 `ime\Release`，
+  **建置的坑**：`make-package.ps1` 的預設來源是 `ime\x64\Release` 與 `ime\Release`，
   那是用 **`.sln`** 建才會產出的位置；直接對 `SampleIME.vcxproj` 下 msbuild 會掉到
   `ime\SampleIME\{x64\,}Release\`（`$(SolutionDir)` 退化成 `$(ProjectDir)`），
   打包會拿到舊 DLL。要打包就走 `.sln`（x86 的 Platform 名稱是 **Win32**，不是 x86）。
