@@ -135,6 +135,28 @@ v0.3 到 v0.6 分別是 1、1、2、1 個檔案。多數上游改動 Mac 完全�
 
 ## 狀態記錄
 
+- 2026-08-16：**空白鍵不再 commit，改成打出半形空白**（使用者要求，**尚未發佈**，VERSION 仍 0.8.1）。
+  空白鍵原本兩種工作：有待定音節就定案，**沒東西可定案就整段上屏**。後者拿掉了——
+  現在改成「打出一個普通的半形空白」，以 literal 讀音融入組字串，游標走得過、Backspace
+  刪得掉、跟整段一起上屏。**要 commit 就按 Enter。**
+  理由：標點自 v0.4、Shift 切換自 v0.5 就都不 commit 了，空白鍵是**最後一個會突然把整段
+  送出去的可見字元**，偏偏又是最常按到的鍵。
+  實作只有一處：`settleOrCommit()` 改名 `settleOrSpace()`，尾巴的 `takeCommitText()` 換成
+  `insertLiteralText(" ")`。**唯一的例外是詞格空的時候**（裸 `` ` `` 剛被空白丟掉）——回到
+  閒置，不開一段只有空白的組字串。閒置時的空白照舊放行給應用程式。
+  **連帶查證**：`drill_gen` 只在「單鍵音節收尾」按空白（那時一定有東西可定案），所以
+  `web/drills.js` 重新產生後**與原本位元組相同**；13 課看打練習不受影響。
+  教學課程〈定案與上屏〉第 4 步之後重寫（空白 → 「中文␣」→ Backspace 示範它是一般內容 →
+  Enter 上屏），課名改成〈定案與上屏：空白鍵是定案鍵〉。
+  **順手修掉 spec 三處早就過期的敘述**：`ni3hk3` + 空白 + `9``9` 那幾列（空白當時已經會
+  commit，游標鍵根本走不到）、`-` 跳頭尾（2026-08-14 就取消了）、以及**所有「上屏時機」
+  清單都漏掉的 NumPad**（組字中按 NumPad 會先整段上屏再輸出數字，`_HandleNumpadCommit`）。
+  正確的上屏路徑是 **Enter／失焦／NumPad** 三條。
+  **Mac 零改動**：中文分支把空白和其他可見字元一樣交給 `wouldConsumeChar:`／`feedChar:`，
+  英文分支另有自己的 literal space 路徑，兩個 body hash 都沒動。marker 只推進 commit。
+  驗證：core `ctest` x64／x86 各 **176 全過**（改寫 1 個測試）、check-tutorials 12 課全綠、
+  check-drill-coverage 400＋11＝411、`web/drills.js` 無 diff、兩架構 IME DLL 重建。
+
 - 2026-08-16：**tag v0.8.1 並發佈 GitHub Release**（兩個資產：`art-shuangpin-v0.8.1.zip`、
   `art-shuangpin-mac-v0.8.1.zip`）。距 v0.8.0 共 2 個 commit，內容就是同日那兩件事
   （`-` `=` `+` 半形解禁、工作列提示帶版本號），**詞庫仍是 `c07e7285…`**。
