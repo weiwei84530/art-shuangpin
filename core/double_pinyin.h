@@ -46,9 +46,4 @@ bool IsSecondKey(char c);
 // a representative symbol (y=ㄧ w=ㄨ a=ㄚ e=ㄜ o=ㄛ), never a raw letter.
 std::string FirstKeyDisplay(char c);
 
-// Bopomofo for a key read AS A FINAL (the '`'-hollowed-initial path, e.g.
-// 'k' -> "ㄠ", 'x' -> "ㄧㄝ"). Ambiguous keys show their primary final.
-// Returns empty for keys that are not second keys.
-std::string HollowFinalDisplay(char c);
-
 }  // namespace mspy

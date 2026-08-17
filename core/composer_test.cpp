@@ -117,8 +117,10 @@ TEST_F(ComposerTest, ToneDigitSettlesTheSyllable) {
 }
 
 TEST_F(ComposerTest, MirroredToneDigits) {
-  // Tones are reachable with either hand: 1-5 on the left, and 0-6
-  // mirrored around the 5/6 gap on the right (0=1, 9=2, 8=3, 7=4, 6=5).
+  // Tones are reachable with either hand: 1-5 on the left, and 0-7
+  // mirrored around the 5/6 gap on the right (0=1, 9=2, 8=3, 7=4). 6 is
+  // NOT one of them since 2026-08-17 -- it is Backspace -- so the
+  // neutral tone is 5 alone.
   const struct {
     const char* keys;
     const char* settled;
@@ -127,7 +129,6 @@ TEST_F(ComposerTest, MirroredToneDigits) {
       {"de9", "德"},
       {"vs8", "種"},
       {"ul7", "曬"},
-      {"de6", "的"},
   };
   for (const auto& c : kCases) {
     composer_->feedEsc();
@@ -165,9 +166,12 @@ TEST_F(ComposerTest, BackspaceDeletesTheTonedSyllable) {
   composer_->feedBackspace();
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
 
-  // An untoned syllable is still in the grid, and goes the same way.
+  // An UNTONED syllable is different: it is still shown as bopomofo, so
+  // Backspace unwinds it one KEY at a time (2026-08-17).
   Type("vs");
   EXPECT_EQ(composer_->composedText(), "ㄓㄨㄥ");
+  composer_->feedBackspace();
+  EXPECT_EQ(composer_->composedText(), "ㄓ");
   composer_->feedBackspace();
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
 }
@@ -350,13 +354,11 @@ TEST_F(ComposerTest, SpacePassesThroughWhenIdleAndTypesASpaceOnceSettled) {
   EXPECT_EQ(composer_->composedText(), "種 ");
   composer_->feedEsc();
 
-  // Space still cannot open a composition of its own: idle it is the
-  // application's, and a lone backtick dropped by Space leaves nothing.
-  Type("`");
+  // Space still cannot open a composition of its own: idle, it is the
+  // application's.
+  composer_->feedEsc();
   r = composer_->feedChar(' ');
-  EXPECT_TRUE(r.consumed);
-  EXPECT_EQ(r.commitText, "");
-  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
+  EXPECT_FALSE(r.consumed);
 }
 
 TEST_F(ComposerTest, CursorMovementAndMidBufferEditing) {
@@ -433,14 +435,19 @@ TEST_F(ComposerTest, DigitsFiveAndSixDeleteOnceSettled) {
   EXPECT_EQ(composer_->composedText(), "你");
 }
 
-TEST_F(ComposerTest, DigitsFiveAndSixStayTonesWhileBopomofoShows) {
-  // The rule is unchanged: bopomofo on screen means every digit is a tone.
-  // 5 and its mirror 6 are the only 輕聲 keys, so they must survive.
-  Type("d5");  // ㄉㄜ˙ -> 的
+TEST_F(ComposerTest, SixDeletesWhileBopomofoShowsAndFiveKeepsTheNeutralTone) {
+  // 2026-08-17 reverses the 2026-08-14 ruling that 5 and its mirror 6 could
+  // not be borrowed: 6 is Backspace in every state now, which leaves the
+  // neutral tone one key instead of two.
+  Type("d5");
   EXPECT_EQ(composer_->composedText(), "的");
   composer_->feedEsc();
-  Type("d6");  // 6 is 5's mirror, so it must reach the same reading
-  EXPECT_EQ(composer_->composedText(), "的");
+
+  Type("de");  // still bopomofo on screen, so every digit is a tone key...
+  Type("6");   // ... except 6, which takes the final key back
+  EXPECT_EQ(composer_->composedText(), "ㄉ");
+  Type("6");
+  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
 }
 
 TEST_F(ComposerTest, MinusEqualsPlusTypeThemselves) {
@@ -615,8 +622,11 @@ TEST_F(ComposerTest, EnterCommits) {
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
 }
 
-TEST_F(ComposerTest, BackspaceDeletesSyllableThenEmpties) {
+TEST_F(ComposerTest, BackspaceUnwindsAKeyAtATime) {
   Type("vs");
+  EXPECT_EQ(composer_->composedText(), "ㄓㄨㄥ");
+  composer_->feedBackspace();
+  EXPECT_EQ(composer_->composedText(), "ㄓ");  // one KEY back, not the lot
   composer_->feedBackspace();
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
   EXPECT_EQ(composer_->composedText(), "");
@@ -855,74 +865,59 @@ TEST_F(ComposerTest, SpaceSettlesVisibleBopomofoResidue) {
   EXPECT_EQ(composer_->composedText(), "種ㄋ");
   EXPECT_EQ(composer_->feedEnter().commitText, "種ㄋ");
 
-  // Enter still drops UNSETTLED residue (converted output only).
+  // Enter no longer drops unsettled residue either (2026-08-17): it sends
+  // the screen, bopomofo and all.
   Type("vs3n");
-  EXPECT_EQ(composer_->feedEnter().commitText, "種");
+  EXPECT_EQ(composer_->feedEnter().commitText, "種ㄋ");
 }
 
-TEST_F(ComposerTest, BacktickSettlesPendingBopomofo) {
-  // n` settles ㄋ as fixed (black) text, still uncommitted.
-  Type("n`");
-  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
-  auto segments = composer_->displaySegments();
-  EXPECT_EQ(segments.before, "ㄋ");
-  EXPECT_EQ(segments.unconfirmed, "");
-
-  // Chinese continues around the settled symbol; Enter commits both.
-  Type("vs3");
-  EXPECT_EQ(composer_->composedText(), "ㄋ種");
-  EXPECT_EQ(composer_->feedEnter().commitText, "ㄋ種");
-
-  // A tone-awaiting syllable settles its whole display.
-  Type("ul`");
-  EXPECT_EQ(composer_->displaySegments().before, "ㄕㄞ");
-  composer_->feedEsc();
-}
-
-TEST_F(ComposerTest, HollowFinalSettlesDirectly) {
-  // A bare ` hollows the initial slot: the next key is read as a final
-  // and its bopomofo settles immediately: `k -> ㄠ.
-  Type("`k");
-  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
-  EXPECT_EQ(composer_->displaySegments().before, "ㄠ");
-  EXPECT_EQ(composer_->feedEnter().commitText, "ㄠ");
-
-  // ㄋㄧㄠ in one composition: n` y` `k, committed together.
-  Type("n`y``k");
-  EXPECT_EQ(composer_->composedText(), "ㄋㄧㄠ");
-  EXPECT_EQ(composer_->feedEnter().commitText, "ㄋㄧㄠ");
-
-  // Compound and single finals map per key: `x -> ㄧㄝ, `f -> ㄣ.
-  Type("`x`f");
-  EXPECT_EQ(composer_->composedText(), "ㄧㄝㄣ");
-  composer_->feedEsc();
-
-  // Mid-composition settle joins the buffer.
-  Type("vs3`k");
-  EXPECT_EQ(composer_->composedText(), "種ㄠ");
-  EXPECT_EQ(composer_->feedEnter().commitText, "種ㄠ");
-}
-
-TEST_F(ComposerTest, HollowFinalBackspaceAndEsc) {
-  // A settled symbol deletes like any other character.
-  Type("`k");
-  composer_->feedBackspace();
-  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
-
-  // Backspace between ` and the final key just cancels the hollow state.
-  Type("`");
-  composer_->feedBackspace();
-  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
-
-  // Esc cancels outright; the hollow sub-state is gone afterwards (an
-  // idle digit is eaten with no output, not routed as a final).
-  Type("`k");
-  composer_->feedEsc();
-  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
-  auto r = composer_->feedChar('7');
+TEST_F(ComposerTest, BacktickTypesItself) {
+  // The bopomofo function key is gone (2026-08-17). '`' used to settle the
+  // pending syllable as symbols, and on its own hollowed the initial slot
+  // so the next key read as a final (`k -> ㄠ). Both are retired: Space
+  // settles, Enter sends the screen as it stands, and '`' is just Rime's
+  // half-width punctuation now.
+  auto r = composer_->feedChar('`');
   EXPECT_TRUE(r.consumed);
   EXPECT_EQ(r.commitText, "");
-  EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
+  EXPECT_EQ(composer_->composedText(), "`");
+  EXPECT_EQ(composer_->state(), Composer::State::kComposing);
+  composer_->feedEsc();
+
+  // It settles what is pending, exactly like every other punctuation key,
+  // and the next key is an ordinary first key rather than a final.
+  Type("vs3");
+  composer_->feedChar('`');
+  Type("k");
+  EXPECT_EQ(composer_->composedText(), "種`ㄎ");
+  composer_->feedEsc();
+}
+
+TEST_F(ComposerTest, EnterSendsWhatIsOnScreen) {
+  // 2026-08-17: Enter commits the screen verbatim. A syllable still shown
+  // as bopomofo goes out AS bopomofo -- it is neither dropped (which is
+  // what used to happen to a syllable no reading fits) nor silently
+  // converted with the tone-1/neutral default.
+  Type("n");  // no ㄋㄜ in the dictionary: used to commit nothing at all
+  EXPECT_EQ(composer_->feedEnter().commitText, "ㄋ");
+
+  Type("ul");  // ㄕㄞ exists only with a tone
+  EXPECT_EQ(composer_->feedEnter().commitText, "ㄕㄞ");
+
+  Type("vs");  // ㄓㄨㄥ DOES convert (中), but the screen says bopomofo
+  EXPECT_EQ(composer_->feedEnter().commitText, "ㄓㄨㄥ");
+
+  // Settled text is unaffected: a tone digit or Space is how a character
+  // is asked for, and both still work.
+  Type("vs3");
+  EXPECT_EQ(composer_->feedEnter().commitText, "種");
+  Type("vs");
+  composer_->feedChar(' ');
+  EXPECT_EQ(composer_->feedEnter().commitText, "中");
+
+  // Settled characters and an unsettled tail travel together.
+  Type("vs3ul");
+  EXPECT_EQ(composer_->feedEnter().commitText, "種ㄕㄞ");
 }
 
 // What the shell is told to learn from a manual pick. A single-character
@@ -1106,7 +1101,8 @@ TEST_F(ComposerTest, SeparatorSpaceOnlyWhereTheScriptsMeet) {
   composer_->feedEsc();
 
   // A bopomofo symbol counts as Chinese.
-  Type("n`");
+  Type("n");
+  composer_->feedChar(' ');  // settles ㄋ as a symbol, no reading fits
   composer_->switchLanguage(true);
   EXPECT_EQ(composer_->composedText(), "ㄋ ");
 }

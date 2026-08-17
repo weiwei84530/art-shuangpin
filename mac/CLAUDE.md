@@ -270,6 +270,9 @@ The composer owns everything **while composing**. The shell owns only:
 Everything else: call `wouldConsume(c)` to decide eat/pass, then `feedChar(c)`.
 
 **Since v0.4, nothing auto-commits — not the Shift switch (v0.5) and not Space (2026-08-16).**
+Enter itself changed on 2026-08-17: it commits `composedText()` verbatim, so a syllable still
+showing as bopomofo goes out AS bopomofo instead of being dropped or converted. The shell sees
+only a different `commitText`; nothing here decides it.
 Punctuation settles and joins the composition instead of sending it to the application, and
 Space with nothing left to settle now types a half-width space into the buffer rather than
 flushing it, so a composition can run indefinitely; only **Enter, a NumPad key and losing
@@ -282,8 +285,9 @@ them:
   being lost when focus moves, so it must keep committing rather than cancelling.
 
 The digit keys also gained a second meaning inside the composer (tone keys while a syllable is
-unsettled, including the right-hand mirror `0`=1 `9`=2 `8`=3 `7`=4 `6`=5). That is entirely
-`wouldConsume`/`feedChar`'s business — the shell's idle-navigation block runs only when the
+unsettled, including the right-hand mirror `0`=1 `9`=2 `8`=3 `7`=4; `6` was the neutral tone's
+mirror until 2026-08-17, when it became Backspace in every state and left the neutral tone on
+`5` alone). That is entirely `wouldConsume`/`feedChar`'s business — the shell's idle-navigation block runs only when the
 composer is empty, so the two never contend. v0.5 narrowed the tone window (a tone digit now
 settles the syllable, so `8` opens the menu immediately afterwards) and made lone first keys
 whole syllables; v0.6 extended that to **all 26 letter keys** (`d`+Space = 的, `n`+`4` = 訥)

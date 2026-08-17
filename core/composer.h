@@ -253,14 +253,11 @@ class Composer {
   void applyLearnedOverrides();
   // One pass of the above. Returns true if it changed anything.
   bool applyOneLearnedOverride();
-  // Key dispatch while the hollow-final sub-state is active ('`' pressed,
-  // awaiting the final key).
-  Result feedHollowFinal(char c);
   // Space: settles the syllable in progress (default tone, or its bopomofo
-  // when no reading fits) and commits the buffer only when there is
+  // when no reading fits), or types a half-width space when there is
   // nothing left to settle.
   Result settleOrSpace();
-  // Commits the current buffer (dropping a half-typed syllable) and resets.
+  // Commits exactly what is on screen -- bopomofo included -- and resets.
   std::string takeCommitText();
   void reset();
   void updateStateAfterMutation();
@@ -288,6 +285,10 @@ class Composer {
     // Displayed bopomofo; identical to the tone-less reading now in the
     // grid (ㄏㄠ).
     std::string display;
+    // The raw keys that spelled it ("hk"). Backspace replays all but the
+    // last, so a syllable shown as bopomofo comes apart one KEY at a time
+    // (ㄅㄧㄠ -> ㄅ) instead of vanishing whole (2026-08-17).
+    std::string keys;
   };
   Unsettled unsettled_;
 
@@ -295,8 +296,6 @@ class Composer {
   bool doubleQuoteOpen_ = false;
   bool singleQuoteOpen_ = false;
 
-  // Hollow-final sub-state: set between a bare '`' and the final key.
-  bool hollowFinal_ = false;
 
   // Selection state.
   size_t selectionLocation_ = 0;

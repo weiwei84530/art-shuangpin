@@ -49,6 +49,13 @@ const char* DirectPunctuation(char c) {
     case '-': return "-";
     case '=': return "=";
     case '+': return "+";
+    // '`' was the bopomofo function key until 2026-08-17 (it settled the
+    // pending syllable as symbols, and on its own hollowed the initial slot
+    // so the next key read as a final). That whole sub-state is gone; the
+    // key does what Rime does with it, which is nothing but type itself.
+    // Enter now covers the job it was mostly used for -- see takeCommitText.
+    // Shift+'`' stays the full-width ～, unchanged.
+    case '`': return "`";
     default: return nullptr;
   }
 }
@@ -393,6 +400,7 @@ bool Composer::finalizePendingBare() {
       unsettled_.active = true;
       unsettled_.syllables = pending_.candidates();
       unsettled_.display = syllable;
+      unsettled_.keys = pending_.rawKeys();
       pending_.clear();
       return true;
     }
@@ -453,12 +461,16 @@ void Composer::settlePending() {
 }
 
 std::string Composer::takeCommitText() {
-  // A toneless syllable joins the commit; a half-typed or tone-awaiting-only
-  // syllable is dropped (as Windows Bopomofo drops trailing unconverted
-  // bopomofo).
-  if (pending_.convertible()) finalizePendingBare();
-  std::string text;
-  for (const auto& v : walk_.valuesAsStrings()) text += v;
+  // What you see is what is sent (2026-08-17). A syllable still showing as
+  // bopomofo goes out AS bopomofo: nc gives ㄋㄧㄠ (which used to be
+  // dropped outright) and k gives ㄎ (which used to convert to 科 with the
+  // tone-1 default). Space and the tone digits are how a character is asked
+  // for; Enter only sends the screen, so nothing on it is ever silently
+  // discarded or silently changed on the way out.
+  //
+  // composedText() IS the screen, unsettled syllable and pending keys
+  // included, so there is nothing to reassemble here.
+  std::string text = composedText();
   reset();
   return text;
 }
@@ -471,7 +483,6 @@ void Composer::reset() {
   unsettled_ = {};
   selectionLocation_ = 0;
   pageIndex_ = 0;
-  hollowFinal_ = false;
   state_ = State::kEmpty;
 }
 
@@ -490,8 +501,6 @@ bool Composer::wouldConsume(char c) const {
   // Ctrl+A arriving as 0x01 would be swallowed.
   if (c < 0x20 || c >= 0x7F) return false;
   if (state_ == State::kSelecting) return true;
-  if (hollowFinal_) return true;
-  if (c == '`') return true;  // settles/hollows bopomofo
   const bool composing = state_ == State::kComposing;
   if (c >= 'a' && c <= 'z') return true;
   if (DirectPunctuation(c) != nullptr || c == '"' || c == '\'') return true;
@@ -526,26 +535,7 @@ Composer::Result Composer::feedChar(char c) {
     dismissMenu();
   }
 
-  if (hollowFinal_) {
-    return feedHollowFinal(c);
-  }
-
   const bool composing = state_ == State::kComposing;
-
-  // Backtick settles bopomofo as fixed text: with a pending syllable it
-  // settles the visible display (n` -> settled ㄋ); with none it hollows
-  // the initial slot so the next key is read as a final.
-  if (c == '`') {
-    if (!pending_.empty()) {
-      std::string symbols = pending_.displayText();
-      pending_.clear();
-      insertLiteralText(symbols);
-    } else {
-      hollowFinal_ = true;
-      state_ = State::kComposing;
-    }
-    return {true, ""};
-  }
 
   // Digits split cleanly on whether something is unsettled. While it is,
   // they only ever type tones (mirrored, so either hand can reach them) and
@@ -553,6 +543,16 @@ Composer::Result Composer::feedChar(char c) {
   // syllable settles -- which the tone digit itself does.
   if (c >= '0' && c <= '9') {
     if (anythingUnsettled()) {
+      if (c == '6') {
+        // 6 is Backspace in every state now (2026-08-17): here it takes
+        // back the last KEY of the syllable being typed, the same edit
+        // feedBackspace makes. That costs 輕聲 its right-hand mirror --
+        // it is 5 only from now on -- which reverses the 2026-08-14 ruling
+        // that 5/6 could not be borrowed. The user chose it knowing that:
+        // deleting without leaving the main block is worth more than the
+        // second way to reach one tone.
+        return feedBackspace();
+      }
       const char tone = ToneDigit(c);
       if (pending_.convertible()) {
         // Either no tone-less entry accepted this syllable (ㄗㄨㄟ) or only
@@ -690,16 +690,24 @@ Composer::Result Composer::feedBackspace() {
     // Close the menu, then delete as usual.
     dismissMenu();
   }
-  if (hollowFinal_) {
-    // Undo the bare backtick.
-    hollowFinal_ = false;
-    updateStateAfterMutation();
-    return {true, ""};
-  }
   if (state_ == State::kEmpty) return {false, ""};
 
   if (!pending_.empty()) {
     pending_.backspace();
+  } else if (unsettled_.active && !unsettled_.keys.empty()) {
+    // The syllable on screen is still bopomofo, so Backspace takes back one
+    // KEY of it rather than the whole thing: bc shows ㄅㄧㄠ and one press
+    // leaves ㄅ (2026-08-17). It is already in the grid as its tone-1
+    // character -- that is what keeps the sentence walk correcting itself
+    // -- so the node comes out first and what is left is retyped.
+    const std::string keys = unsettled_.keys;
+    grid_.deleteReadingBeforeCursor();
+    walk_ = grid_.walk();
+    unsettled_ = {};
+    for (size_t i = 0; i + 1 < keys.size(); ++i) pending_.feed(keys[i]);
+    applyLearnedOverrides();
+    updateStateAfterMutation();
+    return {true, ""};
   } else if (grid_.length() > 0) {
     grid_.deleteReadingBeforeCursor();
     walk_ = grid_.walk();
@@ -734,7 +742,6 @@ Composer::Result Composer::feedEnglishChar(char c) {
   // key goes straight to the application.
   if (state_ == State::kEmpty) return {false, ""};
   if (state_ == State::kSelecting) dismissMenu();
-  hollowFinal_ = false;
   settlePending();
   insertLiteralText(std::string(1, c));
   updateStateAfterMutation();
@@ -744,7 +751,6 @@ Composer::Result Composer::feedEnglishChar(char c) {
 Composer::Result Composer::switchLanguage(bool toEnglish) {
   if (state_ == State::kEmpty) return {false, ""};
   if (state_ == State::kSelecting) dismissMenu();
-  hollowFinal_ = false;
   settlePending();
   // Both sides of the junction are inside our own buffer, so the separator
   // decision is exact: Chinese before an English run, an English word
@@ -809,27 +815,6 @@ Composer::Result Composer::selectOnCurrentPage(size_t indexInPage) {
   return selectCandidate(index);
 }
 
-Composer::Result Composer::feedHollowFinal(char c) {
-  if ((c >= 'a' && c <= 'z') || c == ';') {
-    // The hollowed key is read as a final; its bopomofo settles directly.
-    std::string symbol = HollowFinalDisplay(c);
-    if (!symbol.empty()) {
-      hollowFinal_ = false;
-      insertLiteralText(symbol);
-    }
-    return {true, ""};
-  }
-  if (c == ' ') {
-    // The hollow slot has nothing to settle: drop it and let Space act on
-    // the rest of the buffer.
-    hollowFinal_ = false;
-    return settleOrSpace();
-  }
-  // Anything else while the sub-state is active: eaten (Backspace, Enter
-  // and Esc are handled by their dedicated feeds).
-  return {true, ""};
-}
-
 Composer::Result Composer::settleOrSpace() {
   if (anythingUnsettled()) {
     settlePending();
@@ -844,8 +829,8 @@ Composer::Result Composer::settleOrSpace() {
   // it). The buffer is meant to run as long as the user wants, and a word
   // separator was the one printable left that broke that promise.
   if (grid_.length() == 0) {
-    // Nothing at all -- a bare '`' that was just dropped, say. Back to
-    // idle rather than opening a composition that holds only a space.
+    // Nothing in the buffer at all: back to idle rather than opening a
+    // composition that holds only a space.
     updateStateAfterMutation();
     return {true, ""};
   }
