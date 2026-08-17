@@ -40,14 +40,6 @@ bool SyllableInput::feed(char c) {
   return false;  // already complete; the composer finalizes first
 }
 
-bool SyllableInput::backspace() {
-  if (len_ == 0) return false;
-  --len_;
-  candidates_ =
-      len_ == 1 ? accepted(DecodeSingleKey(keys_[0])) : std::vector<std::string>{};
-  return true;
-}
-
 void SyllableInput::clear() {
   len_ = 0;
   candidates_.clear();

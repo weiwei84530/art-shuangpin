@@ -335,7 +335,7 @@ const TUTORIALS = [
       { keys: [], screen: {  },
         cap: '這套輸入法把數字排借來做編輯，手不用移到方向鍵區。數字排有<b>兩種身分</b>，分界是「畫面上還有沒有組字串」。' },
       { keys: ['n','i','3','h','k','3'], screen: { comp: [['你','s'],['好','s']] },
-        cap: '先打「你好」。<b>組字中</b>：<kbd>9</kbd>/<kbd>0</kbd> 移游標、<kbd>8</kbd> 開選單、<kbd>5</kbd>/<kbd>6</kbd> 往右／往左刪（<kbd>6</kbd> 在畫面還是注音時也能用，一次刪掉一個鍵）。' },
+        cap: '先打「你好」。<b>組字中</b>：<kbd>9</kbd>/<kbd>0</kbd> 移游標、<kbd>8</kbd> 開選單、<kbd>5</kbd>/<kbd>6</kbd> 往右／往左刪（<kbd>6</kbd> 在畫面還是注音時也能用，一次刪掉整個音節）。' },
       { keys: ['Backspace'], screen: { comp: [['你','s']] },
         cap: '<kbd>⌫</kbd> 刪掉「好」。（音節打到一半時是<b>逐鍵</b>刪，已經成字則是<b>逐字</b>刪。）' },
       { keys: ['Enter'], screen: { text: '你', comp: [] },

@@ -285,10 +285,6 @@ class Composer {
     // Displayed bopomofo; identical to the tone-less reading now in the
     // grid (ㄏㄠ).
     std::string display;
-    // The raw keys that spelled it ("hk"). Backspace replays all but the
-    // last, so a syllable shown as bopomofo comes apart one KEY at a time
-    // (ㄅㄧㄠ -> ㄅ) instead of vanishing whole (2026-08-17).
-    std::string keys;
   };
   Unsettled unsettled_;
 

@@ -166,12 +166,10 @@ TEST_F(ComposerTest, BackspaceDeletesTheTonedSyllable) {
   composer_->feedBackspace();
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
 
-  // An UNTONED syllable is different: it is still shown as bopomofo, so
-  // Backspace unwinds it one KEY at a time (2026-08-17).
+  // An untoned syllable is still shown as bopomofo rather than as its
+  // character, and it goes the same way: one press clears the whole thing.
   Type("vs");
   EXPECT_EQ(composer_->composedText(), "ㄓㄨㄥ");
-  composer_->feedBackspace();
-  EXPECT_EQ(composer_->composedText(), "ㄓ");
   composer_->feedBackspace();
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
 }
@@ -444,9 +442,7 @@ TEST_F(ComposerTest, SixDeletesWhileBopomofoShowsAndFiveKeepsTheNeutralTone) {
   composer_->feedEsc();
 
   Type("de");  // still bopomofo on screen, so every digit is a tone key...
-  Type("6");   // ... except 6, which takes the final key back
-  EXPECT_EQ(composer_->composedText(), "ㄉ");
-  Type("6");
+  Type("6");   // ... except 6, which deletes the syllable outright
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
 }
 
@@ -622,14 +618,12 @@ TEST_F(ComposerTest, EnterCommits) {
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
 }
 
-TEST_F(ComposerTest, BackspaceUnwindsAKeyAtATime) {
+TEST_F(ComposerTest, BackspaceDeletesTheWholeSyllableInProgress) {
   Type("vs");
   EXPECT_EQ(composer_->composedText(), "ㄓㄨㄥ");
   composer_->feedBackspace();
-  EXPECT_EQ(composer_->composedText(), "ㄓ");  // one KEY back, not the lot
-  composer_->feedBackspace();
   EXPECT_EQ(composer_->state(), Composer::State::kEmpty);
-  EXPECT_EQ(composer_->composedText(), "");
+  EXPECT_EQ(composer_->composedText(), "");  // the lot, not one key of it
 
   Type("v");
   composer_->feedBackspace();

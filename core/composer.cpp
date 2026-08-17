@@ -400,7 +400,6 @@ bool Composer::finalizePendingBare() {
       unsettled_.active = true;
       unsettled_.syllables = pending_.candidates();
       unsettled_.display = syllable;
-      unsettled_.keys = pending_.rawKeys();
       pending_.clear();
       return true;
     }
@@ -693,21 +692,12 @@ Composer::Result Composer::feedBackspace() {
   if (state_ == State::kEmpty) return {false, ""};
 
   if (!pending_.empty()) {
-    pending_.backspace();
-  } else if (unsettled_.active && !unsettled_.keys.empty()) {
-    // The syllable on screen is still bopomofo, so Backspace takes back one
-    // KEY of it rather than the whole thing: bc shows ㄅㄧㄠ and one press
-    // leaves ㄅ (2026-08-17). It is already in the grid as its tone-1
-    // character -- that is what keeps the sentence walk correcting itself
-    // -- so the node comes out first and what is left is retyped.
-    const std::string keys = unsettled_.keys;
-    grid_.deleteReadingBeforeCursor();
-    walk_ = grid_.walk();
-    unsettled_ = {};
-    for (size_t i = 0; i + 1 < keys.size(); ++i) pending_.feed(keys[i]);
-    applyLearnedOverrides();
-    updateStateAfterMutation();
-    return {true, ""};
+    // The WHOLE syllable in progress goes, not one key of it: ㄅ and ㄅㄧㄠ
+    // both leave nothing behind (2026-08-17, reverting the key-at-a-time
+    // unwind tried earlier the same day). A syllable is one unit to type and
+    // one unit to take back, so there is nothing to remember about how far
+    // into it a press lands.
+    pending_.clear();
   } else if (grid_.length() > 0) {
     grid_.deleteReadingBeforeCursor();
     walk_ = grid_.walk();

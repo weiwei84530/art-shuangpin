@@ -41,8 +41,6 @@ class SyllableInput {
   // already complete); the caller decides what to do with the key then.
   bool feed(char c);
 
-  // Removes the last key. Returns false if nothing is pending.
-  bool backspace();
 
   void clear();
 
