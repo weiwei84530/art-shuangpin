@@ -138,6 +138,23 @@ v0.3 到 v0.6 分別是 1、1、2、1 個檔案。多數上游改動 Mac 完全�
 
 ## 狀態記錄
 
+- 2026-08-20：**tag v0.8.3 並發佈 GitHub Release**（兩個資產：`art-shuangpin-v0.8.3.zip`、
+  `art-shuangpin-mac-v0.8.3.zip`）。距 v0.8.2 只有 1 個功能 commit——同日那個 macOS NumPad 修正，
+  **詞庫仍是 `c07e7285…`**，`core/`／`engine/`／`ime/` 零改動，Windows 版除了工作列提示的版本號
+  之外行為與 v0.8.2 完全相同（Release 內文有明講「Windows 使用者可以不必更新」）。
+  **先讓使用者在 Mac 上實測過才發佈**：本機編不了 mac/，所以走 `mac.yml` 的 dev artifact——
+  push 之後用 `gh run download` 把 `art-shuangpin-mac-dev.zip` **原封不動**抓到本機再轉給使用者
+  （不要在 Windows 解壓再壓回去，執行位元與 ad-hoc 簽章的 xattr 會掉；`verify_zip.py` 就是檢查這個）。
+  這條路比「打 tag 才有得測」好，也避開了使用者的 Mac 要登入 GitHub 才能下載 artifact 的問題。
+  順序照舊：`check-parity.py`（aligned）→ 升 `VERSION` → `--fix` 把 marker 的 version 帶上去 →
+  兩架構 `ctest`（各 **175** 全過）→ 走 `.sln` 重建兩個 DLL（確認字串是「阿特雙拼輸入法 v0.8.3」）
+  → check-tutorials 12 課全綠、check-drill-coverage 400＋11＝411 → `make-package.ps1` →
+  push 並確認 `mac.yml` 綠燈 → 打 tag → 上傳 Windows zip → 補中文內文 → `--draft=false`。
+  **踩到一次假警報**：`release-mac.yml` 的〈Attach to the release〉步驟失敗，訊息是
+  `Post "https://api.github.com/graphql": dial tcp …: i/o timeout`——runner 的網路瞬斷，
+  不是程式問題，`gh run rerun <id> --failed` 重跑就過了。發佈流程本身沒有要改的地方。
+  **本機尚未重裝**（Windows 行為沒變，只有提示裡的版本號會停在 v0.8.2；要更新就跑打包出來的 `install.ps1`）。
+
 - 2026-08-20：**修掉 macOS 的數字鍵盤（NumPad）被閒置編輯層吃掉的缺陷**（使用者回報，尚未發佈，
   VERSION 仍 0.8.2）。症狀：Mac 上右邊的數字鍵在 IDE／Chrome 變得跟上排數字一樣（＝代送編輯鍵，
   打不出數字），但在 Slack／終端機正常。
