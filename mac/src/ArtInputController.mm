@@ -348,6 +348,22 @@ bool IsCaretMovementKeyCode(unsigned short code) {
 //
 // Returns YES when the key was claimed and replayed.
 - (BOOL)injectIdleEditingKeyIfWanted:(NSEvent *)event {
+    // THE NUMERIC KEYPAD IS NOT THE DIGIT ROW (spec §6 「九宮格豁免」: the
+    // layer takes 字母上方的數字排 only). The guard has to be here rather
+    // than at the call sites, because the character a keypad key reports is
+    // the same "1".."0" the top row reports — the key code is the only thing
+    // that tells them apart. Windows gets this for free: it routes on
+    // virtual key codes, and VK_NUMPAD0 (0x60) is simply not in '0'..'9'.
+    //
+    // Chinese mode was already safe, since -handleKeyDown: checks
+    // IsKeypadKeyCode() before it reaches this layer. English mode was not:
+    // it comes here directly, so every keypad digit typed with nothing
+    // composing was replayed as an editing key — the numeric keypad became
+    // an alias for the top row, which is precisely the escape hatch the
+    // exemption exists to preserve.
+    if (IsKeypadKeyCode(event.keyCode)) {
+        return NO;
+    }
     NSEventModifierFlags flags =
         event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
     if (flags & NSEventModifierFlagShift) {

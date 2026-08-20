@@ -399,6 +399,20 @@ it runs `-injectIdleEditingKeyIfWanted:`, the same call the Chinese branch
 makes. The layer is deliberately identical in both modes so the habit never
 has to be switched.
 
+**That is also where the numeric keypad got lost, and why the guard now lives
+inside `-injectIdleEditingKeyIfWanted:` rather than at its call sites.** The
+Chinese branch tests `IsKeypadKeyCode()` before it ever reaches the layer, so
+it was never affected; the English branch jumps straight in. And the layer
+identifies keys by `charactersIgnoringModifiers`, which reports the very same
+`"1"` for keypad 1 as for the digit row — so with nothing composing, every
+keypad digit was replayed as an editing keystroke. Windows cannot reproduce
+this: it routes on virtual key codes and `VK_NUMPAD0` (0x60) is not in
+`'0'..'9'`, so the exemption is free there and has to be spelled out here.
+What it looked like from the outside: the keypad worked in some applications
+and behaved like the top row in others. The application was never the
+variable — the per-app 中/英 memory was. Chinese-mode applications took the
+exemption, English-mode ones (an IDE, a browser) did not.
+
 ## Deliberate differences from the Windows build
 
 **Digits `1`–`4` post Cmd+Left / Cmd+Right, not Home / End.** The spec asks
@@ -542,7 +556,13 @@ corner reads as a bug while a slightly stale position does not.
    Backspace that never leaves the main block. If a future change is ever
    tempted to take Tab back, this is what it is signing up for.
 
-7. **The input source name shows as the raw mode ID, or a menu header reads
+7. **The numeric keypad types editing keys instead of digits.** Fixed after
+   v0.8.2; see "Key routing" above. If it comes back, the question is not
+   which application it happens in — it is which language mode that
+   application is in. Test the same application twice, once in 中 and once in
+   英, before looking any further.
+
+8. **The input source name shows as the raw mode ID, or a menu header reads
    `CFBundleName`.** A localization lookup fell through — see "The name and
    the icon in the input menu" below. It is not a keying mistake; both
    symptoms come from the bundle having no `.lproj` matching the user's UI

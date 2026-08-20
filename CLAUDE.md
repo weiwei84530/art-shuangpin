@@ -138,6 +138,26 @@ v0.3 到 v0.6 分別是 1、1、2、1 個檔案。多數上游改動 Mac 完全�
 
 ## 狀態記錄
 
+- 2026-08-20：**修掉 macOS 的數字鍵盤（NumPad）被閒置編輯層吃掉的缺陷**（使用者回報，尚未發佈，
+  VERSION 仍 0.8.2）。症狀：Mac 上右邊的數字鍵在 IDE／Chrome 變得跟上排數字一樣（＝代送編輯鍵，
+  打不出數字），但在 Slack／終端機正常。
+  **根因在 `mac/src/ArtInputController.mm` 的 `-injectIdleEditingKeyIfWanted:`**：它用
+  `charactersIgnoringModifiers` 認鍵，而數字鍵盤的 1 回報的字元跟上排的 1 一模一樣（`"1"`），
+  只有 key code 分得出來。中文模式沒事——`-handleKeyDown:` 在進這一層之前就先查過
+  `IsKeypadKeyCode()`；**英文模式閒置時是直接跳進這一層的**，所以整排 NumPad 數字都被當成編輯鍵代送。
+  **Windows 不可能有這個 bug**：它用 virtual key code 路由，`VK_NUMPAD0`（0x60）本來就不在
+  `'0'..'9'` 裡，豁免是免費的；到了 macOS 必須明寫。
+  **「為什麼有些 app 正常」的答案不是 app**：是**每個 app 各自記憶的中／英模式**。
+  在 Slack／終端機是中文模式（走豁免），在 IDE／Chrome 是英文模式（掉進編輯層）。
+  下次再遇到類似回報，先把同一個 app 用中、英各測一次，再去看別的。
+  修法是把 `IsKeypadKeyCode()` 的守衛放進 `-injectIdleEditingKeyIfWanted:` 本身（一處涵蓋兩個模式），
+  不放在呼叫點。行為未變的部分：英文模式**有組字串**時 NumPad 數字仍是字面數字加進組字串
+  （與 Windows 的 `FUNCTION_ENGLISH_INPUT` 相同）；中文模式組字中仍是「先整段上屏再輸出」。
+  spec 沒改（〈閒置編輯層〉本來就寫著「NumPad 不受影響」，這是實作沒做到），
+  `mac/docs/NOTES.md` 的〈Key routing〉與〈What to check first〉各補一條。
+  **本機無法驗證**（沒有 darwin 工具鏈，改動全在 `mac/src/`），交由使用者在 Mac 上建置實測；
+  已產生 `out/numpad-fix.patch` 供離線帶到 Mac 套用。core／engine 零改動，Windows 那半不受影響。
+
 - 2026-08-18：**tag v0.8.2 並發佈 GitHub Release**（兩個資產：`art-shuangpin-v0.8.2.zip`、
   `art-shuangpin-mac-v0.8.2.zip`）。距 v0.8.1 共 11 個 commit，**詞庫仍是 `c07e7285…`**
   （`data/`／`engine/` 自 v0.7.1 零改動），`ime/` 與 `mac/src/` 也都沒動——
