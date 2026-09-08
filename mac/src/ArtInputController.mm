@@ -250,16 +250,18 @@ bool IsCaretMovementKeyCode(unsigned short code) {
         return NO;
     }
 
-    // English mode with nothing composing = every key passes through, except
-    // the idle editing layer, which is deliberately the same in both modes
-    // (2026-08-14) so the habit never has to be switched. A LIVE composition
-    // is the other exception, since upstream v0.5: it survives the language
-    // switch, so English has to be typed into it rather than past it
-    // (spec §6 中英切換 v5) -- digits included, which is what keeps a run
-    // like "user123" typable without reaching for a numeric keypad.
+    // English mode with nothing composing = every key passes through, digit
+    // row included: it is an ordinary English keyboard (2026-09-08). The idle
+    // editing layer used to reach in here too, so that one habit would serve
+    // both modes (2026-08-14); the price was that English mode could not type
+    // 123, which is worse than remembering that the layer is a Chinese-mode
+    // thing. A LIVE composition is still the exception, since upstream v0.5:
+    // it survives the language switch, so English has to be typed into it
+    // rather than past it (spec §6 中英切換 v5) -- digits included, which is
+    // what keeps a run like "user123" typable without a numeric keypad.
     if (!sChineseMode) {
         if (!active) {
-            return [self injectIdleEditingKeyIfWanted:event] ? YES : NO;
+            return NO;
         }
         return [self handleEnglishKeyDown:event client:client shift:shift];
     }
@@ -295,7 +297,7 @@ bool IsCaretMovementKeyCode(unsigned short code) {
             if (!active) {
                 return NO;
             }
-            [self syncWithResult:[bridge feedEnter] client:client];
+            [self commitOnEnterWithClient:client];
             return YES;
         case kVK_Escape:
             if (!active) {
@@ -334,7 +336,49 @@ bool IsCaretMovementKeyCode(unsigned short code) {
     return YES;
 }
 
-// The idle editing layer, shared by both language modes — the counterpart of
+// Enter over a live composition. Committing is deferred by exactly one
+// runloop turn, and that is the whole point of the method (2026-09-08).
+//
+// A Chromium host does not stop at our YES: it forwards the keystroke to the
+// page as well (measured — see docs/NOTES.md "What to check first" §6, where
+// idle Tab moved the focus regardless of what we returned). What saves Enter
+// from being read as a plain Enter is the substitution Chromium makes when a
+// composition is in progress: -keyEvent: samples hasMarkedText, and only then
+// re-sends the keydown as VKEY_PROCESSKEY with isComposing set, which is the
+// signal every "Enter submits this box" handler is supposed to check.
+//
+// Committing inside the key event destroys that signal. insertText: and
+// setMarkedText:@"" both run before Chromium finishes -keyEvent:, so the
+// composition it reports to the renderer has already ended by the time the
+// keydown is dispatched: a page that trusts isComposing (rather than also
+// checking keyCode === 229) sees an ordinary Enter and submits. In Cursor's
+// tool-response box that means the reply is sent by the same keystroke that
+// was only supposed to turn ㄗㄨˋ into 注 — sometimes alongside a second copy
+// of the text, when the box is submitted and the commit lands after it.
+//
+// One turn later the key event is over, the host still reported "composing"
+// for it, and insertText: goes straight through as ImeCommitText. The user
+// sees no delay; nothing else about Enter changes.
+//
+// The composer is NOT read here — it is read in the block, so that anything
+// which commits first (losing focus, most likely) simply leaves nothing to do.
+- (void)commitOnEnterWithClient:(id<IMKTextInput>)client {
+    __weak ArtInputController *weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        ArtInputController *strongSelf = weakSelf;
+        if (strongSelf == nil || client == nil) {
+            return;
+        }
+        ArtBridge *bridge = [ArtBridge shared];
+        if (bridge.state == ArtComposerStateEmpty) {
+            return;  // already committed by -deactivateServer: or -commitComposition:
+        }
+        [strongSelf syncWithResult:[bridge feedEnter] client:client];
+    });
+}
+
+// The idle editing layer — Chinese mode only since 2026-09-08 (English mode
+// passes every idle key through). It is the counterpart of
 // the `if (!active)` digit block in
 // CCompositionProcessorEngine::IsVirtualKeyNeedMspy.  With nothing composing
 // the top digit row stops typing and starts editing:
@@ -357,10 +401,13 @@ bool IsCaretMovementKeyCode(unsigned short code) {
     //
     // Chinese mode was already safe, since -handleKeyDown: checks
     // IsKeypadKeyCode() before it reaches this layer. English mode was not:
-    // it comes here directly, so every keypad digit typed with nothing
+    // it came here directly, so every keypad digit typed with nothing
     // composing was replayed as an editing key — the numeric keypad became
     // an alias for the top row, which is precisely the escape hatch the
-    // exemption exists to preserve.
+    // exemption exists to preserve. English mode no longer reaches this
+    // method at all (2026-09-08), so the guard is now belt and braces; it
+    // stays because the reason it was ever needed is a property of the
+    // method, not of its callers.
     if (IsKeypadKeyCode(event.keyCode)) {
         return NO;
     }
@@ -407,7 +454,7 @@ bool IsCaretMovementKeyCode(unsigned short code) {
         // Tab is the application's, as in Chinese mode.
         case kVK_Return:
         case kVK_ANSI_KeypadEnter:
-            [self syncWithResult:[bridge feedEnter] client:client];
+            [self commitOnEnterWithClient:client];
             return YES;
         case kVK_Escape:
             [self syncWithResult:[bridge feedEsc] client:client];

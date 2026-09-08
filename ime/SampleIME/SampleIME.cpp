@@ -306,6 +306,167 @@ void CSampleIME::_RestoreKeyboardOpenForApp()
 
 //+---------------------------------------------------------------------------
 //
+// CCaretExtentEditSession    [MspyIME]
+//
+// Measures the caret so the 中/英 bubble knows where to appear. The caret's
+// rectangle is only readable under a document lock, and there is no
+// composition to hang the request on at focus time, so this asks for the
+// default selection's extent instead.
+//----------------------------------------------------------------------------
+
+class CCaretExtentEditSession : public CEditSessionBase
+{
+public:
+    CCaretExtentEditSession(_In_ CSampleIME *pTextService, _In_ ITfContext *pContext)
+        : CEditSessionBase(pTextService, pContext)
+    {
+    }
+
+    STDMETHODIMP DoEditSession(TfEditCookie ec)
+    {
+        TF_SELECTION selection = {};
+        ULONG fetched = 0;
+        RECT rc = {};
+        BOOL measured = FALSE;
+
+        if (SUCCEEDED(_pContext->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &selection, &fetched)) &&
+            fetched > 0 && selection.range != nullptr)
+        {
+            ITfContextView* pContextView = nullptr;
+            if (SUCCEEDED(_pContext->GetActiveView(&pContextView)) && pContextView != nullptr)
+            {
+                BOOL isClipped = FALSE;
+                if (SUCCEEDED(pContextView->GetTextExt(ec, selection.range, &rc, &isClipped)))
+                {
+                    measured = TRUE;
+                }
+                pContextView->Release();
+            }
+            selection.range->Release();
+        }
+
+        _pTextService->_FlashModeIndicatorAt(measured ? &rc : nullptr);
+        return S_OK;
+    }
+};
+
+//+---------------------------------------------------------------------------
+//
+// _FlashModeIndicatorForFocus    [MspyIME]
+//
+// The focus landed in a text field. Windows announces a mode CHANGE by
+// itself, but this is not a change -- the per-application memory has just
+// put the mode back to whatever this application was left in, and nothing
+// on screen says which one that is. See ModeIndicator.h.
+//----------------------------------------------------------------------------
+
+void CSampleIME::_FlashModeIndicatorForFocus(_In_opt_ ITfDocumentMgr *pDocMgrFocus)
+{
+    if (pDocMgrFocus == nullptr || _pThreadMgr == nullptr || _tfClientId == TF_CLIENTID_NULL)
+    {
+        return;
+    }
+
+    ITfContext* pContext = nullptr;
+    if (FAILED(pDocMgrFocus->GetTop(&pContext)) || pContext == nullptr)
+    {
+        return;
+    }
+
+    // A context the keyboard is disabled in is not somewhere the user can
+    // type, so there is no mode worth announcing.
+    BOOL isDisabled = FALSE;
+    CCompartment CompartmentKeyboardDisabled(_pThreadMgr, _tfClientId, GUID_COMPARTMENT_KEYBOARD_DISABLED);
+    CompartmentKeyboardDisabled._GetCompartmentBOOL(isDisabled);
+    if (!isDisabled)
+    {
+        CCompartment CompartmentEmptyContext(_pThreadMgr, _tfClientId, GUID_COMPARTMENT_EMPTYCONTEXT);
+        CompartmentEmptyContext._GetCompartmentBOOL(isDisabled);
+    }
+
+    if (!isDisabled)
+    {
+        CCaretExtentEditSession* pEditSession =
+            new (std::nothrow) CCaretExtentEditSession(this, pContext);
+        if (pEditSession != nullptr)
+        {
+            HRESULT hrSession = S_OK;
+            // ASYNCDONTCARE: the focus change is not a good moment to insist
+            // on a synchronous lock, and a bubble that appears a beat later
+            // is still a bubble. If the request itself fails there is no
+            // continuation, so fall back to an unmeasured flash here.
+            if (FAILED(pContext->RequestEditSession(_tfClientId, pEditSession, TF_ES_ASYNCDONTCARE | TF_ES_READ, &hrSession)))
+            {
+                _FlashModeIndicatorAt(nullptr);
+            }
+            pEditSession->Release();
+        }
+    }
+
+    pContext->Release();
+}
+
+//+---------------------------------------------------------------------------
+//
+// _FlashModeIndicatorAt    [MspyIME]
+//
+// `prcCaret` is the caret's screen rectangle, or nullptr when the host would
+// not report one -- Chromium-based hosts frequently will not before the
+// first keystroke. The system caret is the next best source and the mouse
+// pointer is the last: the user's eyes are at the click they just made.
+//----------------------------------------------------------------------------
+
+void CSampleIME::_FlashModeIndicatorAt(const RECT *prcCaret)
+{
+    POINT pt = {};
+    BOOL havePoint = FALSE;
+
+    if (prcCaret != nullptr && (prcCaret->right != prcCaret->left || prcCaret->bottom != prcCaret->top))
+    {
+        pt.x = prcCaret->left;
+        pt.y = prcCaret->bottom;
+        havePoint = TRUE;
+    }
+
+    if (!havePoint)
+    {
+        GUITHREADINFO threadInfo = {};
+        threadInfo.cbSize = sizeof(threadInfo);
+        if (GetGUIThreadInfo(GetCurrentThreadId(), &threadInfo) &&
+            threadInfo.hwndCaret != nullptr &&
+            (threadInfo.rcCaret.right != threadInfo.rcCaret.left ||
+             threadInfo.rcCaret.bottom != threadInfo.rcCaret.top))
+        {
+            pt.x = threadInfo.rcCaret.left;
+            pt.y = threadInfo.rcCaret.bottom;
+            if (ClientToScreen(threadInfo.hwndCaret, &pt))
+            {
+                havePoint = TRUE;
+            }
+        }
+    }
+
+    if (!havePoint && !GetCursorPos(&pt))
+    {
+        return;
+    }
+
+    BOOL isOpen = _rememberedKeyboardOpen;
+    if (_pThreadMgr != nullptr && _tfClientId != TF_CLIENTID_NULL)
+    {
+        CCompartment CompartmentKeyboardOpen(_pThreadMgr, _tfClientId, GUID_COMPARTMENT_KEYBOARD_OPENCLOSE);
+        BOOL compartmentValue = FALSE;
+        if (SUCCEEDED(CompartmentKeyboardOpen._GetCompartmentBOOL(compartmentValue)))
+        {
+            isOpen = compartmentValue;
+        }
+    }
+
+    _modeIndicator.Flash(isOpen, pt);
+}
+
+//+---------------------------------------------------------------------------
+//
 // ITfTextInputProcessorEx::Deactivate
 //
 //----------------------------------------------------------------------------
@@ -338,6 +499,11 @@ STDAPI CSampleIME::Deactivate()
         _candidateMode = CANDIDATE_NONE;
         _isCandidateWithWildcard = FALSE;
     }
+
+    // [MspyIME] The bubble's window and timers belong to this thread; tear
+    // them down here rather than leaving them to the destructor, which COM
+    // may run later and elsewhere.
+    _modeIndicator.Destroy();
 
     _UninitFunctionProviderSink();
 

@@ -198,6 +198,10 @@ static const CGFloat kMinPanelWidth = 90.0;
 @implementation ArtCandidateWindow {
     NSPanel *_panel;
     ArtCandidateView *_view;
+    // Whether the panel is meant to be on screen right now, as distinct from
+    // whether it currently is. Needed because a space change can order it
+    // out from underneath us — see -observeSpaceChanges.
+    BOOL _wantsVisible;
 }
 
 + (ArtCandidateWindow *)shared {
@@ -213,8 +217,26 @@ static const CGFloat kMinPanelWidth = 90.0;
     self = [super init];
     if (self) {
         [self buildPanel];
+        [self observeSpaceChanges];
     }
     return self;
+}
+
+// Switching spaces — Mission Control, a full-screen app, or a window manager
+// bound to ⌥+arrow — can leave the panel behind on the space it was ordered
+// front on, even with NSWindowCollectionBehaviorCanJoinAllSpaces. Re-ordering
+// it front on the new space is cheap and idempotent; doing it only when the
+// panel is supposed to be up means an idle input method does nothing at all.
+- (void)observeSpaceChanges {
+    [[[NSWorkspace sharedWorkspace] notificationCenter]
+        addObserverForName:NSWorkspaceActiveSpaceDidChangeNotification
+                    object:nil
+                     queue:[NSOperationQueue mainQueue]
+                usingBlock:^(NSNotification *note) {
+                    if (self->_wantsVisible) {
+                        [self->_panel orderFront:nil];
+                    }
+                }];
 }
 
 - (void)buildPanel {
@@ -228,8 +250,17 @@ static const CGFloat kMinPanelWidth = 90.0;
     // A non-activating panel owned by a background-only process: it shows
     // above everything, never takes focus, and follows the user across
     // spaces and into full-screen apps.
+    //
+    // The level is CGShieldingWindowLevel(), not NSPopUpMenuWindowLevel
+    // (2026-09-08). A pop-up-menu-level panel is above ordinary windows but
+    // NOT above the window server's full-screen presentation, so a host that
+    // has taken over a display — a full-screen Electron app such as Cursor,
+    // or a game — draws over the candidate list and the user is picking
+    // characters blind. Squirrel fixed the same report the same way
+    // (rime/squirrel cee5c5d, "display panel on top level in the proper
+    // way"); this is the level a candidate window is expected to sit at.
     _panel.floatingPanel = YES;
-    _panel.level = NSPopUpMenuWindowLevel;
+    _panel.level = CGShieldingWindowLevel();
     _panel.opaque = NO;
     _panel.backgroundColor = [NSColor clearColor];
     _panel.hasShadow = YES;
@@ -276,6 +307,7 @@ static const CGFloat kMinPanelWidth = 90.0;
     [_panel setFrame:frame display:YES];
     _view.frame = NSMakeRect(0, 0, size.width, size.height);
     [_view setNeedsDisplay:YES];
+    _wantsVisible = YES;
     [_panel orderFront:nil];
 }
 
@@ -286,7 +318,30 @@ static const CGFloat kMinPanelWidth = 90.0;
         // The client would not report a rectangle. Keeping the previous
         // position is the least surprising thing we can do; jumping to the
         // corner of the screen is not.
-        return fallback;
+        //
+        // Unless the previous position is no longer ON a screen (2026-09-08).
+        // That is what "the candidate window disappeared" turned out to mean
+        // after a display or space change: the panel was still ordered front,
+        // still at the coordinates of a caret that had since moved to another
+        // display, and therefore nowhere the user could see it. A host that
+        // reports no rectangle — Electron ones frequently do not — never
+        // corrects it, so the stale position persists for the whole
+        // selection. When it has gone off-screen, the pointer is the best
+        // guess left about where the user is looking.
+        NSRect card = NSMakeRect(fallback.x, fallback.y, size.width, size.height);
+        for (NSScreen *screen in [NSScreen screens]) {
+            if (NSContainsRect(screen.visibleFrame, card)) {
+                return fallback;
+            }
+        }
+        NSPoint mouse = [NSEvent mouseLocation];
+        NSScreen *screen = [self screenForPoint:mouse];
+        NSRect visible = screen ? screen.visibleFrame : NSMakeRect(0, 0, 1440, 900);
+        NSPoint origin = NSMakePoint(mouse.x, mouse.y - kAnchorGap - size.height);
+        if (origin.y < NSMinY(visible))                origin.y = NSMinY(visible);
+        if (origin.x + size.width > NSMaxX(visible))   origin.x = NSMaxX(visible) - size.width;
+        if (origin.x < NSMinX(visible))                origin.x = NSMinX(visible);
+        return origin;
     }
 
     NSScreen *screen = [self screenForPoint:anchorRect.origin];
@@ -323,6 +378,7 @@ static const CGFloat kMinPanelWidth = 90.0;
 }
 
 - (void)hide {
+    _wantsVisible = NO;
     if ([_panel isVisible]) {
         [_panel orderOut:nil];
     }

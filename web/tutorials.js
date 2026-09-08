@@ -343,9 +343,9 @@ const TUTORIALS = [
       { keys: [], screen: { text: '你' }, audit: false,
         cap: '<b>沒有組字串的時候</b>，整排數字都是編輯鍵：<kbd>1</kbd> 行首、<kbd>2</kbd>/<kbd>3</kbd> 選取到行首／行尾、<kbd>4</kbd> 行尾、<kbd>5</kbd> Delete、<kbd>6</kbd> Backspace、<kbd>7</kbd>/<kbd>8</kbd> ↑／↓、<kbd>9</kbd>/<kbd>0</kbd> ←／→。<b>由中間往外讀</b>：左兩個往左、右兩個往右，靠內的那個帶選取。' },
       { keys: [], screen: { text: '你' }, audit: false,
-        cap: '這排編輯鍵<b>中英文模式都一樣</b>，習慣不用切換。<kbd>Tab</kbd>、<kbd>-</kbd>、<kbd>=</kbd> 完全沒有被攔截，切換欄位照常。' },
+        cap: '這排編輯鍵<b>只有中文模式有</b>——英文模式是一般的英文鍵盤。<kbd>Tab</kbd>、<kbd>-</kbd>、<kbd>=</kbd> 完全沒有被攔截，切換欄位照常。' },
       { keys: [], screen: {  },
-        cap: '代價是中文模式下數字排打不出數字。要打就用<b>鍵盤右邊的數字鍵</b>（完全不受影響），或<b>按 Shift 切英文</b>——英文模式下只要已經在打一串字，數字鍵就是數字，<code>user123</code> 一路打完不用切。' }
+        cap: '代價是中文模式下數字排打不出數字。要打就用<b>鍵盤右邊的數字鍵</b>（完全不受影響），或<b>按 Shift 切英文</b>——<b>英文模式的數字排一律是數字</b>，跟一般英文鍵盤一樣，<code>user123</code> 一路打完不用切。' }
     ]
   },
   {

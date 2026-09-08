@@ -1718,10 +1718,9 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeedMspy(UINT uCode, _In_reads_(1)
 // live composition takes everything printable: those keys join the buffer
 // literally instead of going to the application, which is what lets one
 // uncommitted string hold Chinese and English at once -- digits included, so
-// a run like "user123" needs no detour. With nothing composing the only keys
-// taken are the unshifted digit row (the navigation layer, 2026-08-14);
-// everything else passes through and plain English typing behaves exactly as
-// if the IME were not loaded.
+// a run like "user123" needs no detour. With nothing composing NOTHING is
+// taken: English mode is an ordinary English keyboard, digit row included
+// (2026-09-08, reversing the shared idle editing layer of 2026-08-14).
 BOOL CCompositionProcessorEngine::IsVirtualKeyNeedMspyEnglish(UINT uCode, _In_reads_(1) WCHAR *pwch, _Out_opt_ _KEYSTROKE_STATE *pKeyState)
 {
     if (pKeyState)
@@ -1752,18 +1751,15 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeedMspyEnglish(UINT uCode, _In_re
         return FALSE;
     }
 
-    // The idle navigation layer is the one thing English mode shares with
-    // Chinese mode (2026-08-14): with nothing composing, the unshifted digit
-    // row edits rather than types, in both modes, so the habit never has to
-    // be switched. Everything else about idle English mode is unchanged --
-    // every other key passes straight through.
+    // Idle English mode takes nothing at all (2026-09-08). The idle editing
+    // layer used to reach in here too, on the theory that one habit is
+    // cheaper than two (2026-08-14); in practice it cost the digit row the
+    // one job it has in English, and an English keyboard that cannot type
+    // 123 is a worse trade than remembering that the layer is a Chinese-mode
+    // thing. The layer is unchanged in Chinese mode -- see
+    // IsVirtualKeyNeedMspy.
     if (!active)
     {
-        const bool shiftHeld = (Global::ModifiersValue & (TF_MOD_SHIFT | TF_MOD_LSHIFT | TF_MOD_RSHIFT)) != 0;
-        if (!shiftHeld && uCode >= '0' && uCode <= '9')
-        {
-            return eat(CATEGORY_COMPOSING, FUNCTION_NAV_INJECT);
-        }
         return FALSE;
     }
 

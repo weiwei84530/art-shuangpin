@@ -239,9 +239,9 @@ The composer owns everything **while composing**. The shell owns only:
   unshifted digits**, so Shift+9 still types （ and Shift+1 still types ！, exactly as in
   Weasel. `-`, `=` and **Tab** are no longer intercepted at all (v0.8.0 removed them);
   handing Tab back is also what retires the Chromium focus-stealing failure recorded in
-  docs/NOTES.md. This layer is the one thing English mode shares with Chinese mode, so
-  the habit never has to be switched — see `-injectIdleEditingKeyIfWanted:`, which both
-  branches call.
+  docs/NOTES.md. **Chinese mode only since 2026-09-08**: English mode used to share it,
+  on the theory that one habit is cheaper than two, and the price was an English keyboard
+  that could not type `123`. `-injectIdleEditingKeyIfWanted:` now has exactly one caller.
 * **bare Shift tap** → `switchLanguage(toEnglish)` + toggle 中/英. Since v0.5 it
   **commits nothing** (spec §6 「中英切換」v5): the composition survives the switch and the
   composer inserts the separator space into its own buffer. The shell must never try to
@@ -253,8 +253,8 @@ The composer owns everything **while composing**. The shell owns only:
   `IsVirtualKeyNeedMspyEnglish`: Backspace deletes, Enter commits, Esc clears, arrows
   are eaten, printable ASCII (Space and **digits** included, case kept) goes to
   `feedEnglishChar` — which is what keeps a run like "user123" typable without a numeric
-  keypad. With **nothing** composing, English mode passes every key straight through
-  except the idle editing layer above.
+  keypad. With **nothing** composing, English mode passes every key straight through,
+  full stop (2026-09-08); the idle editing layer above is Chinese mode's alone.
 * **per-application 中/英 memory** (spec §6, upstream v0.3). Every application starts in
   **English** and keeps its own mode, restored silently in `-activateServer:`. The Windows
   build gets this nearly free — a TSF text service runs inside the application's process,

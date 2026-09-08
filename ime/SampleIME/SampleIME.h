@@ -8,6 +8,7 @@
 #pragma once
 
 #include "KeyHandlerEditSession.h"
+#include "ModeIndicator.h"
 #include "SampleIMEBaseStructure.h"
 
 class CLangBarItemButton;
@@ -137,6 +138,14 @@ public:
     // English (InitializeSampleIMECompartment).
     void _RestoreKeyboardOpenForApp();
     void _RememberKeyboardOpen(BOOL isOpen) { _rememberedKeyboardOpen = isOpen; }
+
+    // [MspyIME] The 中/英 bubble (2026-09-08). Fired when the focus lands in
+    // an editable context, which is the one moment the mode changes under
+    // the user without the system having anything to announce -- see
+    // ModeIndicator.h. `_FlashModeIndicatorAt` is the continuation, called
+    // back from the edit session that measured the caret.
+    void _FlashModeIndicatorForFocus(_In_opt_ ITfDocumentMgr *pDocMgrFocus);
+    void _FlashModeIndicatorAt(const RECT *prcCaret);
     // [MspyIME] Numpad key while composing: commit the buffer, then emit
     // the numpad character literally.
     HRESULT _HandleNumpadCommit(TfEditCookie ec, _In_ ITfContext *pContext, WCHAR wch);
@@ -273,6 +282,10 @@ private:
     // _RestoreKeyboardOpenForApp. FALSE = English, the state every
     // application starts in.
     BOOL _rememberedKeyboardOpen = FALSE;
+
+    // [MspyIME] The 中/英 bubble. One per TIP instance = one per thread, so
+    // its window and timers never leave the thread that created them.
+    CModeIndicator _modeIndicator;
 
     ITfDocumentMgr* _pDocMgrLastFocused;
 

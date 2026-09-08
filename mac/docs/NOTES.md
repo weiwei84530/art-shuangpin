@@ -394,13 +394,16 @@ there, which is what makes a multi-word English run possible inside one
 composition. So are digits, which is what keeps "user123" typable on a
 machine with no numeric keypad.
 
-Since v0.8.0 the idle branch of English mode is no longer a bare `return NO`:
-it runs `-injectIdleEditingKeyIfWanted:`, the same call the Chinese branch
-makes. The layer is deliberately identical in both modes so the habit never
-has to be switched.
+The idle branch of English mode is a bare `return NO` again (2026-09-08).
+Between v0.8.0 and here it ran `-injectIdleEditingKeyIfWanted:`, the same
+call the Chinese branch makes, so that the layer would be identical in both
+modes and the habit would never have to be switched. The user asked for it
+back: the cost of that symmetry was an English keyboard whose digit row did
+not type digits, and typing digits is part of what English mode is *for*.
 
-**That is also where the numeric keypad got lost, and why the guard now lives
-inside `-injectIdleEditingKeyIfWanted:` rather than at its call sites.** The
+**That English branch is also where the numeric keypad got lost, which is why
+the guard lives inside `-injectIdleEditingKeyIfWanted:` rather than at its
+call sites — and why it stays there now that the method has one caller.** The
 Chinese branch tests `IsKeypadKeyCode()` before it ever reaches the layer, so
 it was never affected; the English branch jumps straight in. And the layer
 identifies keys by `charactersIgnoringModifiers`, which reports the very same
@@ -411,7 +414,9 @@ this: it routes on virtual key codes and `VK_NUMPAD0` (0x60) is not in
 What it looked like from the outside: the keypad worked in some applications
 and behaved like the top row in others. The application was never the
 variable — the per-app 中/英 memory was. Chinese-mode applications took the
-exemption, English-mode ones (an IDE, a browser) did not.
+exemption, English-mode ones (an IDE, a browser) did not. (Retiring the
+English branch of the layer would have hidden that bug rather than fixed it;
+the fix landed first, in v0.8.3, and is unaffected.)
 
 ## Deliberate differences from the Windows build
 
@@ -567,6 +572,52 @@ corner reads as a bug while a slightly stale position does not.
    the icon in the input menu" below. It is not a keying mistake; both
    symptoms come from the bundle having no `.lproj` matching the user's UI
    language.
+
+9. **The candidate panel vanishes mid-selection, in some applications only.**
+   Two independent causes, both fixed 2026-09-08, both worth checking before
+   inventing a third:
+
+   * **It is behind the application.** The panel used to sit at
+     `NSPopUpMenuWindowLevel`, which is above ordinary windows but *not*
+     above a full-screen presentation. Reported in Cursor after an ⌥+arrow
+     space switch. Now `CGShieldingWindowLevel()`, which is what Squirrel
+     switched to for the same report (rime/squirrel `cee5c5d`, "display
+     panel on top level in the proper way"). If it recurs, this level is the
+     first thing to confirm is still set.
+   * **It is on screen, at a caret that has moved.** `-originForSize:` keeps
+     the previous position when the host reports an empty
+     `attributesForCharacterIndex:lineHeightRectangle:` — Electron hosts
+     frequently do — which is right until the previous position is on a
+     display or space the user is no longer looking at. It now only keeps a
+     fallback origin that is still wholly inside some screen's
+     `visibleFrame`, and otherwise drops the panel next to the pointer.
+
+   A space change can also leave the panel behind despite
+   `CanJoinAllSpaces`, so `NSWorkspaceActiveSpaceDidChangeNotification`
+   re-orders it front while `_wantsVisible` is set.
+
+10. **Enter submits the host's form instead of only committing — or the
+    text arrives twice.** Reported in Cursor's tool-response box. This is
+    the Chromium keydown path again (§6 above), from the other end.
+
+    `-keyEvent:` samples `hasMarkedText` and, when a composition is in
+    progress, re-sends the keydown to the page as `VKEY_PROCESSKEY` with
+    `isComposing` set — the flag every "Enter sends this box" handler is
+    told to check. Committing *inside* the key event ends the composition
+    before the page sees the keydown, so a handler that trusts `isComposing`
+    (rather than also checking `keyCode === 229`) reads a plain Enter and
+    submits; the duplicate is the box being sent and the commit landing
+    after it.
+
+    `-commitOnEnterWithClient:` therefore defers the commit by one runloop
+    turn: the host still reports "composing" for that keystroke, and
+    `insertText:` runs afterwards, outside the key event, where it goes
+    straight through as `ImeCommitText`. Nothing else about Enter changed,
+    and the delay is one turn — invisible.
+
+    Two things this does NOT fix, so do not read a report as a regression:
+    a host that ignores `isComposing` *and* `keyCode` will still submit, and
+    Enter with **nothing** composing is passed through on purpose.
 
 ## The name and the icon in the input menu
 

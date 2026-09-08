@@ -57,6 +57,14 @@ STDAPI CSampleIME::OnSetFocus(_In_ ITfDocumentMgr *pDocMgrFocus, _In_ ITfDocumen
     if (pDocMgrFocus != nullptr)
     {
         _RestoreKeyboardOpenForApp();
+
+        // [MspyIME] ... and says which mode that is, next to the caret the
+        // user is looking at. Only on a genuine change of document: coming
+        // back to the same field is not "entering" it (ModeIndicator.h).
+        if (pDocMgrFocus != _pDocMgrLastFocused)
+        {
+            _FlashModeIndicatorForFocus(pDocMgrFocus);
+        }
     }
 
     _InitTextEditSink(pDocMgrFocus);

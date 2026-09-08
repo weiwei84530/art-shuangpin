@@ -75,7 +75,8 @@ web\    互動教學網站＋看打練習（純 CSS/JS，GitHub Pages）
 - **聲調鍵左右手鏡像（2026-08-04，2026-08-17 少一個鍵）**：以 5／6 之間為軸，右手 `0`=一聲、`9`=二聲、`8`=三聲、`7`=四聲，與左手 `1`-`4` 完全等價。**輕聲只剩左手 `5`**——`6` 已整個讓給 Backspace（見下一條）。
 - **未定案窗口（2026-08-08 收回）**：音節第 2 鍵落下不顯示轉換字（`hk`→ㄏㄠ）；**聲調鍵／空白／標點／下一音節首鍵**定案成字（`` ` `` 曾經也是，2026-08-17 移除）。**聲調鍵一按即成字**（`hk3`→好），打錯調＝Backspace 刪整個音節重打（無退調）。
 - **數字鍵兩種身分（2026-08-08 簡化，2026-08-14 換掉閒置那一半，2026-08-17 把 `6` 拉成通用刪除鍵）**：畫面上還是注音（未定案）＝聲調鍵，**但 `6` 是 Backspace**；已定案＝`5` Delete、`6` Backspace、`8` 開選單、`9`/`0` 移游標，其餘吃掉。**`5` 只在已定案時是 Delete**（未定案時它是輕聲），**`6` 則在任何狀態都是 Backspace**——推翻 2026-08-14 的「`5`/`6` 不能挪用」，代價是輕聲失去右手鏡像鍵。
-- **閒置編輯層（2026-08-14）**：沒有組字串時**整排數字**代送編輯鍵——`1` Home、`2`/`3` Shift+Home/End、`4` End、`5` Delete、`6` Backspace、`7`/`8` ↑↓、`9`/`0` ←→（`1`-`4` 由中間往外讀：左兩個往左、右兩個往右，靠內的帶選取）。**中英模式共用同一層**（英文模式下組字串非空時數字＝字面數字，`user123` 打得完）。**只吃沒按 Shift 的數字**（Shift+9＝（、Shift+1＝！照舊）；**按著 Ctrl/Alt 一律不接手**。
+- **閒置編輯層（2026-08-14）**：沒有組字串時**整排數字**代送編輯鍵——`1` Home、`2`/`3` Shift+Home/End、`4` End、`5` Delete、`6` Backspace、`7`/`8` ↑↓、`9`/`0` ←→（`1`-`4` 由中間往外讀：左兩個往左、右兩個往右，靠內的帶選取）。**只有中文模式有這一層（2026-09-08，推翻原本的「中英共用」）**——英文模式閒置時數字排就是數字，跟一般英文鍵盤一樣；英文模式組字串非空時數字仍是字面數字（`user123` 打得完）。**只吃沒按 Shift 的數字**（Shift+9＝（、Shift+1＝！照舊）；**按著 Ctrl/Alt 一律不接手**。
+- **中英提示氣泡（2026-09-08）**：焦點落進可輸入的文字區時，在游標旁邊閃一張小卡片顯示「中」或「英」（0.55 秒後淡出）。**只在取得焦點時**——按 Shift 切換仍交給 Windows 自己的模式指示器，兩個氣泡才不會同時出現。實作 `ime\SampleIME\ModeIndicator.{h,cpp}`＋`ThreadMgrEventSink::OnSetFocus`，位置取自唯讀 edit session 讀到的選取範圍 `GetTextExt`，讀不到時退回系統 caret、再退回滑鼠位置。macOS 早就有對應的 `ArtModeHUD`（那邊是**切換時**顯示，因為 macOS 沒有系統指示器可借）。
 - **`Tab`／`-`／`=` 不再是導航鍵（2026-08-14）**：Tab 不再是 Backspace（由 `6` 接手），`-`/`=` 不再是 Home/End（由 `1`/`2` 接手）也不再跳組字串頭尾。Tab 從此完全還給應用程式；`-`/`=` 見下一條。
 - **中文模式的符號＝全形，但 `-` `=` `+` `` ` `` 例外（2026-08-14 立、2026-08-16／08-17 開例外）**：沒有對映的符號鍵（`@ # $ % & * |`）**閒置時也不輸出**，一律吃掉；要打就 Shift 切英文。`/`＝、（對齊小狼毫，與 `\` 同義但近得多）。**`-` `=` `+` 直接打出半形字元**（使用者裁示：要與小狼毫一致。Rime `punctuator/half_shape` 在同一套鍵位下就是原樣送出，中英混排時夠常見，為一個連接號切英文不划算）；行為與其他標點相同＝定案未定案音節、融入組字串、不 commit。`_`＝「——」不變。**`` ` `` 也是半形（2026-08-17）**，注音功能鍵移除後回歸普通標點；Shift 位的 `~` 維持全形 ～。
 - 模態選字（2026-07-27 大改版）：組字中行內整句轉換；選單內 `1`-`6` 選字（每頁 6）、`7`/`8` 翻頁不環繞、其他鍵關窗並執行原功能；方向鍵在組字中吃掉無作用。**選定後游標跳過該詞段**（可連按 `8` 一路往右改）。
@@ -137,6 +138,42 @@ v0.3 到 v0.6 分別是 1、1、2、1 個檔案。多數上游改動 Mac 完全�
 - 程式註解一律英文；docs 與本檔繁體中文。
 
 ## 狀態記錄
+
+- 2026-09-08：**四項使用者回報的修正，VERSION 升到 0.8.4（尚未發佈）**。兩項 Windows、兩項 macOS。
+  (a) **英文模式的數字排改回打數字**（推翻 2026-08-14 的「中英共用閒置編輯層」）：
+  Windows 是 `IsVirtualKeyNeedMspyEnglish` 的 `if (!active)` 分支改回 `return FALSE`，
+  macOS 是英文分支不再呼叫 `-injectIdleEditingKeyIfWanted:`。**閒置編輯層在中文模式完全沒變。**
+  當初共用的理由是「習慣不必隨模式切換」，代價是英文模式打不出 `123`——而那正是切去英文的目的之一。
+  英文模式**組字串非空**時數字仍是字面數字（`user123`），這一條沒動。
+  順帶：macOS 的 NumPad 守衛（v0.8.3 那個修正）留在 `-injectIdleEditingKeyIfWanted:` 裡面不動——
+  它現在只剩一個呼叫者，但那個守衛是這個方法自己的性質，不是呼叫者的。
+  (b) **Windows 新增中英提示氣泡**（`ime\SampleIME\ModeIndicator.{h,cpp}`，約 330 行）：
+  焦點落進可輸入的文字區時在游標旁閃「中」／「英」，0.55 秒後淡出，外觀沿用候選窗的 `CANDWND_*`。
+  **只在取得焦點時，不在 Shift 切換時**——切換那一次 Windows 自己會跳指示器，做了會變成兩個氣泡；
+  而「焦點進入」正是 per-app 記憶把模式換掉、卻沒有任何畫面提示的那一刻。
+  位置來自 `TF_ES_ASYNCDONTCARE | TF_ES_READ` 的唯讀 edit session（讀**選取範圍**的 `GetTextExt`，
+  焦點當下沒有 composition 可掛），讀不到時退回 `GetGUIThreadInfo` 的系統 caret、再退回滑鼠位置。
+  視窗是 `WS_EX_NOACTIVATE | WS_EX_TRANSPARENT`：它出現的時機正是使用者在點輸入框，搶走那個點擊會更糟。
+  (c) **macOS 候選窗在全螢幕／換 space 時不見了**（使用者在 Cursor 回報）。查出**兩個獨立成因**：
+  ①`NSPopUpMenuWindowLevel` 高於一般視窗但**不高於全螢幕呈現**，所以宿主畫在它上面——
+  改成 `CGShieldingWindowLevel()`，**Squirrel 為同一種回報做過同一個修正**（rime/squirrel `cee5c5d`）；
+  ②`-originForSize:` 在宿主不回報 `attributesForCharacterIndex:` 時沿用上一次的位置（Electron 常常不回報），
+  而上一次的位置可能已經在別的螢幕／space 上——現在只有「整塊仍在某個螢幕的 `visibleFrame` 內」才沿用，
+  否則掉到滑鼠旁邊。另加 `NSWorkspaceActiveSpaceDidChangeNotification` 在該顯示時重新 `orderFront`。
+  (d) **macOS 在 Cursor 的工具視窗按 Enter 會送出表單／內容重複**。根因是 Chromium 的鍵盤路徑，
+  與 NOTES.md §6 那條 Tab 的量測是同一件事的另一端：`-keyEvent:` 會取樣 `hasMarkedText`，
+  有 composition 時才把 keydown 改送成 `VKEY_PROCESSKEY`（`isComposing`）給網頁。
+  **在按鍵事件裡面 commit 會先把 composition 收掉**，於是只檢查 `isComposing`（而沒有一併檢查
+  `keyCode === 229`）的處理器就讀到一個普通的 Enter 並送出；重複則是「表單被送出、commit 隨後才落地」。
+  改法是 `-commitOnEnterWithClient:` **把 commit 延後一個 runloop turn**：那一次按鍵宿主仍回報
+  composing，`insertText:` 在按鍵事件之外才跑、直接走 `ImeCommitText`。使用者看不出延遲。
+  **修不到的兩件事已寫進 NOTES.md**：宿主若連 `keyCode` 也不看仍會送出；閒置時的 Enter 是刻意放行的。
+  **驗證狀態**：Windows 兩個架構的 DLL 已重建（v0.8.4 字串正確）並打包；
+  **macOS 四項都無法在本機驗證**（沒有 darwin 工具鏈），(a)(c)(d) 全在 `mac/src/`，待使用者在 Mac 上實測。
+  `core/`／`engine/`／`data/` **零改動**，詞庫仍是 `c07e7285…`。
+  **這台開發機是新的**（`DESKTOP-O51TAVM`，repo 的檔案擁有者 SID 不同、需要 `safe.directory`），
+  原本沒有任何工具鏈——VS 2022 Build Tools + Win11 SDK 10.0.26100 已用 winget 裝回，
+  CMake／Python／Node 待補。**沒有 Python 就跑不了 `check-parity.py`，發佈前務必補上。**
 
 - 2026-08-20：**tag v0.8.3 並發佈 GitHub Release**（兩個資產：`art-shuangpin-v0.8.3.zip`、
   `art-shuangpin-mac-v0.8.3.zip`）。距 v0.8.2 只有 1 個功能 commit——同日那個 macOS NumPad 修正，
