@@ -164,9 +164,8 @@ v0.3 到 v0.6 分別是 1、1、2、1 個檔案。多數上游改動 Mac 完全�
   `f4ad5a7`；(a) 全在共用的 `core/`，`ArtBridge.mm` 只是轉手，新增的都是 private 成員）。
   兩架構 DLL 重建、`make-package.ps1` 打包後**已用 install.ps1 裝到本機**（兩個 sha256 與出貨產物相同）。
   **macOS 的氣泡配色本機驗不了**（沒有 darwin 工具鏈），行為待使用者在 Mac 上實測。
-  **工具鏈不在 PATH 上**：`cmake` 在 `C:\Program Files\CMakein`、`node` 在 `C:\Program Files
-odejs`、
-  `msbuild` 在 `C:\Program Files (x86)\Microsoft Visual Studio2\BuildTools\...md64`、
+  **工具鏈不在 PATH 上**：`cmake` 在 `C:\Program Files\CMake\bin`、`node` 在 `C:\Program Files\nodejs`、
+  `msbuild` 在 `C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\...\amd64`、
   `python` 只在 `%LOCALAPPDATA%\Programs\Python\Python312`（`python.exe` 那個 WindowsApps 別名是 Store 殼）。
 
 - 2026-09-08：**tag v0.8.4 並發佈 GitHub Release**（兩個資產：`art-shuangpin-v0.8.4.zip`、
@@ -691,7 +690,7 @@ odejs`、
   **稽核腳本的坑**：偵測「一個音節花了幾鍵」不能只看 `unconfirmed` 變空——沒打聲調的音節是被
   **下一個音節的第一鍵**定案的，注音直接從 ㄢ 跳成 ㄑ 而不經過空字串，要改判「新的 unconfirmed
   不再是舊的前綴」才算換音節（否則 `ajqr2` 會被當成一個 4 鍵的 ㄑㄩㄢ 而誤報）。
-  順修 `webpp.js` 兩處：nav 改成一階段一組、active 用 `data-lesson` 而非扁平位置索引；
+  順修 `web\app.js` 兩處：nav 改成一階段一組、active 用 `data-lesson` 而非扁平位置索引；
   候選窗定位的 `compEl.children` 含 caret span，改用 `.ch` 才不會差一格。
   README 也補上手冊連結並修掉兩處與現行規格不符的舊描述（Shift「自動 commit」、聲調只寫 1–5）。
   **驗證**：check-tutorials 全綠、check-drill-coverage 仍 411 全覆蓋、`ctest` 173 全過、
@@ -711,7 +710,7 @@ odejs`、
   詞裡任一字太生僻就整個詞不用（那六個字都在 −6.4 以下，可接受的 虐咱倆唷嗲剖僧窮 都在 −6.2 以上），
   **兩個 pass 都套用**——沒有可讀的詞就寧可不練；(b) 修好貪婪法的 bug：gain 要算**相異**音節，
   否則「煢煢」算成 2 分贏過「貧窮」；(c) **不再跳過多讀音的詞**，改成把讀音寫死在課文裡（`剖析/ㄆㄡ-ㄒㄧ`），
-  原本的跳過規則害 ㄆㄡ 只剩「裒輯」可選；(d) 新增 `drillsvoid-words.txt` 手動排除清單
+  原本的跳過規則害 ㄆㄡ 只剩「裒輯」可選；(d) 新增 `drills\avoid-words.txt` 手動排除清單
   （目前只有「什麼」：詞庫四種鍵同分會挑到 ㄕㄜˊ-ㄇㄛ˙，與課文釘的 ㄕㄣˊ-ㄇㄜ˙ 相矛盾）；
   (e) 補完固定 **4 課**、字數平均（原本第 5 課只有 10 個詞）。
   最終：13 課 2134 步、補完用詞 137 個、402＋9＝411 稽核通過，Chrome 實測全跑完無誤。**PowerShell 5.1 的坑**：含中文的 .ps1 必須存成 **UTF-8 with BOM**，
