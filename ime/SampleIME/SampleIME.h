@@ -147,6 +147,18 @@ public:
     void _FlashModeIndicatorForFocus(_In_opt_ ITfDocumentMgr *pDocMgrFocus);
     void _FlashModeIndicatorUnderLock(TfEditCookie ec, _In_opt_ ITfContext *pContext);
     void _FlashModeIndicatorAt(const RECT *prcCaret, BOOL pointerFirst);
+    // [MspyIME] The caret cannot be read at focus time: a Chromium text
+    // store answers GetTextExt with the bounds it was last TOLD about, and
+    // the renderer reports the newly focused field only a few frames later,
+    // so the answer at focus time describes the PREVIOUS caret. Measured
+    // 2026-09-09. The focus bubble therefore takes one baseline reading and
+    // waits for that answer to change before placing itself.
+    void _BeginDeferredFlash(_In_ ITfContext *pContext);
+    void _CancelDeferredFlash();
+    void _OnDeferredFlashTick();
+    void _OnDeferredFlashMeasured(BOOL measured, const RECT &rc);
+    void _RequestFlashMeasurement();
+    static VOID CALLBACK _DeferredFlashTimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
     // [MspyIME] Numpad key while composing: commit the buffer, then emit
     // the numpad character literally.
     HRESULT _HandleNumpadCommit(TfEditCookie ec, _In_ ITfContext *pContext, WCHAR wch);
@@ -291,6 +303,13 @@ private:
     ITfDocumentMgr* _pDocMgrLastFocused;
 
     ITfContext* _pContext;
+
+    // [MspyIME] Deferred focus-bubble placement (2026-09-09).
+    ITfContext* _pFlashContext;
+    RECT _flashBaselineRc;
+    BOOL _flashHaveBaseline;
+    size_t _flashAttempt;
+    UINT_PTR _flashTimerId;
 
     ITfCompartment* _pSIPIMEOnOffCompartment;
     DWORD _dwSIPIMEOnOffCompartmentSinkCookie;

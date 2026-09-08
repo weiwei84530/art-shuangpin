@@ -12,6 +12,8 @@
 #include "CompositionProcessorEngine.h"
 #include "Compartment.h"
 
+#include <map>
+
 //+---------------------------------------------------------------------------
 //
 // CreateInstance
@@ -86,6 +88,12 @@ CSampleIME::CSampleIME()
 
     _pContext = nullptr;
 
+    _pFlashContext = nullptr;
+    _flashBaselineRc = RECT{};
+    _flashHaveBaseline = FALSE;
+    _flashAttempt = 0;
+    _flashTimerId = 0;
+
     _refCount = 1;
 }
 
@@ -97,6 +105,7 @@ CSampleIME::CSampleIME()
 
 CSampleIME::~CSampleIME()
 {
+    _CancelDeferredFlash();
     if (_pCandidateListUIPresenter)
     {
         delete _pCandidateListUIPresenter;
@@ -306,7 +315,7 @@ void CSampleIME::_RestoreKeyboardOpenForApp()
 
 //+---------------------------------------------------------------------------
 //
-// CCaretExtentEditSession    [MspyIME]
+// MeasureSelectionExtent    [MspyIME]
 //
 // Measures the caret so the 中/英 bubble knows where to appear. The caret's
 // rectangle is only readable under a document lock, and there is no
@@ -337,32 +346,22 @@ static BOOL MeasureSelectionExtent(TfEditCookie ec, _In_opt_ ITfContext *pContex
     if (SUCCEEDED(pContext->GetActiveView(&pContextView)) && pContextView != nullptr)
     {
         BOOL isClipped = FALSE;
-        if (SUCCEEDED(pContextView->GetTextExt(ec, selection.range, prc, &isClipped)))
+        HRESULT hr = pContextView->GetTextExt(ec, selection.range, prc, &isClipped);
+        Global::DebugLog(L"MeasureSelectionExtent: hr=0x%08X rc=(%d,%d,%d,%d) clipped=%d",
+                         hr, prc->left, prc->top, prc->right, prc->bottom, isClipped ? 1 : 0);
+        if (SUCCEEDED(hr))
         {
             measured = TRUE;
         }
         pContextView->Release();
     }
+    else
+    {
+        Global::DebugLog(L"MeasureSelectionExtent: no active view");
+    }
     selection.range->Release();
     return measured;
 }
-
-class CCaretExtentEditSession : public CEditSessionBase
-{
-public:
-    CCaretExtentEditSession(_In_ CSampleIME *pTextService, _In_ ITfContext *pContext)
-        : CEditSessionBase(pTextService, pContext)
-    {
-    }
-
-    STDMETHODIMP DoEditSession(TfEditCookie ec)
-    {
-        RECT rc = {};
-        const BOOL measured = MeasureSelectionExtent(ec, _pContext, &rc);
-        _pTextService->_FlashModeIndicatorAt(measured ? &rc : nullptr, TRUE);
-        return S_OK;
-    }
-};
 
 //+---------------------------------------------------------------------------
 //
@@ -420,26 +419,205 @@ void CSampleIME::_FlashModeIndicatorForFocus(_In_opt_ ITfDocumentMgr *pDocMgrFoc
         CompartmentEmptyContext._GetCompartmentBOOL(isDisabled);
     }
 
-    if (!isDisabled)
+    Global::DebugLog(L"FlashModeIndicatorForFocus: docMgr=%p disabled=%d", pDocMgrFocus, isDisabled ? 1 : 0);
+
+    if (isDisabled)
     {
-        CCaretExtentEditSession* pEditSession =
-            new (std::nothrow) CCaretExtentEditSession(this, pContext);
-        if (pEditSession != nullptr)
-        {
-            HRESULT hrSession = S_OK;
-            // ASYNCDONTCARE: the focus change is not a good moment to insist
-            // on a synchronous lock, and a bubble that appears a beat later
-            // is still a bubble. If the request itself fails there is no
-            // continuation, so fall back to an unmeasured flash here.
-            if (FAILED(pContext->RequestEditSession(_tfClientId, pEditSession, TF_ES_ASYNCDONTCARE | TF_ES_READ, &hrSession)))
-            {
-                _FlashModeIndicatorAt(nullptr, TRUE);
-            }
-            pEditSession->Release();
-        }
+        // The focus landed somewhere the user cannot type: drop whatever
+        // measurement was still in flight for the field they left.
+        _CancelDeferredFlash();
+    }
+    else
+    {
+        _BeginDeferredFlash(pContext);
     }
 
     pContext->Release();
+}
+
+//+---------------------------------------------------------------------------
+//
+// Deferred focus-bubble placement    [MspyIME]
+//
+// A Chromium text store answers GetTextExt with the caret bounds it was
+// last TOLD about, and the renderer reports the newly focused field only a
+// few frames after the focus event. So at focus time the answer SUCCEEDS
+// and describes the PREVIOUS caret -- measured 2026-09-09, one document
+// manager handed back a byte-identical rect for two clicks into different
+// fields five seconds apart. Because it succeeds, no fallback caught it.
+//
+// So: take one baseline reading at focus time, then poll. The first
+// reading that DIFFERS from the baseline is the host answering about the
+// field the user is actually in, and that is where the bubble goes. If the
+// answer never changes, it was never about this field and we do not trust
+// it at all: the pointer is the honest place, and for a focus the user
+// gave by clicking it is also the right one.
+//----------------------------------------------------------------------------
+
+namespace
+{
+// Roughly two, five, ten and eighteen frames at 60 Hz. The last bounds the
+// wait: past ~300 ms a bubble that has not appeared yet is simply late.
+const UINT kFlashRetryMs[] = {30, 80, 160, 300};
+
+// WM_TIMER with a NULL window is delivered to the timer proc, which is
+// static, so a pending flash has to be found by its timer id. Timers are
+// thread-bound and so is a TIP instance, hence thread_local.
+thread_local std::map<UINT_PTR, CSampleIME*> g_flashTimers;
+}
+
+// Measures under a lock and hands the result back without deciding
+// anything: _OnDeferredFlashMeasured owns the decision.
+class CDeferredFlashEditSession : public CEditSessionBase
+{
+public:
+    CDeferredFlashEditSession(_In_ CSampleIME *pTextService, _In_ ITfContext *pContext)
+        : CEditSessionBase(pTextService, pContext)
+    {
+    }
+
+    STDMETHODIMP DoEditSession(TfEditCookie ec)
+    {
+        RECT rc = {};
+        const BOOL measured = MeasureSelectionExtent(ec, _pContext, &rc);
+        _pTextService->_OnDeferredFlashMeasured(measured, rc);
+        return S_OK;
+    }
+};
+
+void CSampleIME::_CancelDeferredFlash()
+{
+    if (_flashTimerId != 0)
+    {
+        KillTimer(nullptr, _flashTimerId);
+        g_flashTimers.erase(_flashTimerId);
+        _flashTimerId = 0;
+    }
+    if (_pFlashContext != nullptr)
+    {
+        _pFlashContext->Release();
+        _pFlashContext = nullptr;
+    }
+    _flashHaveBaseline = FALSE;
+    _flashAttempt = 0;
+}
+
+void CSampleIME::_BeginDeferredFlash(_In_ ITfContext *pContext)
+{
+    _CancelDeferredFlash();
+    if (pContext == nullptr)
+    {
+        return;
+    }
+    _pFlashContext = pContext;
+    _pFlashContext->AddRef();
+    // Attempt 0 is the baseline: measure now, decide nothing.
+    _RequestFlashMeasurement();
+}
+
+void CSampleIME::_RequestFlashMeasurement()
+{
+    if (_pFlashContext == nullptr || _tfClientId == TF_CLIENTID_NULL)
+    {
+        return;
+    }
+    CDeferredFlashEditSession* pEditSession =
+        new (std::nothrow) CDeferredFlashEditSession(this, _pFlashContext);
+    if (pEditSession == nullptr)
+    {
+        return;
+    }
+    HRESULT hrSession = S_OK;
+    if (FAILED(_pFlashContext->RequestEditSession(_tfClientId, pEditSession,
+                                                  TF_ES_ASYNCDONTCARE | TF_ES_READ, &hrSession)))
+    {
+        // No way to measure at all: the pointer is the honest answer.
+        _CancelDeferredFlash();
+        _FlashModeIndicatorAt(nullptr, TRUE);
+    }
+    pEditSession->Release();
+}
+
+void CSampleIME::_OnDeferredFlashMeasured(BOOL measured, const RECT &rc)
+{
+    if (_pFlashContext == nullptr)
+    {
+        return;  // cancelled underneath us: the focus moved on
+    }
+
+    if (!_flashHaveBaseline)
+    {
+        // "Nothing" is as good a baseline as a rect: what matters is that
+        // the host later says something different.
+        _flashBaselineRc = measured ? rc : RECT{};
+        _flashHaveBaseline = TRUE;
+        Global::DebugLog(L"DeferredFlash: baseline measured=%d rc=(%d,%d,%d,%d)",
+                         measured ? 1 : 0, rc.left, rc.top, rc.right, rc.bottom);
+        _OnDeferredFlashTick();
+        return;
+    }
+
+    const BOOL changed = measured &&
+        (rc.left != _flashBaselineRc.left || rc.top != _flashBaselineRc.top ||
+         rc.right != _flashBaselineRc.right || rc.bottom != _flashBaselineRc.bottom);
+    Global::DebugLog(L"DeferredFlash: attempt=%u measured=%d changed=%d rc=(%d,%d,%d,%d)",
+                     (unsigned)_flashAttempt, measured ? 1 : 0, changed ? 1 : 0,
+                     rc.left, rc.top, rc.right, rc.bottom);
+
+    if (changed)
+    {
+        RECT placed = rc;
+        _CancelDeferredFlash();
+        _FlashModeIndicatorAt(&placed, TRUE);
+        return;
+    }
+
+    if (_flashAttempt >= ARRAYSIZE(kFlashRetryMs))
+    {
+        _CancelDeferredFlash();
+        _FlashModeIndicatorAt(nullptr, TRUE);
+        return;
+    }
+
+    _OnDeferredFlashTick();
+}
+
+void CSampleIME::_OnDeferredFlashTick()
+{
+    if (_pFlashContext == nullptr || _flashAttempt >= ARRAYSIZE(kFlashRetryMs))
+    {
+        return;
+    }
+    const UINT delay = kFlashRetryMs[_flashAttempt];
+    ++_flashAttempt;
+    const UINT_PTR id = SetTimer(nullptr, 0, delay, CSampleIME::_DeferredFlashTimerProc);
+    if (id == 0)
+    {
+        _CancelDeferredFlash();
+        _FlashModeIndicatorAt(nullptr, TRUE);
+        return;
+    }
+    _flashTimerId = id;
+    g_flashTimers[id] = this;
+}
+
+/* static */
+VOID CALLBACK CSampleIME::_DeferredFlashTimerProc(HWND, UINT, UINT_PTR idEvent, DWORD)
+{
+    KillTimer(nullptr, idEvent);
+    auto it = g_flashTimers.find(idEvent);
+    if (it == g_flashTimers.end())
+    {
+        return;
+    }
+    CSampleIME* pSelf = it->second;
+    g_flashTimers.erase(it);
+    if (pSelf == nullptr)
+    {
+        return;
+    }
+    pSelf->_flashTimerId = 0;
+    pSelf->_RequestFlashMeasurement();
 }
 
 //+---------------------------------------------------------------------------
@@ -505,20 +683,35 @@ void CSampleIME::_FlashModeIndicatorAt(const RECT *prcCaret, BOOL pointerFirst)
         havePoint = TRUE;
     }
 
+    const WCHAR* source = L"caret";
+
     if (!havePoint && pointerFirst)
     {
         havePoint = GetCursorPos(&pt);
+        if (havePoint) source = L"pointer";
     }
 
     if (!havePoint)
     {
         havePoint = SystemCaretPoint(&pt);
+        if (havePoint) source = L"syscaret";
     }
 
-    if (!havePoint && !GetCursorPos(&pt))
+    if (!havePoint)
     {
-        return;
+        if (!GetCursorPos(&pt))
+        {
+            Global::DebugLog(L"FlashModeIndicatorAt: no point at all");
+            return;
+        }
+        source = L"pointer(last)";
     }
+
+    POINT cursor = {};
+    GetCursorPos(&cursor);
+    Global::DebugLog(L"FlashModeIndicatorAt: pointerFirst=%d source=%s pt=(%d,%d) cursor=(%d,%d) caretRc=%s",
+                     pointerFirst ? 1 : 0, source, pt.x, pt.y, cursor.x, cursor.y,
+                     prcCaret != nullptr ? L"given" : L"none");
 
     BOOL isOpen = _rememberedKeyboardOpen;
     if (_pThreadMgr != nullptr && _tfClientId != TF_CLIENTID_NULL)
