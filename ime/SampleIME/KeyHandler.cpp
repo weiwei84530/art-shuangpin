@@ -533,6 +533,15 @@ HRESULT CSampleIME::_HandleShiftTap(TfEditCookie ec, _In_ ITfContext *pContext)
     CompartmentKeyboardOpen._SetCompartmentBOOL(nowOpen);
     // This application now remembers the mode it was switched to.
     _RememberKeyboardOpen(nowOpen);
+
+    // ...and says so, next to the caret (2026-09-08). The first version
+    // deliberately left the switch to Windows' own mode indicator so that
+    // two bubbles could never appear at once. Measured on Win 11 26200: no
+    // such indicator appears for this TIP, so there was nothing to defer to
+    // and the most obvious moment to show the mode was the one moment we
+    // were not showing it. Ordered AFTER the compartment write, because
+    // _FlashModeIndicatorAt reads the mode back from it.
+    _FlashModeIndicatorUnderLock(ec, pContext);
     return S_OK;
 }
 

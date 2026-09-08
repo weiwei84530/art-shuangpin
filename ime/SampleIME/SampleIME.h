@@ -145,6 +145,7 @@ public:
     // ModeIndicator.h. `_FlashModeIndicatorAt` is the continuation, called
     // back from the edit session that measured the caret.
     void _FlashModeIndicatorForFocus(_In_opt_ ITfDocumentMgr *pDocMgrFocus);
+    void _FlashModeIndicatorUnderLock(TfEditCookie ec, _In_opt_ ITfContext *pContext);
     void _FlashModeIndicatorAt(const RECT *prcCaret);
     // [MspyIME] Numpad key while composing: commit the buffer, then emit
     // the numpad character literally.

@@ -297,17 +297,25 @@
 
 ### 中英提示氣泡（2026-09-08 新增）
 
-焦點落進可以輸入的文字區時（游標變成直線的那一刻），在游標旁邊閃一張小卡片顯示**中**或**英**，
-0.55 秒後淡出。白底圓角、細邊框，與候選窗同一套外觀（`Define.h` 的 `CANDWND_*`）。
+在游標旁邊閃一張小卡片顯示**中**或**英**，0.55 秒後淡出。白底圓角、細邊框、CS_DROPSHADOW，
+與候選窗同一套配色（`Define.h` 的 `CANDWND_*`）；28×24 px @96dpi、11pt，ClearType。
 
-- **為什麼是「取得焦點」而不是「切換」**：per-app 記憶會在焦點回來時把模式換成這個 app 上次的狀態
-  ——那是一次**沒有任何畫面提示**的模式改變，因為對系統而言什麼都沒發生。切換 Shift 的那一次
-  Windows 自己就會跳指示器，所以**故意不做**，否則同一瞬間會有兩個氣泡。
-  （macOS 相反：那邊沒有系統指示器可借，所以 `ArtModeHUD` 是在**切換時**顯示的。）
-- **只在 doc mgr 真的換掉時觸發**。點回同一個已經有焦點的欄位不算「進入」，TSF 也不會發事件。
+**兩個時機，都是使用者沒有別的地方讀得到模式的那一刻：**
+
+1. **Shift 單獨輕按**（`_HandleShiftTap`）——他剛剛做的那次切換。
+2. **焦點落進可以輸入的文字區**（游標變成直線的那一刻）——per-app 記憶替他做的那次切換，
+   因為對系統而言什麼都沒發生，所以沒有任何東西會宣告它。
+
+- **決策記錄（2026-09-08 同日修正）**：第一版**只做第 2 項**，理由是「切換那一次 Windows 自己會跳
+  指示器，做了會變成兩個氣泡」。**實測 Win 11 26200：這個 TIP 切換時系統不會跳任何指示器**，
+  所以沒有東西可以讓，反而是最該顯示的時機沒有顯示。第 1 項因此補上。
+  （macOS 一直都是切換時顯示——那邊本來就沒有系統指示器可借。）
+- **取得焦點那一項只在 doc mgr 真的換掉時觸發**。點回同一個已經有焦點的欄位不算「進入」，TSF 也不會發事件。
 - 鍵盤被停用的 context（`GUID_COMPARTMENT_KEYBOARD_DISABLED`／`GUID_COMPARTMENT_EMPTYCONTEXT`）不顯示。
-- **位置怎麼來的**：`TF_ES_ASYNCDONTCARE | TF_ES_READ` 的唯讀 edit session 讀預設選取範圍，
-  再 `ITfContextView::GetTextExt`。焦點當下沒有 composition 可以掛，所以量的是選取範圍不是組字範圍。
+- **位置怎麼來的**：讀預設選取範圍再 `ITfContextView::GetTextExt`。焦點當下沒有 composition 可以掛，
+  所以量的是選取範圍不是組字範圍。取得焦點那一項要自己排一個 `TF_ES_ASYNCDONTCARE | TF_ES_READ`
+  的唯讀 edit session；Shift 那一項**本來就在 edit session 裡**，直接用手上的 cookie 量
+  （`_FlashModeIndicatorUnderLock`）。
   宿主不回報時（Chromium 系在第一次按鍵前常常不回報）退回系統 caret（`GetGUIThreadInfo`），
   再退回滑鼠位置——使用者的視線就在剛剛點下去的地方。
 - 視窗是 `WS_EX_NOACTIVATE | WS_EX_TRANSPARENT | WS_EX_LAYERED` 的 `WS_POPUP`：它出現的時機正是

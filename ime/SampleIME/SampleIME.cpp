@@ -314,6 +314,39 @@ void CSampleIME::_RestoreKeyboardOpenForApp()
 // default selection's extent instead.
 //----------------------------------------------------------------------------
 
+// Shared by the edit session below and by _FlashModeIndicatorUnderLock,
+// which already holds a lock of its own (the Shift tap runs inside one).
+static BOOL MeasureSelectionExtent(TfEditCookie ec, _In_opt_ ITfContext *pContext, _Out_ RECT *prc)
+{
+    *prc = RECT{};
+    if (pContext == nullptr)
+    {
+        return FALSE;
+    }
+
+    TF_SELECTION selection = {};
+    ULONG fetched = 0;
+    if (FAILED(pContext->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &selection, &fetched)) ||
+        fetched == 0 || selection.range == nullptr)
+    {
+        return FALSE;
+    }
+
+    BOOL measured = FALSE;
+    ITfContextView* pContextView = nullptr;
+    if (SUCCEEDED(pContext->GetActiveView(&pContextView)) && pContextView != nullptr)
+    {
+        BOOL isClipped = FALSE;
+        if (SUCCEEDED(pContextView->GetTextExt(ec, selection.range, prc, &isClipped)))
+        {
+            measured = TRUE;
+        }
+        pContextView->Release();
+    }
+    selection.range->Release();
+    return measured;
+}
+
 class CCaretExtentEditSession : public CEditSessionBase
 {
 public:
@@ -324,31 +357,27 @@ public:
 
     STDMETHODIMP DoEditSession(TfEditCookie ec)
     {
-        TF_SELECTION selection = {};
-        ULONG fetched = 0;
         RECT rc = {};
-        BOOL measured = FALSE;
-
-        if (SUCCEEDED(_pContext->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &selection, &fetched)) &&
-            fetched > 0 && selection.range != nullptr)
-        {
-            ITfContextView* pContextView = nullptr;
-            if (SUCCEEDED(_pContext->GetActiveView(&pContextView)) && pContextView != nullptr)
-            {
-                BOOL isClipped = FALSE;
-                if (SUCCEEDED(pContextView->GetTextExt(ec, selection.range, &rc, &isClipped)))
-                {
-                    measured = TRUE;
-                }
-                pContextView->Release();
-            }
-            selection.range->Release();
-        }
-
+        const BOOL measured = MeasureSelectionExtent(ec, _pContext, &rc);
         _pTextService->_FlashModeIndicatorAt(measured ? &rc : nullptr);
         return S_OK;
     }
 };
+
+//+---------------------------------------------------------------------------
+//
+// _FlashModeIndicatorUnderLock    [MspyIME]
+//
+// The Shift tap already runs inside an edit session, so it can measure the
+// caret directly instead of queueing another one.
+//----------------------------------------------------------------------------
+
+void CSampleIME::_FlashModeIndicatorUnderLock(TfEditCookie ec, _In_opt_ ITfContext *pContext)
+{
+    RECT rc = {};
+    const BOOL measured = MeasureSelectionExtent(ec, pContext, &rc);
+    _FlashModeIndicatorAt(measured ? &rc : nullptr);
+}
 
 //+---------------------------------------------------------------------------
 //

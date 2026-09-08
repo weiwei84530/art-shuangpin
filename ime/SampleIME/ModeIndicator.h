@@ -3,14 +3,19 @@
 // macOS has ArtModeHUD for the same job and for the same reason: the mode is
 // a property of the application you are typing into, and nothing on screen
 // says which one you are in until you have already typed a character in the
-// wrong script. Windows shows its own indicator when the mode CHANGES, which
-// covers the Shift tap; what it cannot cover is clicking into a text field,
-// because nothing changed -- the per-application memory simply restored what
-// that application was already in.
+// wrong script.
 //
-// So this bubble deliberately fires on FOCUS, not on the switch: one card
-// next to the caret, held briefly, faded out. Leaving the switch to the
-// system's own indicator is what keeps two bubbles from appearing at once.
+// Two moments, both of them a mode the user did not read anywhere:
+//
+//   * the Shift tap (_HandleShiftTap) -- the switch they just made;
+//   * taking the focus (_FlashModeIndicatorForFocus) -- the switch the
+//     per-application memory made for them, which nothing announces because
+//     from the system's point of view nothing changed.
+//
+// The first version showed only the second, on the assumption that Windows'
+// own mode indicator would cover the switch and two bubbles would be worse
+// than none. Measured on Win 11 26200: no system indicator appears for this
+// TIP, so there was nothing to defer to.
 //
 // Lifetime: one instance per CSampleIME, i.e. one per thread that hosts the
 // TIP, so the window is always created and destroyed on its own UI thread and

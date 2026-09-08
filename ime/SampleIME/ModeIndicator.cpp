@@ -8,11 +8,14 @@
 namespace
 {
 // Authored at 96 dpi; every metric below is scaled to the caret's monitor.
-const int   kCardWidth     = 40;
-const int   kCardHeight    = 34;
-const int   kCornerRadius  = 8;
-const int   kCaretGap      = 6;    // between the caret and the top of the card
-const int   kFontPointSize = 15;
+//
+// Small on purpose: this is a glance, not a dialog. One glyph with just
+// enough air around it to read as a card rather than as stray text.
+const int   kCardWidth     = 28;
+const int   kCardHeight    = 24;
+const int   kCornerRadius  = 6;
+const int   kCaretGap      = 5;    // between the caret and the top of the card
+const int   kFontPointSize = 11;
 
 // Held fully opaque, then faded. The whole thing is over in well under a
 // second: long enough to read one character out of the corner of the eye,
@@ -47,7 +50,10 @@ BOOL CModeIndicator::_EnsureWindowClass()
 
     WNDCLASSEX wc = {};
     wc.cbSize        = sizeof(wc);
-    wc.style         = CS_HREDRAW | CS_VREDRAW | CS_IME;
+    // CS_DROPSHADOW is what lifts the card off the text behind it; the
+    // shadow follows the rounded region set in Flash(), so it does not
+    // outline a square.
+    wc.style         = CS_HREDRAW | CS_VREDRAW | CS_IME | CS_DROPSHADOW;
     wc.lpfnWndProc   = CModeIndicator::_WindowProc;
     wc.hInstance     = Global::dllInstanceHandle;
     wc.hCursor       = nullptr;
@@ -159,15 +165,20 @@ void CModeIndicator::_UpdateMetricsForDpi()
         _font = nullptr;
     }
 
+    // CLEARTYPE_QUALITY rather than the candidate window's DEFAULT_QUALITY:
+    // this card is one glyph at a small size, so the difference is the whole
+    // difference between crisp and mushy. Subpixel rendering survives the
+    // layered window because LWA_ALPHA composites an already-drawn opaque
+    // bitmap.
     const int fontHeight = -MulDiv(kFontPointSize, (int)dpi, 72);
-    _font = CreateFont(fontHeight, 0, 0, 0, FW_MEDIUM, 0, 0, 0, 0, 0, 0, 0, 0,
-                       SAMPLEIME_FONT_DEFAULT);
+    _font = CreateFont(fontHeight, 0, 0, 0, FW_MEDIUM, 0, 0, 0, 0, 0, 0,
+                       CLEARTYPE_QUALITY, 0, SAMPLEIME_FONT_DEFAULT);
     if (_font == nullptr)
     {
         LOGFONT lf = {};
         SystemParametersInfo(SPI_GETICONTITLELOGFONT, sizeof(lf), &lf, 0);
-        _font = CreateFont(fontHeight, 0, 0, 0, FW_MEDIUM, 0, 0, 0, 0, 0, 0, 0, 0,
-                           lf.lfFaceName);
+        _font = CreateFont(fontHeight, 0, 0, 0, FW_MEDIUM, 0, 0, 0, 0, 0, 0,
+                           CLEARTYPE_QUALITY, 0, lf.lfFaceName);
     }
 
     _cardWidth   = MulDiv(kCardWidth, (int)dpi, 96);
