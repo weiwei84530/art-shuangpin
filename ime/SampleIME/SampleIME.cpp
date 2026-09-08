@@ -404,12 +404,19 @@ void CSampleIME::_FlashModeIndicatorForFocus(_In_opt_ ITfDocumentMgr *pDocMgrFoc
 
     // A context the keyboard is disabled in is not somewhere the user can
     // type, so there is no mode worth announcing.
+    //
+    // Both flags are read off the CONTEXT, not off the thread manager.
+    // Chromium keeps one document manager per input type and focuses a
+    // dedicated DISABLED one for everything that is not an editable field,
+    // marking that CONTEXT with both flags; the thread manager knows
+    // nothing about it. Asking the thread manager therefore answered
+    // "enabled" for every click on a web page, bubble and all.
     BOOL isDisabled = FALSE;
-    CCompartment CompartmentKeyboardDisabled(_pThreadMgr, _tfClientId, GUID_COMPARTMENT_KEYBOARD_DISABLED);
+    CCompartment CompartmentKeyboardDisabled(pContext, _tfClientId, GUID_COMPARTMENT_KEYBOARD_DISABLED);
     CompartmentKeyboardDisabled._GetCompartmentBOOL(isDisabled);
     if (!isDisabled)
     {
-        CCompartment CompartmentEmptyContext(_pThreadMgr, _tfClientId, GUID_COMPARTMENT_EMPTYCONTEXT);
+        CCompartment CompartmentEmptyContext(pContext, _tfClientId, GUID_COMPARTMENT_EMPTYCONTEXT);
         CompartmentEmptyContext._GetCompartmentBOOL(isDisabled);
     }
 
