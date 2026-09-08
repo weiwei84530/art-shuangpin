@@ -139,7 +139,18 @@ v0.3 到 v0.6 分別是 1、1、2、1 個檔案。多數上游改動 Mac 完全�
 
 ## 狀態記錄
 
-- 2026-09-08：**四項使用者回報的修正，VERSION 升到 0.8.4（尚未發佈）**。兩項 Windows、兩項 macOS。
+- 2026-09-08：**tag v0.8.4 並發佈 GitHub Release**（兩個資產：`art-shuangpin-v0.8.4.zip`、
+  `art-shuangpin-mac-v0.8.4.zip`）。距 v0.8.3 共 5 個 commit，**詞庫仍是 `c07e7285…`**、
+  `core/`／`engine/`／`data/` 零改動，全部是兩邊外殼的行為。
+  發佈前照規則跑 `check-parity.py`（**aligned**，marker 推進到 `b95c166`）、
+  兩架構 `ctest`（各 **175** 全過）、check-tutorials 12 課全綠、check-drill-coverage 400＋11＝411。
+  **打 tag 前先確認 push 上去的 macOS CI 是 success**——這一輪改了 3 個 `mac/src/` 檔案而本機編不了，
+  那個 run 是唯一能證明它至少編得過的東西（行為仍待使用者在 Mac 上實測）。
+  Release 內文以「畫面要告訴你現在是什麼狀態」為主軸串起四項，每一項都寫出代價與**修不到的情況**
+  （Enter 那條：宿主若連瀏覽器給的組字標記都不看仍會送出；閒置的 Enter 是刻意放行）。
+  **這台開發機的工具鏈是這次才裝回來的**（見下一條），`gh` 是使用者自己裝的。
+
+- 2026-09-08：**四項使用者回報的修正，VERSION 升到 0.8.4**。兩項 Windows、兩項 macOS。
   (a) **英文模式的數字排改回打數字**（推翻 2026-08-14 的「中英共用閒置編輯層」）：
   Windows 是 `IsVirtualKeyNeedMspyEnglish` 的 `if (!active)` 分支改回 `return FALSE`，
   macOS 是英文分支不再呼叫 `-injectIdleEditingKeyIfWanted:`。**閒置編輯層在中文模式完全沒變。**
@@ -179,12 +190,16 @@ v0.3 到 v0.6 分別是 1、1、2、1 個檔案。多數上游改動 Mac 完全�
   改法是 `-commitOnEnterWithClient:` **把 commit 延後一個 runloop turn**：那一次按鍵宿主仍回報
   composing，`insertText:` 在按鍵事件之外才跑、直接走 `ImeCommitText`。使用者看不出延遲。
   **修不到的兩件事已寫進 NOTES.md**：宿主若連 `keyCode` 也不看仍會送出；閒置時的 Enter 是刻意放行的。
-  **驗證狀態**：Windows 兩個架構的 DLL 已重建（v0.8.4 字串正確）並打包；
-  **macOS 四項都無法在本機驗證**（沒有 darwin 工具鏈），(a)(c)(d) 全在 `mac/src/`，待使用者在 Mac 上實測。
+  **驗證狀態**：Windows 兩個架構的 DLL 已重建（v0.8.4 字串正確）、打包並**已安裝到本機**（sha256 與出貨產物相同）；
+  **macOS 那幾項只驗到「編得過」**（`mac.yml` 的 CI），行為待使用者在 Mac 上實測——本機沒有 darwin 工具鏈。
   `core/`／`engine/`／`data/` **零改動**，詞庫仍是 `c07e7285…`。
-  **這台開發機是新的**（`DESKTOP-O51TAVM`，repo 的檔案擁有者 SID 不同、需要 `safe.directory`），
-  原本沒有任何工具鏈——VS 2022 Build Tools + Win11 SDK 10.0.26100 已用 winget 裝回，
-  CMake／Python／Node 待補。**沒有 Python 就跑不了 `check-parity.py`，發佈前務必補上。**
+  **這台開發機是新的**（`DESKTOP-O51TAVM`，repo 的檔案擁有者 SID 不同、需要 `git config --global
+  --add safe.directory`，連 `user.name`／`user.email` 都要照歷史補回）。原本**沒有任何工具鏈**——
+  已用 winget 裝回 VS 2022 Build Tools（v143 ＋ Win11 SDK 10.0.26100）、CMake 4.4.3、
+  Python 3.12.10、Node 24.19.0。`build/`／`build32/` 的 CMake 快取是舊機器留下的，整個刪掉重 configure，
+  然後**把兩個 DLL 重新連結到新編的 `mspy_core.lib`**（否則會重演 2026-08-13 那次靜默連到舊 lib）。
+  **踩到一次**：winget 連續裝三個套件時第一個的 UAC 提示會擋住後面全部，`--disable-interactivity`
+  不會讓它消失；`consent.exe` 在跑就是有提示等著人按。
 
 - 2026-08-20：**tag v0.8.3 並發佈 GitHub Release**（兩個資產：`art-shuangpin-v0.8.3.zip`、
   `art-shuangpin-mac-v0.8.3.zip`）。距 v0.8.2 只有 1 個功能 commit——同日那個 macOS NumPad 修正，
