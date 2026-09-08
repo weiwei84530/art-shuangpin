@@ -13,8 +13,8 @@
 
 # The most recent commit whose changes under core/ engine/ cli/ data/ and
 # docs/spec.md were read against mac/src/.
-commit                          = 3fda870ca0cfc7382a8af4ecec5393b4053aae21
-version                         = 0.8.3
+commit                          = dca5a302e84f2b827e2e5c920b9c4fc46d1d95f5
+version                         = 0.8.4
 
 # Bodies of the two Windows key-routing functions the Mac transliterates
 # rather than shares -- ArtInputController.mm reproduces their order
@@ -25,4 +25,4 @@ version                         = 0.8.3
 #   ime/SampleIME/CompositionProcessorEngine.cpp  IsVirtualKeyNeedMspy
 is_virtual_key_need_mspy         = 2534b68cd66ef6bd99fd41e80ffed3e89b411f66e192540d82e94680cac6212b
 #   ime/SampleIME/CompositionProcessorEngine.cpp  IsVirtualKeyNeedMspyEnglish
-is_virtual_key_need_mspy_english = e4a91c49bc9f173bef233a1aba6ab786a249353a5731ce0a5f3b7452b798870c
+is_virtual_key_need_mspy_english = f77a098c646b14febb1b104e9110b0b82dd989b7ede34e6c801123ec042eace1
