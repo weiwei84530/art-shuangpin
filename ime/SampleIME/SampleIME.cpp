@@ -346,18 +346,11 @@ static BOOL MeasureSelectionExtent(TfEditCookie ec, _In_opt_ ITfContext *pContex
     if (SUCCEEDED(pContext->GetActiveView(&pContextView)) && pContextView != nullptr)
     {
         BOOL isClipped = FALSE;
-        HRESULT hr = pContextView->GetTextExt(ec, selection.range, prc, &isClipped);
-        Global::DebugLog(L"MeasureSelectionExtent: hr=0x%08X rc=(%d,%d,%d,%d) clipped=%d",
-                         hr, prc->left, prc->top, prc->right, prc->bottom, isClipped ? 1 : 0);
-        if (SUCCEEDED(hr))
+        if (SUCCEEDED(pContextView->GetTextExt(ec, selection.range, prc, &isClipped)))
         {
             measured = TRUE;
         }
         pContextView->Release();
-    }
-    else
-    {
-        Global::DebugLog(L"MeasureSelectionExtent: no active view");
     }
     selection.range->Release();
     return measured;
@@ -418,8 +411,6 @@ void CSampleIME::_FlashModeIndicatorForFocus(_In_opt_ ITfDocumentMgr *pDocMgrFoc
         CCompartment CompartmentEmptyContext(pContext, _tfClientId, GUID_COMPARTMENT_EMPTYCONTEXT);
         CompartmentEmptyContext._GetCompartmentBOOL(isDisabled);
     }
-
-    Global::DebugLog(L"FlashModeIndicatorForFocus: docMgr=%p disabled=%d", pDocMgrFocus, isDisabled ? 1 : 0);
 
     if (isDisabled)
     {
@@ -551,8 +542,6 @@ void CSampleIME::_OnDeferredFlashMeasured(BOOL measured, const RECT &rc)
         // the host later says something different.
         _flashBaselineRc = measured ? rc : RECT{};
         _flashHaveBaseline = TRUE;
-        Global::DebugLog(L"DeferredFlash: baseline measured=%d rc=(%d,%d,%d,%d)",
-                         measured ? 1 : 0, rc.left, rc.top, rc.right, rc.bottom);
         _OnDeferredFlashTick();
         return;
     }
@@ -560,9 +549,6 @@ void CSampleIME::_OnDeferredFlashMeasured(BOOL measured, const RECT &rc)
     const BOOL changed = measured &&
         (rc.left != _flashBaselineRc.left || rc.top != _flashBaselineRc.top ||
          rc.right != _flashBaselineRc.right || rc.bottom != _flashBaselineRc.bottom);
-    Global::DebugLog(L"DeferredFlash: attempt=%u measured=%d changed=%d rc=(%d,%d,%d,%d)",
-                     (unsigned)_flashAttempt, measured ? 1 : 0, changed ? 1 : 0,
-                     rc.left, rc.top, rc.right, rc.bottom);
 
     if (changed)
     {
@@ -683,35 +669,20 @@ void CSampleIME::_FlashModeIndicatorAt(const RECT *prcCaret, BOOL pointerFirst)
         havePoint = TRUE;
     }
 
-    const WCHAR* source = L"caret";
-
     if (!havePoint && pointerFirst)
     {
         havePoint = GetCursorPos(&pt);
-        if (havePoint) source = L"pointer";
     }
 
     if (!havePoint)
     {
         havePoint = SystemCaretPoint(&pt);
-        if (havePoint) source = L"syscaret";
     }
 
-    if (!havePoint)
+    if (!havePoint && !GetCursorPos(&pt))
     {
-        if (!GetCursorPos(&pt))
-        {
-            Global::DebugLog(L"FlashModeIndicatorAt: no point at all");
-            return;
-        }
-        source = L"pointer(last)";
+        return;
     }
-
-    POINT cursor = {};
-    GetCursorPos(&cursor);
-    Global::DebugLog(L"FlashModeIndicatorAt: pointerFirst=%d source=%s pt=(%d,%d) cursor=(%d,%d) caretRc=%s",
-                     pointerFirst ? 1 : 0, source, pt.x, pt.y, cursor.x, cursor.y,
-                     prcCaret != nullptr ? L"given" : L"none");
 
     BOOL isOpen = _rememberedKeyboardOpen;
     if (_pThreadMgr != nullptr && _tfClientId != TF_CLIENTID_NULL)

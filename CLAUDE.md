@@ -139,6 +139,32 @@ v0.3 到 v0.6 分別是 1、1、2、1 個檔案。多數上游改動 Mac 完全�
 
 ## 狀態記錄
 
+- 2026-09-09：**中英氣泡的兩個缺陷（使用者在 Chrome 回報），VERSION 升到 0.8.6**。兩個都只在 `ime/`，
+  `core/`／`engine/`／`mac/src/` 零改動。
+  (a) **在 Chrome 點哪裡都跳氣泡**。`_FlashModeIndicatorForFocus` 的守衛意思是對的，但**問錯對象**——
+  `GUID_COMPARTMENT_KEYBOARD_DISABLED` 與 `GUID_COMPARTMENT_EMPTYCONTEXT` 是從 **_pThreadMgr** 讀的。
+  Chromium 每種輸入型別各持有一個 document manager，不可編輯的地方就把焦點交給專用的 **disabled**
+  那一個，並把兩個旗標寫在**那個 context** 上；thread manager 對此一無所知，所以每次都回答「可以打字」。
+  改成從 `pContext` 讀。**同一個寫錯的判斷也在上游 `_IsKeyboardDisabled()`**
+  （`KeyEventSink.cpp`，而且第二次讀還會覆蓋第一次的結果）——那個管的是按鍵要不要接手，這次沒碰。
+  (b) **氣泡位置隨機**（第一次點進輸入框時最明顯）。**我連續猜錯兩次**（先猜 GetTextExt 失敗、
+  再猜系統 caret 是舊的），第三次才改用 `MSPY_DEBUG_LOG` 實測——證據直接推翻兩個推論：
+  `GetTextExt` **回 S_OK**、形狀也是正確的零寬游標矩形，**只是內容是舊的**；決定性的一筆是
+  同一個 docMgr 隔 5 秒兩次點**不同欄位**，回傳 byte 完全相同的矩形。
+  Chromium 的 text store 回答的是「上次**被告知**的座標」，renderer 要幾個 frame 後才回報新欄位；
+  因為它沒有失敗，任何 fallback 都攔不到。
+  修法：焦點時量一次當**基準線**（不顯示），再於 **30/80/160/300 ms** 各量一次，
+  **第一個與基準線不同的答案**才是這個欄位、氣泡放那裡；300ms 內都沒變就**不採信**、改用滑鼠位置
+  （焦點多半是點出來的，滑鼠就在使用者眼睛所在）。用 `SetTimer(nullptr, ...)` ＋
+  `thread_local std::map<UINT_PTR, CSampleIME*>` 把 timer id 對回實例。
+  **教訓：位置這種「看起來像對的地方」的 bug，不要用推論修**——兩次猜測都自洽、都錯，
+  而 log 一跑就結案。`MSPY_DEBUG_LOG` 在出貨的建置裡本來就是開的（`Private.h`），
+  所以不必另外做 debug 版；診斷用的那幾行**用完即拆**（會在每次焦點變動寫檔）。
+  (c) 驗證：使用者實測確認兩項都修好。core `ctest` x64／x86 各 **178 全過**、check-tutorials 12 課全綠、
+  check-drill-coverage 400＋11＝411、check-parity aligned（三個 commit 全在 `ime/`，不是共用碼）。
+  兩架構 DLL 重建並已裝到本機。
+  **`gh` 不在 PATH 上**：在 `C:\Program Files\GitHub CLI`。
+
 - 2026-09-08：**選字記憶的「長記錄接手短記錄」修正＋中英氣泡改用 icon 配色**（尚未發佈，VERSION 仍 0.8.4）。
   (a) **根因來自使用者的實測疑問**：「重選一次『每次』，可以覆寫掉後面每一次嗎？」——答案是不行。
   `applyOneLearnedOverride` 的「長的優先」只排序**同時可用**的記錄，但打字是**由左往右**的：
