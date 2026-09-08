@@ -506,9 +506,10 @@ bool IsCaretMovementKeyCode(unsigned short code) {
     }
     if (client == nil) {
         // Reachable from the menu with no focused text field: flip the mode
-        // and skip everything that would need somewhere to write to.
+        // and skip everything that would need somewhere to write to. No
+        // client means no caret, and the HUD only ever labels a caret, so
+        // this shows nothing -- the menu itself already says which mode.
         [ArtInputController setChineseMode:!sChineseMode];
-        [[ArtModeHUD shared] flashChinese:sChineseMode nearRect:NSZeroRect];
         return;
     }
 
@@ -529,7 +530,7 @@ bool IsCaretMovementKeyCode(unsigned short code) {
     // Sampled after the switch, which is safe precisely because nothing was
     // committed: the marked text is still up, so the host still reports
     // where it is. An empty rect only happens with no composition, and the
-    // HUD then falls back to the middle of the screen.
+    // HUD then shows nothing rather than guess at a position.
     [[ArtModeHUD shared] flashChinese:sChineseMode
                              nearRect:[self caretRectForClient:client]];
 }

@@ -125,6 +125,13 @@ static NSColor *ArtChineseBorderColor(void) {
 }
 
 - (void)flashChinese:(BOOL)chinese nearRect:(NSRect)caretRect {
+    if (NSIsEmptyRect(caretRect)) {
+        // The card is a LABEL ON THE CARET: with no caret to label there is
+        // nothing to show (2026-09-09, at the user's direction). Guessing
+        // from the pointer put it next to things that are not text fields.
+        // Same rule as the Windows card.
+        return;
+    }
     [_timer invalidate];
     _timer = nil;
     const NSUInteger generation = ++_generation;
@@ -177,27 +184,6 @@ static NSColor *ArtChineseBorderColor(void) {
         }
     }
     NSRect visible = screen ? screen.visibleFrame : NSMakeRect(0, 0, 1440, 900);
-
-    if (NSIsEmptyRect(caretRect)) {
-        // The host would not say where the caret is -- Electron hosts often
-        // will not before the first keystroke, and the menu path has no
-        // client at all. The pointer is where the user is looking, and it is
-        // what the Windows build falls back to as well (after the system
-        // caret, which macOS has no equivalent of).
-        NSPoint mouse = [NSEvent mouseLocation];
-        for (NSScreen *candidate in [NSScreen screens]) {
-            if (NSPointInRect(mouse, candidate.frame)) {
-                visible = candidate.visibleFrame;
-                break;
-            }
-        }
-        NSPoint origin = NSMakePoint(mouse.x + kHUDGap,
-                                     mouse.y - kHUDGap - size.height);
-        if (origin.y < NSMinY(visible))              origin.y = NSMinY(visible);
-        if (origin.x + size.width > NSMaxX(visible)) origin.x = NSMaxX(visible) - size.width;
-        if (origin.x < NSMinX(visible))              origin.x = NSMinX(visible);
-        return origin;
-    }
 
     NSPoint origin = NSMakePoint(NSMinX(caretRect) + kHUDGap,
                                  NSMinY(caretRect) - kHUDGap - size.height);

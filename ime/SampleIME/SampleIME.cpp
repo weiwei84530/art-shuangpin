@@ -91,6 +91,7 @@ CSampleIME::CSampleIME()
     _pFlashContext = nullptr;
     _flashBaselineRc = RECT{};
     _flashHaveBaseline = FALSE;
+    _flashBaselineMeasured = FALSE;
     _flashAttempt = 0;
     _flashTimerId = 0;
 
@@ -368,7 +369,7 @@ void CSampleIME::_FlashModeIndicatorUnderLock(TfEditCookie ec, _In_opt_ ITfConte
 {
     RECT rc = {};
     const BOOL measured = MeasureSelectionExtent(ec, pContext, &rc);
-    _FlashModeIndicatorAt(measured ? &rc : nullptr, FALSE);
+    _FlashModeIndicatorAt(measured ? &rc : nullptr);
 }
 
 //+---------------------------------------------------------------------------
@@ -490,6 +491,7 @@ void CSampleIME::_CancelDeferredFlash()
         _pFlashContext = nullptr;
     }
     _flashHaveBaseline = FALSE;
+    _flashBaselineMeasured = FALSE;
     _flashAttempt = 0;
 }
 
@@ -522,9 +524,9 @@ void CSampleIME::_RequestFlashMeasurement()
     if (FAILED(_pFlashContext->RequestEditSession(_tfClientId, pEditSession,
                                                   TF_ES_ASYNCDONTCARE | TF_ES_READ, &hrSession)))
     {
-        // No way to measure at all: the pointer is the honest answer.
+        // No way to measure at all, so there is no caret to label.
         _CancelDeferredFlash();
-        _FlashModeIndicatorAt(nullptr, TRUE);
+        _FlashModeIndicatorAt(nullptr);
     }
     pEditSession->Release();
 }
@@ -541,6 +543,7 @@ void CSampleIME::_OnDeferredFlashMeasured(BOOL measured, const RECT &rc)
         // "Nothing" is as good a baseline as a rect: what matters is that
         // the host later says something different.
         _flashBaselineRc = measured ? rc : RECT{};
+        _flashBaselineMeasured = measured;
         _flashHaveBaseline = TRUE;
         _OnDeferredFlashTick();
         return;
@@ -554,14 +557,22 @@ void CSampleIME::_OnDeferredFlashMeasured(BOOL measured, const RECT &rc)
     {
         RECT placed = rc;
         _CancelDeferredFlash();
-        _FlashModeIndicatorAt(&placed, TRUE);
+        _FlashModeIndicatorAt(&placed);
         return;
     }
 
     if (_flashAttempt >= ARRAYSIZE(kFlashRetryMs))
     {
+        // The host stood by its first answer for 300 ms. A well-behaved
+        // one (Notepad, and every host that reports the caret at focus
+        // time) is right straight away and has nothing to revise, so a
+        // steady answer IS the caret -- distrusting it is what put the
+        // bubble by the mouse when a Notepad tab was switched (reported
+        // 2026-09-09).
+        RECT placed = _flashBaselineRc;
+        const BOOL haveRect = _flashBaselineMeasured;
         _CancelDeferredFlash();
-        _FlashModeIndicatorAt(nullptr, TRUE);
+        _FlashModeIndicatorAt(haveRect ? &placed : nullptr);
         return;
     }
 
@@ -580,7 +591,7 @@ void CSampleIME::_OnDeferredFlashTick()
     if (id == 0)
     {
         _CancelDeferredFlash();
-        _FlashModeIndicatorAt(nullptr, TRUE);
+        _FlashModeIndicatorAt(nullptr);
         return;
     }
     _flashTimerId = id;
@@ -610,22 +621,17 @@ VOID CALLBACK CSampleIME::_DeferredFlashTimerProc(HWND, UINT, UINT_PTR idEvent, 
 //
 // _FlashModeIndicatorAt    [MspyIME]
 //
-// `prcCaret` is the caret's screen rectangle, or nullptr when the host would
-// not report one -- Chromium-based hosts frequently will not, because at
-// focus time their text store has no layout yet and GetTextExt fails.
+// The bubble is a LABEL ON THE CARET, so it appears next to the caret or it
+// does not appear at all (2026-09-09, at the user's direction). `prcCaret`
+// is the caret's screen rectangle as the host reported it, or nullptr when
+// it would not report one; the system caret is the other place a caret can
+// come from, for hosts that keep one instead of answering GetTextExt.
 //
-// `pointerFirst` picks what to fall back to, and the two callers want
-// opposite things:
-//
-//   * The FOCUS path passes TRUE. The focus it is announcing was almost
-//     always just given by a click, so the pointer is exactly where the
-//     user is looking -- while the system caret still describes the field
-//     they just LEFT. Trusting that stale caret is what put the bubble in
-//     an apparently random place on the first click into a web page's
-//     search box (reported 2026-09-09).
-//   * The SHIFT TAP passes FALSE. Nothing was clicked, the user has been
-//     working in this field, and the system caret is the better guess of
-//     the two; the pointer may be parked anywhere.
+// There is deliberately no fallback beyond those two. Guessing from the
+// mouse pointer puts a bubble next to something that is not a text field --
+// on a tab strip, on a heading, on empty page background -- which is worse
+// than saying nothing: it invites the user to read a mode into a place
+// where nothing can be typed.
 //----------------------------------------------------------------------------
 
 // The caret the GUI thread reports belongs to whichever window last created
@@ -657,7 +663,7 @@ static BOOL SystemCaretPoint(_Out_ POINT *ppt)
     return TRUE;
 }
 
-void CSampleIME::_FlashModeIndicatorAt(const RECT *prcCaret, BOOL pointerFirst)
+void CSampleIME::_FlashModeIndicatorAt(const RECT *prcCaret)
 {
     POINT pt = {};
     BOOL havePoint = FALSE;
@@ -669,19 +675,14 @@ void CSampleIME::_FlashModeIndicatorAt(const RECT *prcCaret, BOOL pointerFirst)
         havePoint = TRUE;
     }
 
-    if (!havePoint && pointerFirst)
-    {
-        havePoint = GetCursorPos(&pt);
-    }
-
     if (!havePoint)
     {
         havePoint = SystemCaretPoint(&pt);
     }
 
-    if (!havePoint && !GetCursorPos(&pt))
+    if (!havePoint)
     {
-        return;
+        return;  // no caret to label
     }
 
     BOOL isOpen = _rememberedKeyboardOpen;

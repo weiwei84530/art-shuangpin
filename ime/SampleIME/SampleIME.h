@@ -146,7 +146,7 @@ public:
     // back from the edit session that measured the caret.
     void _FlashModeIndicatorForFocus(_In_opt_ ITfDocumentMgr *pDocMgrFocus);
     void _FlashModeIndicatorUnderLock(TfEditCookie ec, _In_opt_ ITfContext *pContext);
-    void _FlashModeIndicatorAt(const RECT *prcCaret, BOOL pointerFirst);
+    void _FlashModeIndicatorAt(const RECT *prcCaret);
     // [MspyIME] The caret cannot be read at focus time: a Chromium text
     // store answers GetTextExt with the bounds it was last TOLD about, and
     // the renderer reports the newly focused field only a few frames later,
@@ -308,6 +308,7 @@ private:
     ITfContext* _pFlashContext;
     RECT _flashBaselineRc;
     BOOL _flashHaveBaseline;
+    BOOL _flashBaselineMeasured;
     size_t _flashAttempt;
     UINT_PTR _flashTimerId;
 
