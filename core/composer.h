@@ -253,6 +253,13 @@ class Composer {
   void applyLearnedOverrides();
   // One pass of the above. Returns true if it changed anything.
   bool applyOneLearnedOverride();
+  // Remembers the node just overridden from the store, and forgets the
+  // entries the grid has since reset or someone else has rewritten.
+  void noteLearnedOverride(size_t start, const std::string& value);
+  // True if this walk node is an override this composer wrote from the
+  // store and nobody has changed since.
+  bool isLearnedOverride(
+      const Formosa::Gramambular2::ReadingGrid::NodePtr& node) const;
   // Space: settles the syllable in progress (default tone, or its bopomofo
   // when no reading fits), or types a half-width space when there is
   // nothing left to settle.
@@ -271,6 +278,23 @@ class Composer {
   // Corrections learned from manual selections, applied as high-score node
   // overrides after every walk. Shared with the shell, which persists it.
   std::shared_ptr<UserPreferences> preferences_;
+
+  // The overrides applied from that store, so that a LONGER record can
+  // replace one of them later (2026-09-08). Longest-match-first only sorts
+  // records that become applicable together, and typing runs left to
+  // right: when the first syllable lands, the phrase does not exist yet,
+  // so the single-character record overrides that position -- and an
+  // overridden position is never revisited. A "每次" record picked six
+  // times could therefore never beat a "鎂" record picked once. Only our
+  // own overrides are listed here, so a manual pick (and the pins that
+  // protect it) still wins over anything the store has to say.
+  struct LearnedOverride {
+    Formosa::Gramambular2::ReadingGrid::NodePtr node;
+    // What we wrote. A different value means the node has since been
+    // overridden by hand, which puts it out of our reach again.
+    std::string value;
+  };
+  std::vector<LearnedOverride> learnedOverrides_;
 
   // The most recent syllable, already in the grid (so the sentence walk
   // sees it and the preceding text keeps auto-correcting) but still shown

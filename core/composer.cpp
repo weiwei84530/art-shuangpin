@@ -1,5 +1,6 @@
 #include "composer.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <utility>
@@ -479,6 +480,7 @@ void Composer::reset() {
   walk_ = {};
   pending_.clear();
   candidates_.clear();
+  learnedOverrides_.clear();
   unsettled_ = {};
   selectionLocation_ = 0;
   pageIndex_ = 0;
@@ -903,12 +905,42 @@ void Composer::learnFromSelection(
 void Composer::applyLearnedOverrides() {
   if (!preferences_ || grid_.length() == 0) return;
   // Each pass fixes at most one span and then re-walks, because one
-  // override can move several positions. Every span can be settled at most
-  // once (an overridden node is skipped from then on), so the grid length
-  // bounds the number of passes.
-  for (size_t guard = 0; guard <= grid_.length(); ++guard) {
+  // override can move several positions. A position is settled at most
+  // once by a record of each length, and a replacement is always LONGER
+  // than what it replaces, so kMaxLearnedSpan passes per position bound
+  // the loop.
+  for (size_t guard = 0; guard <= grid_.length() * kMaxLearnedSpan; ++guard) {
     if (!applyOneLearnedOverride()) return;
   }
+}
+
+void Composer::noteLearnedOverride(size_t start, const std::string& value) {
+  // Nodes the grid has reset (overrideCandidate clears everything its span
+  // overlaps) or that have been rewritten by hand are no longer ours.
+  learnedOverrides_.erase(
+      std::remove_if(learnedOverrides_.begin(), learnedOverrides_.end(),
+                     [](const LearnedOverride& o) {
+                       return o.node == nullptr || !o.node->isOverridden() ||
+                              o.node->value() != o.value;
+                     }),
+      learnedOverrides_.end());
+  size_t loc = 0;
+  for (const auto& node : walk_.nodes) {
+    if (loc == start) {
+      learnedOverrides_.push_back(LearnedOverride{node, value});
+      return;
+    }
+    loc += node->spanningLength();
+    if (loc > start) return;  // the walk does not break here after all
+  }
+}
+
+bool Composer::isLearnedOverride(
+    const Formosa::Gramambular2::ReadingGrid::NodePtr& node) const {
+  for (const auto& o : learnedOverrides_) {
+    if (o.node == node) return node->value() == o.value;
+  }
+  return false;
 }
 
 bool Composer::applyOneLearnedOverride() {
@@ -918,31 +950,47 @@ bool Composer::applyOneLearnedOverride() {
 
   // Positions already carrying an override are the user's own picks, the
   // pins that protect them, and the corrections applied on an earlier pass.
-  // None of them may be second-guessed here.
+  // None of them may be second-guessed here -- except a correction of our
+  // own that a longer record now covers, which is the one thing the pass
+  // order cannot arrange on its own (see LearnedOverride).
   std::vector<bool> overridden(chars.size(), false);
+  std::vector<bool> ours(chars.size(), false);
+  // Span of OUR override starting exactly here; 0 where there is none.
+  std::vector<size_t> ourSpanAt(chars.size(), 0);
   size_t loc = 0;
   for (const auto& node : walk_.nodes) {
     const size_t span = node->spanningLength();
     if (node->isOverridden()) {
+      const bool mine = isLearnedOverride(node);
       for (size_t i = loc; i < loc + span && i < overridden.size(); ++i) {
         overridden[i] = true;
+        ours[i] = mine;
       }
+      if (mine && loc < ourSpanAt.size()) ourSpanAt[loc] = span;
     }
     loc += span;
   }
 
   for (size_t start = 0; start < chars.size(); ++start) {
-    if (overridden[start]) continue;
+    // Replacing one of our own corrections is only ever an upgrade: a
+    // record at least one syllable longer than the one already there.
+    size_t minSpan = 1;
+    if (overridden[start]) {
+      if (ourSpanAt[start] == 0) continue;
+      minSpan = ourSpanAt[start] + 1;
+    }
+    const size_t maxSpan = std::min(kMaxLearnedSpan, chars.size() - start);
+    if (minSpan > maxSpan) continue;
     const auto contexts = ContextsAt(chars, start);
     // Longest match first: a learned two-character phrase outranks a
     // learned single character sitting at the same place.
-    const size_t maxSpan = std::min(kMaxLearnedSpan, chars.size() - start);
-    for (size_t span = maxSpan; span >= 1; --span) {
+    for (size_t span = maxSpan; span >= minSpan; --span) {
       bool blocked = false;
       std::string reading;
       std::string current;
       for (size_t i = start; i < start + span; ++i) {
-        if (overridden[i] || chars[i].literal || chars[i].reading.empty()) {
+        if ((overridden[i] && !ours[i]) || chars[i].literal ||
+            chars[i].reading.empty()) {
           blocked = true;
           break;
         }
@@ -960,6 +1008,7 @@ bool Composer::applyOneLearnedOverride() {
         const auto before = ValuesOf(chars);
         if (!grid_.overrideCandidate(start, value)) continue;
         walk_ = grid_.walk();
+        noteLearnedOverride(start, value);
         // A learned correction is as narrow as a manual one: whatever the
         // re-walk moved outside this span goes straight back.
         restoreCharactersOutside(before, start, start + span);

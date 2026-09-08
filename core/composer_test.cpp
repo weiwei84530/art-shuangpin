@@ -36,6 +36,9 @@ class ComposerTest : public ::testing::Test {
     inner->add("ㄉㄜˊ", "德", -4);
     inner->add("ㄋㄧ", "妮", -6);
     inner->add("ㄋㄧˇ", "你", -2);
+    // A rival for ㄋㄧˇ, so a learned single-character correction there has
+    // something to say that the phrase records then argue with.
+    inner->add("ㄋㄧˇ", "妳", -6);
     inner->add("ㄏㄠˇ", "好", -2);
     inner->add("ㄏㄠˇ", "郝", -7);
     inner->add("ㄋㄧˇ-ㄏㄠˇ", "你好", -1);
@@ -1025,6 +1028,40 @@ TEST_F(ComposerLearningTest, AManualPickOverridesWhatWasLearned) {
   composer_->feedEnter();
   Type("ni3hk3");
   EXPECT_EQ(composer_->composedText(), "你好");
+}
+
+TEST_F(ComposerLearningTest, ALongerRecordReplacesTheOneItLatchedBehind) {
+  // Typing runs left to right, so the single-syllable record lands while
+  // the phrase is still one syllable short of existing. Before 2026-09-08
+  // that closed the position for good, and a phrase record picked over and
+  // over could not beat a single-character record picked once.
+  prefs_->record(UserPreferences::kStartContext, "ㄋㄧˇ", "妳");
+  prefs_->record(UserPreferences::kStartContext, "ㄋㄧˇ-ㄏㄠˇ", "你好");
+
+  Type("ni3");
+  ASSERT_EQ(composer_->composedText(), "妳");  // nothing longer matches yet
+  Type("hk3");
+  EXPECT_EQ(composer_->composedText(), "你好");
+}
+
+TEST_F(ComposerLearningTest, TheShorterRecordStandsWhereTheLongerDoesNotMatch) {
+  prefs_->record(UserPreferences::kStartContext, "ㄋㄧˇ", "妳");
+  prefs_->record(UserPreferences::kStartContext, "ㄋㄧˇ-ㄏㄠˇ", "你好");
+
+  // ㄋㄧˇ-ㄓㄨㄥˇ is not what the phrase record talks about.
+  Type("ni3vs3");
+  EXPECT_EQ(composer_->composedText(), "妳種");
+}
+
+TEST_F(ComposerLearningTest, ALongerRecordDoesNotUndoAManualPick) {
+  // Only OUR correction gives way to a longer one of ours. What the user
+  // set by hand a keystroke ago is not ours to reconsider.
+  prefs_->record(UserPreferences::kStartContext, "ㄋㄧˇ-ㄏㄠˇ", "你好");
+  Type("ni3");
+  PickByValue("妳");
+  ASSERT_EQ(composer_->composedText(), "妳");
+  Type("hk3");
+  EXPECT_EQ(composer_->composedText(), "妳好");
 }
 
 TEST_F(ComposerLearningTest, WithoutAStoreNothingIsLearned) {
