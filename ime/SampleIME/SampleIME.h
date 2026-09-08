@@ -146,7 +146,7 @@ public:
     // back from the edit session that measured the caret.
     void _FlashModeIndicatorForFocus(_In_opt_ ITfDocumentMgr *pDocMgrFocus);
     void _FlashModeIndicatorUnderLock(TfEditCookie ec, _In_opt_ ITfContext *pContext);
-    void _FlashModeIndicatorAt(const RECT *prcCaret);
+    void _FlashModeIndicatorAt(const RECT *prcCaret, BOOL pointerFirst);
     // [MspyIME] Numpad key while composing: commit the buffer, then emit
     // the numpad character literally.
     HRESULT _HandleNumpadCommit(TfEditCookie ec, _In_ ITfContext *pContext, WCHAR wch);

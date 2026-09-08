@@ -359,7 +359,7 @@ public:
     {
         RECT rc = {};
         const BOOL measured = MeasureSelectionExtent(ec, _pContext, &rc);
-        _pTextService->_FlashModeIndicatorAt(measured ? &rc : nullptr);
+        _pTextService->_FlashModeIndicatorAt(measured ? &rc : nullptr, TRUE);
         return S_OK;
     }
 };
@@ -376,7 +376,7 @@ void CSampleIME::_FlashModeIndicatorUnderLock(TfEditCookie ec, _In_opt_ ITfConte
 {
     RECT rc = {};
     const BOOL measured = MeasureSelectionExtent(ec, pContext, &rc);
-    _FlashModeIndicatorAt(measured ? &rc : nullptr);
+    _FlashModeIndicatorAt(measured ? &rc : nullptr, FALSE);
 }
 
 //+---------------------------------------------------------------------------
@@ -433,7 +433,7 @@ void CSampleIME::_FlashModeIndicatorForFocus(_In_opt_ ITfDocumentMgr *pDocMgrFoc
             // continuation, so fall back to an unmeasured flash here.
             if (FAILED(pContext->RequestEditSession(_tfClientId, pEditSession, TF_ES_ASYNCDONTCARE | TF_ES_READ, &hrSession)))
             {
-                _FlashModeIndicatorAt(nullptr);
+                _FlashModeIndicatorAt(nullptr, TRUE);
             }
             pEditSession->Release();
         }
@@ -447,12 +447,53 @@ void CSampleIME::_FlashModeIndicatorForFocus(_In_opt_ ITfDocumentMgr *pDocMgrFoc
 // _FlashModeIndicatorAt    [MspyIME]
 //
 // `prcCaret` is the caret's screen rectangle, or nullptr when the host would
-// not report one -- Chromium-based hosts frequently will not before the
-// first keystroke. The system caret is the next best source and the mouse
-// pointer is the last: the user's eyes are at the click they just made.
+// not report one -- Chromium-based hosts frequently will not, because at
+// focus time their text store has no layout yet and GetTextExt fails.
+//
+// `pointerFirst` picks what to fall back to, and the two callers want
+// opposite things:
+//
+//   * The FOCUS path passes TRUE. The focus it is announcing was almost
+//     always just given by a click, so the pointer is exactly where the
+//     user is looking -- while the system caret still describes the field
+//     they just LEFT. Trusting that stale caret is what put the bubble in
+//     an apparently random place on the first click into a web page's
+//     search box (reported 2026-09-09).
+//   * The SHIFT TAP passes FALSE. Nothing was clicked, the user has been
+//     working in this field, and the system caret is the better guess of
+//     the two; the pointer may be parked anywhere.
 //----------------------------------------------------------------------------
 
-void CSampleIME::_FlashModeIndicatorAt(const RECT *prcCaret)
+// The caret the GUI thread reports belongs to whichever window last created
+// one, which need not be the window now holding the focus.
+static BOOL SystemCaretPoint(_Out_ POINT *ppt)
+{
+    *ppt = POINT{};
+    GUITHREADINFO threadInfo = {};
+    threadInfo.cbSize = sizeof(threadInfo);
+    if (!GetGUIThreadInfo(GetCurrentThreadId(), &threadInfo) ||
+        threadInfo.hwndCaret == nullptr ||
+        (threadInfo.rcCaret.right == threadInfo.rcCaret.left &&
+         threadInfo.rcCaret.bottom == threadInfo.rcCaret.top))
+    {
+        return FALSE;
+    }
+    if (threadInfo.hwndFocus != nullptr &&
+        threadInfo.hwndCaret != threadInfo.hwndFocus &&
+        !IsChild(threadInfo.hwndFocus, threadInfo.hwndCaret))
+    {
+        return FALSE;  // someone else's caret
+    }
+    POINT pt = {threadInfo.rcCaret.left, threadInfo.rcCaret.bottom};
+    if (!ClientToScreen(threadInfo.hwndCaret, &pt))
+    {
+        return FALSE;
+    }
+    *ppt = pt;
+    return TRUE;
+}
+
+void CSampleIME::_FlashModeIndicatorAt(const RECT *prcCaret, BOOL pointerFirst)
 {
     POINT pt = {};
     BOOL havePoint = FALSE;
@@ -464,22 +505,14 @@ void CSampleIME::_FlashModeIndicatorAt(const RECT *prcCaret)
         havePoint = TRUE;
     }
 
+    if (!havePoint && pointerFirst)
+    {
+        havePoint = GetCursorPos(&pt);
+    }
+
     if (!havePoint)
     {
-        GUITHREADINFO threadInfo = {};
-        threadInfo.cbSize = sizeof(threadInfo);
-        if (GetGUIThreadInfo(GetCurrentThreadId(), &threadInfo) &&
-            threadInfo.hwndCaret != nullptr &&
-            (threadInfo.rcCaret.right != threadInfo.rcCaret.left ||
-             threadInfo.rcCaret.bottom != threadInfo.rcCaret.top))
-        {
-            pt.x = threadInfo.rcCaret.left;
-            pt.y = threadInfo.rcCaret.bottom;
-            if (ClientToScreen(threadInfo.hwndCaret, &pt))
-            {
-                havePoint = TRUE;
-            }
-        }
+        havePoint = SystemCaretPoint(&pt);
     }
 
     if (!havePoint && !GetCursorPos(&pt))
