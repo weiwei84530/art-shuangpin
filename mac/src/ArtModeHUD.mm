@@ -13,10 +13,26 @@ static const CGFloat kHUDCorner = 6.0;
 static const CGFloat kHUDGap = 5.0;
 static const CGFloat kHUDFontSize = 15.0;
 
+// Chinese mode wears the app icon's own red (mac/tools/make_icon.m: a white
+// 特 on sRGB 0.78/0.13/0.13), so the card that says "you are typing
+// Chinese" and the icon in the input-source menu are recognizably the same
+// thing.  English mode keeps the plain system card, so the two modes differ
+// by more than one glyph.  Same split as the Windows card, which takes its
+// red from the Windows icon (#C42B1C, scripts/make_icon.py) -- the two
+// icons have always been a shade apart, and each card follows its own.
+static NSColor *ArtChineseCardColor(void) {
+    return [NSColor colorWithSRGBRed:0.78 green:0.13 blue:0.13 alpha:0.95];
+}
+
+static NSColor *ArtChineseBorderColor(void) {
+    return [NSColor colorWithSRGBRed:0.63 green:0.10 blue:0.10 alpha:1.0];
+}
+
 #pragma mark - view
 
 @interface ArtModeHUDView : NSView
 @property (nonatomic, copy) NSString *glyph;
+@property (nonatomic, assign) BOOL chinese;
 @end
 
 @implementation ArtModeHUDView
@@ -30,9 +46,10 @@ static const CGFloat kHUDFontSize = 15.0;
         [NSBezierPath bezierPathWithRoundedRect:self.bounds
                                         xRadius:kHUDCorner
                                         yRadius:kHUDCorner];
-    [[[NSColor windowBackgroundColor] colorWithAlphaComponent:0.95] setFill];
+    [(_chinese ? ArtChineseCardColor()
+               : [[NSColor windowBackgroundColor] colorWithAlphaComponent:0.95]) setFill];
     [card fill];
-    [[NSColor separatorColor] setStroke];
+    [(_chinese ? ArtChineseBorderColor() : [NSColor separatorColor]) setStroke];
     card.lineWidth = 1.0;
     [card stroke];
 
@@ -43,7 +60,8 @@ static const CGFloat kHUDFontSize = 15.0;
                        ?: [NSFont systemFontOfSize:kHUDFontSize];
     NSDictionary *attributes = @{
         NSFontAttributeName : font,
-        NSForegroundColorAttributeName : [NSColor labelColor],
+        NSForegroundColorAttributeName :
+            (_chinese ? [NSColor whiteColor] : [NSColor labelColor]),
     };
     NSSize size = [_glyph sizeWithAttributes:attributes];
     [_glyph drawAtPoint:NSMakePoint((NSWidth(self.bounds) - size.width) / 2,
@@ -118,6 +136,7 @@ static const CGFloat kHUDFontSize = 15.0;
     [_panel orderOut:nil];
 
     _view.glyph = chinese ? @"中" : @"英";
+    _view.chinese = chinese;
 
     NSRect frame = _panel.frame;
     frame.size = NSMakeSize(kHUDWidth, kHUDHeight);

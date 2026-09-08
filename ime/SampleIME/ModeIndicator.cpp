@@ -27,6 +27,15 @@ const BYTE  kFadeStep      = 24;
 const UINT_PTR kTimerHold  = 1;
 const UINT_PTR kTimerFade  = 2;
 
+// Chinese mode wears the profile icon's own colours (scripts/make_icon.py:
+// white 特 on #C42B1C), so the card that says "you are typing Chinese" and
+// the icon in the taskbar are recognizably the same thing. English mode
+// keeps the light candidate-window card: the two modes then differ by more
+// than one glyph, which is the whole point of a 550 ms glance.
+const COLORREF kChineseBkColor     = RGB(196, 43, 28);
+const COLORREF kChineseBorderColor = RGB(160, 35, 22);
+const COLORREF kChineseTextColor   = RGB(255, 255, 255);
+
 const WCHAR kClassName[] = L"MspyModeIndicator";
 
 ATOM g_classAtom = 0;
@@ -315,8 +324,10 @@ void CModeIndicator::_OnTimer(UINT_PTR timerId)
 //
 // _OnPaint
 //
-// Same light card as the candidate window (Define.h), so the two pieces of
-// chrome this IME puts on screen look like they belong together.
+// English mode wears the candidate window's light card (Define.h), so the
+// two pieces of chrome this IME puts on screen look like they belong
+// together; Chinese mode wears the profile icon's red instead, so the mode
+// is legible from the colour alone.
 //----------------------------------------------------------------------------
 
 void CModeIndicator::_OnPaint(_In_ HDC dcHandle)
@@ -324,14 +335,18 @@ void CModeIndicator::_OnPaint(_In_ HDC dcHandle)
     RECT rc = {};
     GetClientRect(_wndHandle, &rc);
 
-    HBRUSH background = CreateSolidBrush(CANDWND_BK_COLOR);
+    const COLORREF bkColor     = _isChinese ? kChineseBkColor : CANDWND_BK_COLOR;
+    const COLORREF borderColor = _isChinese ? kChineseBorderColor : CANDWND_BORDER_COLOR;
+    const COLORREF textColor   = _isChinese ? kChineseTextColor : CANDWND_ITEM_COLOR;
+
+    HBRUSH background = CreateSolidBrush(bkColor);
     if (background != nullptr)
     {
         FillRect(dcHandle, &rc, background);
         DeleteObject(background);
     }
 
-    HPEN pen = CreatePen(PS_SOLID, _borderWidth, CANDWND_BORDER_COLOR);
+    HPEN pen = CreatePen(PS_SOLID, _borderWidth, borderColor);
     if (pen != nullptr)
     {
         HGDIOBJ oldPen = SelectObject(dcHandle, pen);
@@ -345,7 +360,7 @@ void CModeIndicator::_OnPaint(_In_ HDC dcHandle)
 
     HGDIOBJ oldFont = SelectObject(dcHandle, _font);
     SetBkMode(dcHandle, TRANSPARENT);
-    SetTextColor(dcHandle, CANDWND_ITEM_COLOR);
+    SetTextColor(dcHandle, textColor);
     const WCHAR* label = _isChinese ? L"中" : L"英";
     DrawText(dcHandle, label, 1, &rc,
              DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
