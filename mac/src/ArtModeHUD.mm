@@ -2,12 +2,16 @@
 
 #import "ArtModeHUD.h"
 
-static const NSTimeInterval kHoldSeconds = 0.7;
+// Matched to the Windows card (ime/SampleIME/ModeIndicator.cpp): 28x24 at
+// 96 dpi with an 11pt glyph, which is these numbers in points. Small on
+// purpose -- it is a glance, not a dialog.
+static const NSTimeInterval kHoldSeconds = 0.55;
 static const NSTimeInterval kFadeSeconds = 0.25;
-static const CGFloat kHUDSize = 44.0;
-static const CGFloat kHUDCorner = 10.0;
-static const CGFloat kHUDGap = 6.0;
-static const CGFloat kHUDFontSize = 24.0;
+static const CGFloat kHUDWidth = 30.0;
+static const CGFloat kHUDHeight = 26.0;
+static const CGFloat kHUDCorner = 6.0;
+static const CGFloat kHUDGap = 5.0;
+static const CGFloat kHUDFontSize = 15.0;
 
 #pragma mark - view
 
@@ -55,6 +59,11 @@ static const CGFloat kHUDFontSize = 24.0;
     NSPanel *_panel;
     ArtModeHUDView *_view;
     NSTimer *_timer;
+    // Bumped by every flash. The fade-out is an animation, so a flash that
+    // arrives while one is running would otherwise be faded out by the
+    // animation it did not start -- and then ordered out by its completion
+    // handler. Only the generation that scheduled a fade may finish it.
+    NSUInteger _generation;
 }
 
 + (ArtModeHUD *)shared {
@@ -69,7 +78,7 @@ static const CGFloat kHUDFontSize = 24.0;
 - (instancetype)init {
     self = [super init];
     if (self) {
-        NSRect frame = NSMakeRect(0, 0, kHUDSize, kHUDSize);
+        NSRect frame = NSMakeRect(0, 0, kHUDWidth, kHUDHeight);
         _panel = [[NSPanel alloc]
             initWithContentRect:frame
                       styleMask:NSWindowStyleMaskBorderless |
@@ -77,7 +86,10 @@ static const CGFloat kHUDFontSize = 24.0;
                         backing:NSBackingStoreBuffered
                           defer:NO];
         _panel.floatingPanel = YES;
-        _panel.level = NSPopUpMenuWindowLevel;
+        // Same level as the candidate panel, for the same reason: a
+        // pop-up-menu-level window is not above a full-screen presentation.
+        // See ArtCandidateWindow.mm.
+        _panel.level = CGShieldingWindowLevel();
         _panel.opaque = NO;
         _panel.backgroundColor = [NSColor clearColor];
         _panel.hasShadow = YES;
@@ -95,18 +107,30 @@ static const CGFloat kHUDFontSize = 24.0;
 }
 
 - (void)flashChinese:(BOOL)chinese nearRect:(NSRect)caretRect {
+    [_timer invalidate];
+    _timer = nil;
+    const NSUInteger generation = ++_generation;
+
+    // Nothing stale may reach the screen, not even for one frame: a panel
+    // that is still up from the previous flash would otherwise be moved to
+    // the new position carrying the OLD glyph, and only redraw afterwards.
+    // Order it out, draw synchronously, then bring it back.
+    [_panel orderOut:nil];
+
     _view.glyph = chinese ? @"中" : @"英";
-    [_view setNeedsDisplay:YES];
 
     NSRect frame = _panel.frame;
-    frame.size = NSMakeSize(kHUDSize, kHUDSize);
+    frame.size = NSMakeSize(kHUDWidth, kHUDHeight);
     frame.origin = [self originForRect:caretRect size:frame.size];
-    [_panel setFrame:frame display:YES];
+    [_panel setFrame:frame display:NO];
+    _view.frame = NSMakeRect(0, 0, frame.size.width, frame.size.height);
+    [_view setNeedsDisplay:YES];
+    [_view display];
 
-    [_timer invalidate];
     _panel.alphaValue = 1.0;
     [_panel orderFront:nil];
 
+    __weak ArtModeHUD *weakSelf = self;
     NSPanel *panel = _panel;
     _timer = [NSTimer scheduledTimerWithTimeInterval:kHoldSeconds
                                              repeats:NO
@@ -115,6 +139,10 @@ static const CGFloat kHUDFontSize = 24.0;
             context.duration = kFadeSeconds;
             panel.animator.alphaValue = 0.0;
         } completionHandler:^{
+            ArtModeHUD *strongSelf = weakSelf;
+            if (strongSelf == nil || strongSelf->_generation != generation) {
+                return;  // a newer flash owns the panel now
+            }
             [panel orderOut:nil];
             panel.alphaValue = 1.0;
         }];
@@ -132,8 +160,24 @@ static const CGFloat kHUDFontSize = 24.0;
     NSRect visible = screen ? screen.visibleFrame : NSMakeRect(0, 0, 1440, 900);
 
     if (NSIsEmptyRect(caretRect)) {
-        return NSMakePoint(NSMidX(visible) - size.width / 2,
-                           NSMinY(visible) + NSHeight(visible) * 0.25);
+        // The host would not say where the caret is -- Electron hosts often
+        // will not before the first keystroke, and the menu path has no
+        // client at all. The pointer is where the user is looking, and it is
+        // what the Windows build falls back to as well (after the system
+        // caret, which macOS has no equivalent of).
+        NSPoint mouse = [NSEvent mouseLocation];
+        for (NSScreen *candidate in [NSScreen screens]) {
+            if (NSPointInRect(mouse, candidate.frame)) {
+                visible = candidate.visibleFrame;
+                break;
+            }
+        }
+        NSPoint origin = NSMakePoint(mouse.x + kHUDGap,
+                                     mouse.y - kHUDGap - size.height);
+        if (origin.y < NSMinY(visible))              origin.y = NSMinY(visible);
+        if (origin.x + size.width > NSMaxX(visible)) origin.x = NSMaxX(visible) - size.width;
+        if (origin.x < NSMinX(visible))              origin.x = NSMinX(visible);
+        return origin;
     }
 
     NSPoint origin = NSMakePoint(NSMinX(caretRect) + kHUDGap,

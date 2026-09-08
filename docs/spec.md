@@ -297,19 +297,29 @@
 
 ### 中英提示氣泡（2026-09-08 新增）
 
-在游標旁邊閃一張小卡片顯示**中**或**英**，0.55 秒後淡出。白底圓角、細邊框、CS_DROPSHADOW，
-與候選窗同一套配色（`Define.h` 的 `CANDWND_*`）；28×24 px @96dpi、11pt，ClearType。
+在游標旁邊閃一張小卡片顯示**中**或**英**，0.55 秒後淡出。白底圓角、細邊框、陰影；
+Windows 28×24 px @96dpi、11pt、ClearType、`CS_DROPSHADOW`，配色沿用候選窗（`Define.h` 的 `CANDWND_*`）；
+macOS `ArtModeHUD` 30×26 pt、15pt 字，用系統色（深淺色模式自動跟著走）。**兩邊是同一個東西**——
+macOS 對輸入法的內部中英切換不顯示任何系統指示器，Windows（實測 Win 11 26200）也不顯示，所以兩邊都得自己畫。
 
 **兩個時機，都是使用者沒有別的地方讀得到模式的那一刻：**
 
-1. **Shift 單獨輕按**（`_HandleShiftTap`）——他剛剛做的那次切換。
+1. **Shift 單獨輕按**——他剛剛做的那次切換。（Windows `_HandleShiftTap`、macOS `-toggleChineseModeWithClient:`）
 2. **焦點落進可以輸入的文字區**（游標變成直線的那一刻）——per-app 記憶替他做的那次切換，
    因為對系統而言什麼都沒發生，所以沒有任何東西會宣告它。
+   （Windows `ThreadMgrEventSink::OnSetFocus`、macOS `-activateServer:`）
 
-- **決策記錄（2026-09-08 同日修正）**：第一版**只做第 2 項**，理由是「切換那一次 Windows 自己會跳
-  指示器，做了會變成兩個氣泡」。**實測 Win 11 26200：這個 TIP 切換時系統不會跳任何指示器**，
-  所以沒有東西可以讓，反而是最該顯示的時機沒有顯示。第 1 項因此補上。
-  （macOS 一直都是切換時顯示——那邊本來就沒有系統指示器可借。）
+- **決策記錄（2026-09-08 同日修正兩次）**：Windows 第一版**只做第 2 項**，理由是「切換那一次
+  Windows 自己會跳指示器，做了會變成兩個氣泡」——**實測 Win 11 26200 根本沒有那個指示器**，
+  所以沒有東西可以讓，反而是最該顯示的時機沒有顯示。macOS 則相反，一直**只做第 1 項**，
+  理由是「HUD 是給使用者自己做的切換用的，每次換 app 都閃會很吵」——這剛好講反了：
+  自己做的切換是他記得的，per-app 記憶替他做的那次才是他無從得知、而且會害他打錯字的那次。
+  兩邊現在都做兩項。
+- **絕對不能閃到上一次的字**：卡片還在畫面上時再閃一次，如果直接移動／改大小，
+  系統會先把**舊的**內容搬到新位置，WM_PAINT／`drawRect:` 之後才蓋掉——按下 Shift 會看到
+  「英」跳過去再變成「中」。兩邊的作法相同：**先把視窗收掉**，改完幾何、**同步重畫**，
+  最後才顯示（Windows 另外先把 alpha 降到 0 再拉回 255，多一道保險）。
+  macOS 還多一個世代計數：淡出是動畫，新的一次閃爍若撞上進行中的淡出，會被那個動畫一起淡掉。
 - **取得焦點那一項只在 doc mgr 真的換掉時觸發**。點回同一個已經有焦點的欄位不算「進入」，TSF 也不會發事件。
 - 鍵盤被停用的 context（`GUID_COMPARTMENT_KEYBOARD_DISABLED`／`GUID_COMPARTMENT_EMPTYCONTEXT`）不顯示。
 - **位置怎麼來的**：讀預設選取範圍再 `ITfContextView::GetTextExt`。焦點當下沒有 composition 可以掛，
@@ -317,7 +327,8 @@
   的唯讀 edit session；Shift 那一項**本來就在 edit session 裡**，直接用手上的 cookie 量
   （`_FlashModeIndicatorUnderLock`）。
   宿主不回報時（Chromium 系在第一次按鍵前常常不回報）退回系統 caret（`GetGUIThreadInfo`），
-  再退回滑鼠位置——使用者的視線就在剛剛點下去的地方。
+  再退回滑鼠位置——使用者的視線就在剛剛點下去的地方。macOS 用
+  `attributesForCharacterIndex:lineHeightRectangle:`，讀不到就直接退到滑鼠（那邊沒有系統 caret 這一層）。
 - 視窗是 `WS_EX_NOACTIVATE | WS_EX_TRANSPARENT | WS_EX_LAYERED` 的 `WS_POPUP`：它出現的時機正是
   使用者在點輸入框，**搶走那個點擊會比它要修的問題更糟**。
 - 每個 TIP 實例（＝每個執行緒）一份，視窗與計時器不跨執行緒。實作 `ime\SampleIME\ModeIndicator.{h,cpp}`。

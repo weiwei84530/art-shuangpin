@@ -201,6 +201,23 @@ void CModeIndicator::Flash(BOOL isChinese, POINT ptScreen)
 
     _isChinese = isChinese;
 
+    // Nothing stale may reach the screen, not even for one frame.
+    //
+    // Moving or resizing a layered window that is still VISIBLE blits
+    // whatever it last painted to the new position, and WM_PAINT only
+    // arrives afterwards -- which is how the PREVIOUS glyph was visible for
+    // a frame or two at the start of a new flash: press Shift, see 英 jump
+    // to the new spot, then turn into 中.
+    //
+    // So the window is unmapped and taken to alpha 0 before anything is
+    // moved, and only comes back to opaque after WM_PAINT has run (below).
+    // Two belts: SW_HIDE means there is no composited surface to present,
+    // and alpha 0 means it would not matter if there were.
+    KillTimer(_wndHandle, kTimerHold);
+    KillTimer(_wndHandle, kTimerFade);
+    ShowWindow(_wndHandle, SW_HIDE);
+    SetLayeredWindowAttributes(_wndHandle, 0, 0, LWA_ALPHA);
+
     // Position first, then measure: GetDpiForWindow answers for the monitor
     // the window is currently on, so it has to be moved before the metrics
     // are recomputed or a second monitor gets the first one's sizes.
@@ -245,12 +262,16 @@ void CModeIndicator::Flash(BOOL isChinese, POINT ptScreen)
         SetWindowRgn(_wndHandle, region, FALSE);
     }
 
-    KillTimer(_wndHandle, kTimerFade);
-    _alpha = 255;
-    SetLayeredWindowAttributes(_wndHandle, 0, _alpha, LWA_ALPHA);
+    // Map it while still fully transparent and force the repaint through
+    // synchronously: UpdateWindow dispatches WM_PAINT before returning, so
+    // by the time the alpha goes back up the surface holds THIS flash's
+    // glyph and nothing else.
     InvalidateRect(_wndHandle, nullptr, TRUE);
     ShowWindow(_wndHandle, SW_SHOWNOACTIVATE);
     UpdateWindow(_wndHandle);
+
+    _alpha = 255;
+    SetLayeredWindowAttributes(_wndHandle, 0, _alpha, LWA_ALPHA);
     SetTimer(_wndHandle, kTimerHold, kHoldMs, nullptr);
 }
 

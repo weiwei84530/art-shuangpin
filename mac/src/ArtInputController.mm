@@ -137,12 +137,18 @@ bool IsCaretMovementKeyCode(unsigned short code) {
 
     id<IMKTextInput> client = (id<IMKTextInput>)sender;
 
-    // Taking focus restores the mode this application was left in (spec §6).
-    // Silently: the HUD is for switches the user made, and flashing it on
-    // every application change would be noise.
+    // Taking focus restores the mode this application was left in (spec §6),
+    // and says so (2026-09-08). This used to be deliberately silent, on the
+    // grounds that the HUD was for switches the user made; it is exactly
+    // backwards. A switch the user made is one they remember making. The
+    // mode the per-app memory just put back is the one they have no way of
+    // knowing, and it is the one that costs a wrongly-scripted word.
+    // The Windows build flashes on focus for the same reason.
     sCurrentAppKey = [ArtInputController appKeyForClient:client];
     NSNumber *remembered = sModeByApp[sCurrentAppKey];
     sChineseMode = remembered != nil ? remembered.boolValue : NO;
+    [[ArtModeHUD shared] flashChinese:sChineseMode
+                             nearRect:[self caretRectForClient:client]];
 
     // Which marked-text attributes the host admits to honouring decides how
     // much of the anchor emphasis it can possibly draw. One line in the log
