@@ -139,6 +139,36 @@ v0.3 到 v0.6 分別是 1、1、2、1 個檔案。多數上游改動 Mac 完全�
 
 ## 狀態記錄
 
+- 2026-09-08：**選字記憶的「長記錄接手短記錄」修正＋中英氣泡改用 icon 配色**（尚未發佈，VERSION 仍 0.8.4）。
+  (a) **根因來自使用者的實測疑問**：「重選一次『每次』，可以覆寫掉後面每一次嗎？」——答案是不行。
+  `applyOneLearnedOverride` 的「長的優先」只排序**同時可用**的記錄，但打字是**由左往右**的：
+  `mz3` 落下時詞還少一個音節，單字記錄當場釘住位置 0，而**被覆寫的位置永遠不再重看**，
+  `c4` 到齊之後詞記錄再也沒有機會。使用者檔案裡 `每次 ㄇㄟˇ-ㄘˋ ^ 6` 輸給 `鎂 ㄇㄟˇ ^ 1`，
+  **而且選再多次都不會贏**——兩者是不同的 (上下文, 讀音) key，`record` 的扣分碰不到對方。
+  同一個成因也讓 `留`/`瀏覽`、`已`/`以及` 一直出錯字。
+  修法：`Composer::learnedOverrides_` 記住**自己**下過的覆寫（節點＋寫進去的值），
+  這些位置可被**更長**的記錄接手（`minSpan = 既有跨距 + 1`，只增不減故不震盪）。
+  **手動選字與保護它的釘子不在清單裡**，所以「不跟使用者當下的選擇吵架」不變；
+  節點的值被別人改掉就立刻移出清單。已知限制寫在 spec：接手需要新跨距內沒有別人的覆寫，
+  游標移到句中插入時仍可能擋住（與修正前相同，不是退步）。
+  **查證方法值得留著**：用 `repl --keys`（帶／不帶 `--user-choices`）重播使用者檔案裡的多字詞條目，
+  就能把「詞庫沒這個詞」「詞庫有但預設輸」「預設就對、只是被記憶檔弄壞」三類分開。
+  該檔 17 個多字詞條目裡，**只有「卜筮」是真正的詞輸給散字**（＝2026-08-14 長度加權那一類），
+  其餘 8 個都是輸給**同樣長度的另一個詞**（不適/不是、主意/主義、妳在/你在…），是同音詞排序，不是長度問題。
+  (b) **中英氣泡的「中」改用 icon 配色**（使用者要求）：白字紅底，Windows `#C42B1C`
+  （`scripts/make_icon.py`）、macOS sRGB 0.78/0.13/0.13（`mac/tools/make_icon.m`）。
+  **兩個 icon 的紅本來就差一點**，各自跟隨自己那邊的 icon；要不要統一是另一個決定。
+  「英」維持候選窗的淺色卡片——兩個模式因此不只差一個字，這才是 0.55 秒一瞥要的。
+  (c) 驗證：core `ctest` x64／x86 各 **178 全過**（新增 3 個學習測試，FakeLM 補一個 `ㄋㄧˇ 妳` 當對手）、
+  check-tutorials 12 課全綠、check-drill-coverage 400＋11＝411、check-parity aligned（marker 推進到
+  `f4ad5a7`；(a) 全在共用的 `core/`，`ArtBridge.mm` 只是轉手，新增的都是 private 成員）。
+  兩架構 DLL 重建、`make-package.ps1` 打包後**已用 install.ps1 裝到本機**（兩個 sha256 與出貨產物相同）。
+  **macOS 的氣泡配色本機驗不了**（沒有 darwin 工具鏈），行為待使用者在 Mac 上實測。
+  **工具鏈不在 PATH 上**：`cmake` 在 `C:\Program Files\CMakein`、`node` 在 `C:\Program Files
+odejs`、
+  `msbuild` 在 `C:\Program Files (x86)\Microsoft Visual Studio2\BuildTools\...md64`、
+  `python` 只在 `%LOCALAPPDATA%\Programs\Python\Python312`（`python.exe` 那個 WindowsApps 別名是 Store 殼）。
+
 - 2026-09-08：**tag v0.8.4 並發佈 GitHub Release**（兩個資產：`art-shuangpin-v0.8.4.zip`、
   `art-shuangpin-mac-v0.8.4.zip`）。距 v0.8.3 共 5 個 commit，**詞庫仍是 `c07e7285…`**、
   `core/`／`engine/`／`data/` 零改動，全部是兩邊外殼的行為。
