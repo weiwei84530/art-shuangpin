@@ -12,8 +12,6 @@
 #include "CompositionProcessorEngine.h"
 #include "Compartment.h"
 
-#include <map>
-
 //+---------------------------------------------------------------------------
 //
 // CreateInstance
@@ -88,12 +86,8 @@ CSampleIME::CSampleIME()
 
     _pContext = nullptr;
 
-    _pFlashContext = nullptr;
-    _flashBaselineRc = RECT{};
-    _flashHaveBaseline = FALSE;
-    _flashBaselineMeasured = FALSE;
-    _flashAttempt = 0;
-    _flashTimerId = 0;
+    _lastCaretRc = RECT{};
+    _haveLastCaretRc = FALSE;
 
     _refCount = 1;
 }
@@ -106,7 +100,6 @@ CSampleIME::CSampleIME()
 
 CSampleIME::~CSampleIME()
 {
-    _CancelDeferredFlash();
     if (_pCandidateListUIPresenter)
     {
         delete _pCandidateListUIPresenter;
@@ -413,15 +406,9 @@ void CSampleIME::_FlashModeIndicatorForFocus(_In_opt_ ITfDocumentMgr *pDocMgrFoc
         CompartmentEmptyContext._GetCompartmentBOOL(isDisabled);
     }
 
-    if (isDisabled)
+    if (!isDisabled)
     {
-        // The focus landed somewhere the user cannot type: drop whatever
-        // measurement was still in flight for the field they left.
-        _CancelDeferredFlash();
-    }
-    else
-    {
-        _BeginDeferredFlash(pContext);
+        _RequestFocusFlashMeasurement(pContext);
     }
 
     pContext->Release();
@@ -429,41 +416,37 @@ void CSampleIME::_FlashModeIndicatorForFocus(_In_opt_ ITfDocumentMgr *pDocMgrFoc
 
 //+---------------------------------------------------------------------------
 //
-// Deferred focus-bubble placement    [MspyIME]
+// Focus-bubble placement    [MspyIME]
 //
-// A Chromium text store answers GetTextExt with the caret bounds it was
-// last TOLD about, and the renderer reports the newly focused field only a
-// few frames after the focus event. So at focus time the answer SUCCEEDS
-// and describes the PREVIOUS caret -- measured 2026-09-09, one document
-// manager handed back a byte-identical rect for two clicks into different
-// fields five seconds apart. Because it succeeds, no fallback caught it.
+// Nobody knows where the caret is except the application that draws it, so
+// the position always comes from asking it -- ITfContextView::GetTextExt,
+// under a document lock, hence an edit session.
 //
-// So: take one baseline reading at focus time, then poll. The first
-// reading that DIFFERS from the baseline is the host answering about the
-// field the user is actually in, and that is where the bubble goes. If the
-// answer never changes, it was never about this field and we do not trust
-// it at all: the pointer is the honest place, and for a focus the user
-// gave by clicking it is also the right one.
+// The Shift tap can trust that answer: the user has been typing in the
+// field, so the application has long since told its text store where the
+// caret is. The focus event cannot. A Chromium text store answers with the
+// bounds it was last TOLD about, and the renderer reports the newly focused
+// field only a few frames later, so at focus time it hands back the
+// PREVIOUS caret and reports success -- measured 2026-09-09, one document
+// manager returned a byte-identical rect for two clicks into different
+// fields five seconds apart.
+//
+// That echo is what gives it away: the stale answer is the rect we
+// ourselves last measured in this process (this TIP instance IS the
+// application, one per process). So measure once and place the bubble
+// unless the answer repeats what we already had -- in which case we know
+// nothing about the new field and say nothing. No waiting, no retries, and
+// the bubble never labels a caret that is not there (2026-09-09, at the
+// user's direction; the earlier version polled for up to 570 ms, which
+// hosts that answered correctly the first time paid in full).
 //----------------------------------------------------------------------------
 
-namespace
-{
-// Roughly two, five, ten and eighteen frames at 60 Hz. The last bounds the
-// wait: past ~300 ms a bubble that has not appeared yet is simply late.
-const UINT kFlashRetryMs[] = {30, 80, 160, 300};
-
-// WM_TIMER with a NULL window is delivered to the timer proc, which is
-// static, so a pending flash has to be found by its timer id. Timers are
-// thread-bound and so is a TIP instance, hence thread_local.
-thread_local std::map<UINT_PTR, CSampleIME*> g_flashTimers;
-}
-
 // Measures under a lock and hands the result back without deciding
-// anything: _OnDeferredFlashMeasured owns the decision.
-class CDeferredFlashEditSession : public CEditSessionBase
+// anything: _OnFocusFlashMeasured owns the decision.
+class CFocusFlashEditSession : public CEditSessionBase
 {
 public:
-    CDeferredFlashEditSession(_In_ CSampleIME *pTextService, _In_ ITfContext *pContext)
+    CFocusFlashEditSession(_In_ CSampleIME *pTextService, _In_ ITfContext *pContext)
         : CEditSessionBase(pTextService, pContext)
     {
     }
@@ -472,149 +455,50 @@ public:
     {
         RECT rc = {};
         const BOOL measured = MeasureSelectionExtent(ec, _pContext, &rc);
-        _pTextService->_OnDeferredFlashMeasured(measured, rc);
+        _pTextService->_OnFocusFlashMeasured(measured, rc);
         return S_OK;
     }
 };
 
-void CSampleIME::_CancelDeferredFlash()
+void CSampleIME::_RequestFocusFlashMeasurement(_In_ ITfContext *pContext)
 {
-    if (_flashTimerId != 0)
-    {
-        KillTimer(nullptr, _flashTimerId);
-        g_flashTimers.erase(_flashTimerId);
-        _flashTimerId = 0;
-    }
-    if (_pFlashContext != nullptr)
-    {
-        _pFlashContext->Release();
-        _pFlashContext = nullptr;
-    }
-    _flashHaveBaseline = FALSE;
-    _flashBaselineMeasured = FALSE;
-    _flashAttempt = 0;
-}
-
-void CSampleIME::_BeginDeferredFlash(_In_ ITfContext *pContext)
-{
-    _CancelDeferredFlash();
-    if (pContext == nullptr)
+    if (pContext == nullptr || _tfClientId == TF_CLIENTID_NULL)
     {
         return;
     }
-    _pFlashContext = pContext;
-    _pFlashContext->AddRef();
-    // Attempt 0 is the baseline: measure now, decide nothing.
-    _RequestFlashMeasurement();
-}
-
-void CSampleIME::_RequestFlashMeasurement()
-{
-    if (_pFlashContext == nullptr || _tfClientId == TF_CLIENTID_NULL)
-    {
-        return;
-    }
-    CDeferredFlashEditSession* pEditSession =
-        new (std::nothrow) CDeferredFlashEditSession(this, _pFlashContext);
+    CFocusFlashEditSession* pEditSession =
+        new (std::nothrow) CFocusFlashEditSession(this, pContext);
     if (pEditSession == nullptr)
     {
         return;
     }
     HRESULT hrSession = S_OK;
-    if (FAILED(_pFlashContext->RequestEditSession(_tfClientId, pEditSession,
-                                                  TF_ES_ASYNCDONTCARE | TF_ES_READ, &hrSession)))
-    {
-        // No way to measure at all, so there is no caret to label.
-        _CancelDeferredFlash();
-        _FlashModeIndicatorAt(nullptr);
-    }
+    // The session holds its own references, so nothing here has to outlive
+    // this call.
+    pContext->RequestEditSession(_tfClientId, pEditSession,
+                                 TF_ES_ASYNCDONTCARE | TF_ES_READ, &hrSession);
     pEditSession->Release();
 }
 
-void CSampleIME::_OnDeferredFlashMeasured(BOOL measured, const RECT &rc)
+void CSampleIME::_OnFocusFlashMeasured(BOOL measured, const RECT &rc)
 {
-    if (_pFlashContext == nullptr)
+    if (!measured)
     {
-        return;  // cancelled underneath us: the focus moved on
+        return;  // no caret to label
     }
 
-    if (!_flashHaveBaseline)
+    if (_haveLastCaretRc &&
+        rc.left == _lastCaretRc.left && rc.top == _lastCaretRc.top &&
+        rc.right == _lastCaretRc.right && rc.bottom == _lastCaretRc.bottom)
     {
-        // "Nothing" is as good a baseline as a rect: what matters is that
-        // the host later says something different.
-        _flashBaselineRc = measured ? rc : RECT{};
-        _flashBaselineMeasured = measured;
-        _flashHaveBaseline = TRUE;
-        _OnDeferredFlashTick();
+        // The host is echoing the caret we already measured: it has not
+        // been told about the field the focus just landed in, so we do not
+        // know where that field is. Saying nothing beats pointing at the
+        // previous one.
         return;
     }
 
-    const BOOL changed = measured &&
-        (rc.left != _flashBaselineRc.left || rc.top != _flashBaselineRc.top ||
-         rc.right != _flashBaselineRc.right || rc.bottom != _flashBaselineRc.bottom);
-
-    if (changed)
-    {
-        RECT placed = rc;
-        _CancelDeferredFlash();
-        _FlashModeIndicatorAt(&placed);
-        return;
-    }
-
-    if (_flashAttempt >= ARRAYSIZE(kFlashRetryMs))
-    {
-        // The host stood by its first answer for 300 ms. A well-behaved
-        // one (Notepad, and every host that reports the caret at focus
-        // time) is right straight away and has nothing to revise, so a
-        // steady answer IS the caret -- distrusting it is what put the
-        // bubble by the mouse when a Notepad tab was switched (reported
-        // 2026-09-09).
-        RECT placed = _flashBaselineRc;
-        const BOOL haveRect = _flashBaselineMeasured;
-        _CancelDeferredFlash();
-        _FlashModeIndicatorAt(haveRect ? &placed : nullptr);
-        return;
-    }
-
-    _OnDeferredFlashTick();
-}
-
-void CSampleIME::_OnDeferredFlashTick()
-{
-    if (_pFlashContext == nullptr || _flashAttempt >= ARRAYSIZE(kFlashRetryMs))
-    {
-        return;
-    }
-    const UINT delay = kFlashRetryMs[_flashAttempt];
-    ++_flashAttempt;
-    const UINT_PTR id = SetTimer(nullptr, 0, delay, CSampleIME::_DeferredFlashTimerProc);
-    if (id == 0)
-    {
-        _CancelDeferredFlash();
-        _FlashModeIndicatorAt(nullptr);
-        return;
-    }
-    _flashTimerId = id;
-    g_flashTimers[id] = this;
-}
-
-/* static */
-VOID CALLBACK CSampleIME::_DeferredFlashTimerProc(HWND, UINT, UINT_PTR idEvent, DWORD)
-{
-    KillTimer(nullptr, idEvent);
-    auto it = g_flashTimers.find(idEvent);
-    if (it == g_flashTimers.end())
-    {
-        return;
-    }
-    CSampleIME* pSelf = it->second;
-    g_flashTimers.erase(it);
-    if (pSelf == nullptr)
-    {
-        return;
-    }
-    pSelf->_flashTimerId = 0;
-    pSelf->_RequestFlashMeasurement();
+    _FlashModeIndicatorAt(&rc);
 }
 
 //+---------------------------------------------------------------------------
@@ -684,6 +568,12 @@ void CSampleIME::_FlashModeIndicatorAt(const RECT *prcCaret)
         pt.x = prcCaret->left;
         pt.y = prcCaret->bottom;
         havePoint = TRUE;
+        // What a stale host answer will echo next time (see the focus
+        // section above). The Shift tap measures the caret the user has
+        // been typing at, so this is kept up to date by the trustworthy
+        // path as well as by the focus one.
+        _lastCaretRc = *prcCaret;
+        _haveLastCaretRc = TRUE;
     }
 
     if (!havePoint)
