@@ -12,6 +12,8 @@
 #include "CompositionProcessorEngine.h"
 #include "Compartment.h"
 
+#include <map>
+
 //+---------------------------------------------------------------------------
 //
 // CreateInstance
@@ -88,6 +90,10 @@ CSampleIME::CSampleIME()
 
     _lastCaretRc = RECT{};
     _haveLastCaretRc = FALSE;
+    _pFlashContext = nullptr;
+    _flashEchoRc = RECT{};
+    _flashAttempt = 0;
+    _flashTimerId = 0;
 
     _refCount = 1;
 }
@@ -100,6 +106,7 @@ CSampleIME::CSampleIME()
 
 CSampleIME::~CSampleIME()
 {
+    _CancelFocusFlash();
     if (_pCandidateListUIPresenter)
     {
         delete _pCandidateListUIPresenter;
@@ -406,7 +413,13 @@ void CSampleIME::_FlashModeIndicatorForFocus(_In_opt_ ITfDocumentMgr *pDocMgrFoc
         CompartmentEmptyContext._GetCompartmentBOOL(isDisabled);
     }
 
-    if (!isDisabled)
+    if (isDisabled)
+    {
+        // The focus landed somewhere the user cannot type: drop whatever
+        // measurement was still in flight for the field they left.
+        _CancelFocusFlash();
+    }
+    else
     {
         _RequestFocusFlashMeasurement(pContext);
     }
@@ -431,15 +444,45 @@ void CSampleIME::_FlashModeIndicatorForFocus(_In_opt_ ITfDocumentMgr *pDocMgrFoc
 // manager returned a byte-identical rect for two clicks into different
 // fields five seconds apart.
 //
-// That echo is what gives it away: the stale answer is the rect we
+// That echo is what gives it away: a stale answer repeats the rect we
 // ourselves last measured in this process (this TIP instance IS the
-// application, one per process). So measure once and place the bubble
-// unless the answer repeats what we already had -- in which case we know
-// nothing about the new field and say nothing. No waiting, no retries, and
-// the bubble never labels a caret that is not there (2026-09-09, at the
-// user's direction; the earlier version polled for up to 570 ms, which
-// hosts that answered correctly the first time paid in full).
+// application, one per process). So:
+//
+//   * an answer we have not seen before is about the field the focus just
+//     landed in, and the bubble goes there AT ONCE. Hosts that report the
+//     caret correctly -- Notepad, terminals, anything that is not a
+//     browser engine -- are in this case every time, and they used to pay
+//     the full 30+80+160+300 ms of polling for an answer that was never
+//     going to change. That wait was the pause before the bubble appeared
+//     (reported 2026-09-09);
+//
+//   * an echo says nothing about the new field yet, so wait for the host
+//     to revise it -- the retry schedule below. A host that never revises
+//     was not stale after all: the caret really is where we last measured
+//     it (the focus came back to that same field), so the bubble goes
+//     there when the wait runs out.
+//
+// Either way the bubble only ever labels a caret some host has claimed,
+// which is the ordering the user chose on 2026-09-09.
 //----------------------------------------------------------------------------
+
+namespace
+{
+// Roughly two, five, ten and eighteen frames at 60 Hz. The last bounds the
+// wait: past ~300 ms a bubble that has not appeared yet is simply late.
+const UINT kFlashRetryMs[] = {30, 80, 160, 300};
+
+// WM_TIMER with a NULL window is delivered to the timer proc, which is
+// static, so a pending flash has to be found by its timer id. Timers are
+// thread-bound and so is a TIP instance, hence thread_local.
+thread_local std::map<UINT_PTR, CSampleIME*> g_flashTimers;
+
+BOOL SameRect(const RECT &a, const RECT &b)
+{
+    return a.left == b.left && a.top == b.top &&
+           a.right == b.right && a.bottom == b.bottom;
+}
+}
 
 // Measures under a lock and hands the result back without deciding
 // anything: _OnFocusFlashMeasured owns the decision.
@@ -460,45 +503,138 @@ public:
     }
 };
 
+void CSampleIME::_CancelFocusFlash()
+{
+    if (_flashTimerId != 0)
+    {
+        KillTimer(nullptr, _flashTimerId);
+        g_flashTimers.erase(_flashTimerId);
+        _flashTimerId = 0;
+    }
+    if (_pFlashContext != nullptr)
+    {
+        _pFlashContext->Release();
+        _pFlashContext = nullptr;
+    }
+    _flashEchoRc = RECT{};
+    _flashAttempt = 0;
+}
+
 void CSampleIME::_RequestFocusFlashMeasurement(_In_ ITfContext *pContext)
 {
+    _CancelFocusFlash();  // the focus left whatever we were still measuring
     if (pContext == nullptr || _tfClientId == TF_CLIENTID_NULL)
     {
         return;
     }
-    CFocusFlashEditSession* pEditSession =
-        new (std::nothrow) CFocusFlashEditSession(this, pContext);
-    if (pEditSession == nullptr)
+    _pFlashContext = pContext;
+    _pFlashContext->AddRef();
+    _MeasureFocusCaret();
+}
+
+// One asynchronous read of the caret: the first answer, and again for each
+// retry, always on the context the focus landed in.
+void CSampleIME::_MeasureFocusCaret()
+{
+    if (_pFlashContext == nullptr || _tfClientId == TF_CLIENTID_NULL)
     {
         return;
     }
+    CFocusFlashEditSession* pEditSession =
+        new (std::nothrow) CFocusFlashEditSession(this, _pFlashContext);
+    if (pEditSession == nullptr)
+    {
+        _CancelFocusFlash();
+        return;
+    }
     HRESULT hrSession = S_OK;
-    // The session holds its own references, so nothing here has to outlive
-    // this call.
-    pContext->RequestEditSession(_tfClientId, pEditSession,
-                                 TF_ES_ASYNCDONTCARE | TF_ES_READ, &hrSession);
+    if (FAILED(_pFlashContext->RequestEditSession(_tfClientId, pEditSession,
+                                                  TF_ES_ASYNCDONTCARE | TF_ES_READ, &hrSession)))
+    {
+        // No way to measure at all, so there is no caret to label.
+        _CancelFocusFlash();
+    }
     pEditSession->Release();
 }
 
 void CSampleIME::_OnFocusFlashMeasured(BOOL measured, const RECT &rc)
 {
+    if (_pFlashContext == nullptr)
+    {
+        return;  // cancelled underneath us: the focus moved on
+    }
+
     if (!measured)
     {
+        _CancelFocusFlash();
         return;  // no caret to label
     }
 
-    if (_haveLastCaretRc &&
-        rc.left == _lastCaretRc.left && rc.top == _lastCaretRc.top &&
-        rc.right == _lastCaretRc.right && rc.bottom == _lastCaretRc.bottom)
+    const BOOL firstAnswer = (_flashAttempt == 0);
+    const BOOL echo = firstAnswer ? (_haveLastCaretRc && SameRect(rc, _lastCaretRc))
+                                  : SameRect(rc, _flashEchoRc);
+
+    if (!echo)
     {
-        // The host is echoing the caret we already measured: it has not
-        // been told about the field the focus just landed in, so we do not
-        // know where that field is. Saying nothing beats pointing at the
-        // previous one.
+        // News: this is the field the focus just landed in.
+        RECT placed = rc;
+        _CancelFocusFlash();
+        _FlashModeIndicatorAt(&placed);
         return;
     }
 
-    _FlashModeIndicatorAt(&rc);
+    if (firstAnswer)
+    {
+        _flashEchoRc = rc;
+    }
+    else if (_flashAttempt >= ARRAYSIZE(kFlashRetryMs))
+    {
+        // The host stood by the same answer for the whole wait, so nothing
+        // was stale after all: the caret is still where we last measured it.
+        RECT placed = _flashEchoRc;
+        _CancelFocusFlash();
+        _FlashModeIndicatorAt(&placed);
+        return;
+    }
+
+    _ScheduleFocusFlashRetry();
+}
+
+void CSampleIME::_ScheduleFocusFlashRetry()
+{
+    if (_pFlashContext == nullptr || _flashAttempt >= ARRAYSIZE(kFlashRetryMs))
+    {
+        return;
+    }
+    const UINT delay = kFlashRetryMs[_flashAttempt];
+    ++_flashAttempt;
+    const UINT_PTR id = SetTimer(nullptr, 0, delay, CSampleIME::_FocusFlashTimerProc);
+    if (id == 0)
+    {
+        _CancelFocusFlash();
+        return;
+    }
+    _flashTimerId = id;
+    g_flashTimers[id] = this;
+}
+
+/* static */
+VOID CALLBACK CSampleIME::_FocusFlashTimerProc(HWND, UINT, UINT_PTR idEvent, DWORD)
+{
+    KillTimer(nullptr, idEvent);
+    auto it = g_flashTimers.find(idEvent);
+    if (it == g_flashTimers.end())
+    {
+        return;
+    }
+    CSampleIME* pSelf = it->second;
+    g_flashTimers.erase(it);
+    if (pSelf == nullptr)
+    {
+        return;
+    }
+    pSelf->_flashTimerId = 0;
+    pSelf->_MeasureFocusCaret();
 }
 
 //+---------------------------------------------------------------------------

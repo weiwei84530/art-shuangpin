@@ -147,13 +147,18 @@ public:
     void _FlashModeIndicatorForFocus(_In_opt_ ITfDocumentMgr *pDocMgrFocus);
     void _FlashModeIndicatorUnderLock(TfEditCookie ec, _In_opt_ ITfContext *pContext);
     void _FlashModeIndicatorAt(const RECT *prcCaret);
-    // [MspyIME] The focus bubble measures the caret once, asynchronously,
-    // and shows itself unless the host merely echoed the caret we already
-    // had -- a Chromium text store answers GetTextExt with the bounds it
-    // was last TOLD about, which at focus time is still the previous
-    // field. Measured 2026-09-09.
+    // [MspyIME] The focus bubble measures the caret asynchronously and
+    // places itself on the first answer, unless that answer merely echoes
+    // the caret we already had -- a Chromium text store answers GetTextExt
+    // with the bounds it was last TOLD about, which at focus time is still
+    // the previous field (measured 2026-09-09). Only an echo waits, on the
+    // retry schedule in the .cpp, for the host to revise it.
     void _RequestFocusFlashMeasurement(_In_ ITfContext *pContext);
+    void _MeasureFocusCaret();
     void _OnFocusFlashMeasured(BOOL measured, const RECT &rc);
+    void _ScheduleFocusFlashRetry();
+    void _CancelFocusFlash();
+    static VOID CALLBACK _FocusFlashTimerProc(HWND wndHandle, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
     // [MspyIME] Numpad key while composing: commit the buffer, then emit
     // the numpad character literally.
     HRESULT _HandleNumpadCommit(TfEditCookie ec, _In_ ITfContext *pContext, WCHAR wch);
@@ -303,6 +308,14 @@ private:
     // host answer looks like when it comes back (2026-09-09).
     RECT _lastCaretRc;
     BOOL _haveLastCaretRc;
+
+    // [MspyIME] The focus measurement in flight: the context being read,
+    // the echoed rect we are waiting for the host to revise, and the
+    // retry's place in the schedule.
+    ITfContext* _pFlashContext;
+    RECT _flashEchoRc;
+    UINT _flashAttempt;
+    UINT_PTR _flashTimerId;
 
     ITfCompartment* _pSIPIMEOnOffCompartment;
     DWORD _dwSIPIMEOnOffCompartmentSinkCookie;
