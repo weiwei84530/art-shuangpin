@@ -13,7 +13,7 @@ Windows 與 macOS 的原生中文輸入法：**注音式輸入節奏＋微軟雙
 - Shift 單獨輕按＝中英切換（**不上屏**，英文長在同一個組字串裡，按語境補半形空白）。
 - **上屏只認 `Enter`**（外加失焦與數字鍵盤）：標點、空白鍵、中英切換都只是把內容加進同一段未送出的組字串，整句寫多長都能回頭改。
 
-**[使用手冊](docs/guide.md)**（鍵位、省鍵設計、完整按鍵表）；**[互動教學網站](https://weiwei84530.github.io/art-shuangpin/)**（3D 鍵盤動畫示範各項操作，附看打練習）；程式實作細節與決策記錄見 [docs/spec.md](docs/spec.md)。
+**[作品頁](https://weiweistudio.com/work/art-shuangpin/)**（這個輸入法為什麼長這樣）；**[使用手冊](docs/guide.md)**（鍵位、省鍵設計、完整按鍵表）；**[互動教學網站](https://weiwei84530.github.io/art-shuangpin/)**（3D 鍵盤動畫示範各項操作，附看打練習）；程式實作細節與決策記錄見 [docs/spec.md](docs/spec.md)。
 
 ## 安裝
 
