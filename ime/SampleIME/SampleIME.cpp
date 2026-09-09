@@ -359,17 +359,16 @@ static BOOL MeasureSelectionExtent(TfEditCookie ec, _In_opt_ ITfContext *pContex
 
 //+---------------------------------------------------------------------------
 //
-// _FlashModeIndicatorUnderLock    [MspyIME]
+// _MeasureCaretUnderLock    [MspyIME]
 //
 // The Shift tap already runs inside an edit session, so it can measure the
-// caret directly instead of queueing another one.
+// caret directly instead of queueing another one. It has to do so BEFORE it
+// touches the composition: see _HandleShiftTap.
 //----------------------------------------------------------------------------
 
-void CSampleIME::_FlashModeIndicatorUnderLock(TfEditCookie ec, _In_opt_ ITfContext *pContext)
+BOOL CSampleIME::_MeasureCaretUnderLock(TfEditCookie ec, _In_opt_ ITfContext *pContext, _Out_ RECT *prc)
 {
-    RECT rc = {};
-    const BOOL measured = MeasureSelectionExtent(ec, pContext, &rc);
-    _FlashModeIndicatorAt(measured ? &rc : nullptr);
+    return MeasureSelectionExtent(ec, pContext, prc);
 }
 
 //+---------------------------------------------------------------------------

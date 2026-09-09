@@ -521,6 +521,24 @@ HRESULT CSampleIME::_HandleShiftTap(TfEditCookie ec, _In_ ITfContext *pContext)
         return S_OK;
     }
 
+    // Measure the caret BEFORE touching the composition (2026-09-09).
+    // switchLanguage inserts the separator space and _SyncComposer rewrites
+    // the composition in this same edit session, and a Chromium text store
+    // asked afterwards answers about text it has not laid out yet: the
+    // bubble went missing on every Shift tap made with a composition live
+    // (reported in Chrome). GetTextExt does NOT fail while that happens --
+    // logged over a whole session, every call returned S_OK, so the guess
+    // that it was TS_E_NOLAYOUT was wrong; what comes back is a degenerate
+    // rectangle, and this host does answer with zero-height rects of the
+    // shape (0,-993)-(0,-993). Anything with no height is refused as not a
+    // caret (_FlashModeIndicatorAt), hence no bubble.
+    //
+    // Asked here instead, the same call returns a proper caret every time.
+    // The rectangle is the caret the user is looking at as they press
+    // Shift; it moves by at most the width of that separator space.
+    RECT caretRc = {};
+    const BOOL haveCaret = _MeasureCaretUnderLock(ec, pContext, &caretRc);
+
     BOOL isOpen = FALSE;
     CCompartment CompartmentKeyboardOpen(_pThreadMgr, _tfClientId, GUID_COMPARTMENT_KEYBOARD_OPENCLOSE);
     CompartmentKeyboardOpen._GetCompartmentBOOL(isOpen);
@@ -541,7 +559,7 @@ HRESULT CSampleIME::_HandleShiftTap(TfEditCookie ec, _In_ ITfContext *pContext)
     // and the most obvious moment to show the mode was the one moment we
     // were not showing it. Ordered AFTER the compartment write, because
     // _FlashModeIndicatorAt reads the mode back from it.
-    _FlashModeIndicatorUnderLock(ec, pContext);
+    _FlashModeIndicatorAt(haveCaret ? &caretRc : nullptr);
     return S_OK;
 }
 

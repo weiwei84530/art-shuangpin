@@ -145,7 +145,7 @@ public:
     // ModeIndicator.h. `_FlashModeIndicatorAt` is the continuation, called
     // back from the edit session that measured the caret.
     void _FlashModeIndicatorForFocus(_In_opt_ ITfDocumentMgr *pDocMgrFocus);
-    void _FlashModeIndicatorUnderLock(TfEditCookie ec, _In_opt_ ITfContext *pContext);
+    BOOL _MeasureCaretUnderLock(TfEditCookie ec, _In_opt_ ITfContext *pContext, _Out_ RECT *prc);
     void _FlashModeIndicatorAt(const RECT *prcCaret);
     // [MspyIME] The caret cannot be read at focus time: a Chromium text
     // store answers GetTextExt with the bounds it was last TOLD about, and

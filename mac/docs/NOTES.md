@@ -619,6 +619,28 @@ corner reads as a bug while a slightly stale position does not.
     a host that ignores `isComposing` *and* `keyCode` will still submit, and
     Enter with **nothing** composing is passed through on purpose.
 
+11. **(Open, untested here) The mode HUD does not appear on a Shift tap
+    while marked text is up.** Fixed on Windows in v0.9.0; whether this
+    side has the same fault is unknown.
+
+    Windows measured the caret *after* the switch had rewritten the
+    composition, in the same document lock, and a Chromium text store then
+    answered `GetTextExt` with a degenerate, zero-height rectangle -- not an
+    error, so nothing caught it; the height check simply refused to label a
+    caret that had no height, and the bubble went missing on every Shift tap
+    made with a composition live. Measuring first fixed it.
+
+    `-handleShiftTap`-equivalent code here (`ArtInputController.mm`, the
+    flags-changed branch) samples in the same order: `syncWithResult:`
+    updates the marked text, and only then is `firstRectForCharacterRange:`
+    asked. The comment there argues the sampling is safe because nothing was
+    committed, and there is no document lock on this side, so the two cases
+    may genuinely differ -- but nobody has watched it in Chrome or an
+    Electron app on macOS. If the HUD is missing there while the underline
+    is up, this is the first thing to try: take the rect before
+    `syncWithResult:` and pass it to `flashChinese:nearRect:`. The user chose
+    not to change it blind at v0.9.0.
+
 ## The name and the icon in the input menu
 
 Both were wrong at once, and the diagnosis for each is worth keeping because
