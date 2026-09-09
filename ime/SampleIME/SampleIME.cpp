@@ -643,8 +643,7 @@ static BOOL SystemCaretPoint(_Out_ POINT *ppt)
     threadInfo.cbSize = sizeof(threadInfo);
     if (!GetGUIThreadInfo(GetCurrentThreadId(), &threadInfo) ||
         threadInfo.hwndCaret == nullptr ||
-        (threadInfo.rcCaret.right == threadInfo.rcCaret.left &&
-         threadInfo.rcCaret.bottom == threadInfo.rcCaret.top))
+        threadInfo.rcCaret.bottom <= threadInfo.rcCaret.top)  // no height, no caret
     {
         return FALSE;
     }
@@ -668,7 +667,19 @@ void CSampleIME::_FlashModeIndicatorAt(const RECT *prcCaret)
     POINT pt = {};
     BOOL havePoint = FALSE;
 
-    if (prcCaret != nullptr && (prcCaret->right != prcCaret->left || prcCaret->bottom != prcCaret->top))
+    // A caret has HEIGHT. Zero width is normal -- an empty selection is a
+    // bar -- but a rectangle with no height is not a caret, it is a host
+    // answering the question without having one.
+    //
+    // Measured 2026-09-09: clicking the desktop or the taskbar focuses a
+    // context that is not marked keyboard-disabled (the desktop's
+    // SysListView32 and the Windows 11 taskbar's InputSite both take
+    // type-ahead), and GetTextExt then succeeds with the same degenerate
+    // rect every time -- (1919,1031)-(1920,1031), one pixel wide, no
+    // height, parked in the bottom-right corner of the work area. That is
+    // what put a bubble in the corner of the screen for clicks on the
+    // wallpaper and on the tray.
+    if (prcCaret != nullptr && prcCaret->bottom > prcCaret->top)
     {
         pt.x = prcCaret->left;
         pt.y = prcCaret->bottom;
