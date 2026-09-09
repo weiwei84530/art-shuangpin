@@ -147,18 +147,18 @@ public:
     void _FlashModeIndicatorForFocus(_In_opt_ ITfDocumentMgr *pDocMgrFocus);
     void _FlashModeIndicatorUnderLock(TfEditCookie ec, _In_opt_ ITfContext *pContext);
     void _FlashModeIndicatorAt(const RECT *prcCaret);
-    // [MspyIME] The focus bubble measures the caret asynchronously and
-    // places itself on the first answer, unless that answer merely echoes
-    // the caret we already had -- a Chromium text store answers GetTextExt
-    // with the bounds it was last TOLD about, which at focus time is still
-    // the previous field (measured 2026-09-09). Only an echo waits, on the
-    // retry schedule in the .cpp, for the host to revise it.
-    void _RequestFocusFlashMeasurement(_In_ ITfContext *pContext);
-    void _MeasureFocusCaret();
-    void _OnFocusFlashMeasured(BOOL measured, const RECT &rc);
-    void _ScheduleFocusFlashRetry();
-    void _CancelFocusFlash();
-    static VOID CALLBACK _FocusFlashTimerProc(HWND wndHandle, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
+    // [MspyIME] The caret cannot be read at focus time: a Chromium text
+    // store answers GetTextExt with the bounds it was last TOLD about, and
+    // the renderer reports the newly focused field only a few frames later,
+    // so the answer at focus time describes the PREVIOUS caret. Measured
+    // 2026-09-09. The focus bubble therefore takes one baseline reading and
+    // waits for that answer to change before placing itself.
+    void _BeginDeferredFlash(_In_ ITfContext *pContext);
+    void _CancelDeferredFlash();
+    void _OnDeferredFlashTick();
+    void _OnDeferredFlashMeasured(BOOL measured, const RECT &rc);
+    void _RequestFlashMeasurement();
+    static VOID CALLBACK _DeferredFlashTimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
     // [MspyIME] Numpad key while composing: commit the buffer, then emit
     // the numpad character literally.
     HRESULT _HandleNumpadCommit(TfEditCookie ec, _In_ ITfContext *pContext, WCHAR wch);
@@ -304,17 +304,12 @@ private:
 
     ITfContext* _pContext;
 
-    // [MspyIME] The last caret this instance measured, i.e. what a stale
-    // host answer looks like when it comes back (2026-09-09).
-    RECT _lastCaretRc;
-    BOOL _haveLastCaretRc;
-
-    // [MspyIME] The focus measurement in flight: the context being read,
-    // the echoed rect we are waiting for the host to revise, and the
-    // retry's place in the schedule.
+    // [MspyIME] Deferred focus-bubble placement (2026-09-09).
     ITfContext* _pFlashContext;
-    RECT _flashEchoRc;
-    UINT _flashAttempt;
+    RECT _flashBaselineRc;
+    BOOL _flashHaveBaseline;
+    BOOL _flashBaselineMeasured;
+    size_t _flashAttempt;
     UINT_PTR _flashTimerId;
 
     ITfCompartment* _pSIPIMEOnOffCompartment;
