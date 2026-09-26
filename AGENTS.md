@@ -651,7 +651,7 @@ v0.3 到 v0.6 分別是 1、1、2、1 個檔案。多數上游改動 Mac 完全�
   安裝腳本負責 `xattr -dr com.apple.quarantine`（下載來的 ad-hoc 簽章 app 不清會被說成「已損毀」）
   與**無條件** `tccutil reset Accessibility`（每一版簽章都不同，System Settings 那一列即使打著勾也已失效；
   這只影響閒置編輯層的數字排，輸入法本體不受影響）。Windows 那半維持本機手動打包，上傳到同一個 Release。
-  **歷史保險**：刪除 private repo 前已 `git bundle create` 全歷史到 `D:\Claude\artmac-history-backup.bundle`
+  **歷史保險**：刪除 private repo 前已 `git bundle create` 全歷史到 `E:\Claude\artmac-history-backup.bundle`
   （匯入 commit 引用的 `12b9c7d` 在 repo 刪掉後就解析不出來了）。**確認 Mac 能從合併後的樹建置並執行之前，
   不要刪那個 repo。**
 
