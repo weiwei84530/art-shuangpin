@@ -12,7 +12,7 @@
 //
 // Nothing here decides anything about input behaviour.  If you find
 // yourself wanting to add a rule to this file, the rule belongs upstream in
-// art-shuangpin's core/ — see CLAUDE.md.
+// art-shuangpin's core/ — see AGENTS.md.
 
 #import <Foundation/Foundation.h>
 

@@ -28,7 +28,7 @@ web\    互動教學網站＋看打練習（純 CSS/JS，GitHub Pages）
 
 `mac\` 之於 macOS，等同 `ime\` 之於 Windows：**只是外殼**。所有輸入行為都在 `mspy::Composer` 裡，
 兩邊都只是餵鍵、畫畫面。行為要改就改 `core\`，不要在任何一邊的外殼裡重寫。
-詳細規則見 `mac/CLAUDE.md`（英文），工程記錄見 `mac/docs/NOTES.md`。
+詳細規則見 `mac/AGENTS.md`（英文），工程記錄見 `mac/docs/NOTES.md`。
 
 **四組必須同進退的接縫**（改了左邊就要看右邊）：
 
@@ -59,7 +59,7 @@ web\    互動教學網站＋看打練習（純 CSS/JS，GitHub Pages）
 - 圖示有兩份、畫同一個「特」字：`scripts\make_icon.py`（Windows `.ico`）與 `mac/tools/make_icon.m`
   （macOS TIFF，長寬比 1.375）。改了一邊記得看另一邊——沒有工具會提醒。
 
-**語言依讀者而非目錄。** `mac/CLAUDE.md` 與 `mac/docs/NOTES.md` 維持英文：讀者是要改 `mac/src/` 的人，
+**語言依讀者而非目錄。** `mac/AGENTS.md` 與 `mac/docs/NOTES.md` 維持英文：讀者是要改 `mac/src/` 的人，
 整套詞彙（IMKInputController、marked text、TCC、code directory hash）本來就是英文，翻譯只會更難用，
 而且會切斷它們與 Windows 端英文註解逐句對照的關係。其餘一律照舊：`README.md`、根 `docs/**`、
 `mac/docs/INSTALL.md`、GitHub Release 標題與內文、以及 `*.command`／`*.txt` **印給使用者看的字**，

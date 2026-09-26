@@ -7,7 +7,7 @@
 // shell owns only the idle editing layer (the unshifted digit row), the bare-Shift
 // toggle, the numpad exemption, the "arrows do nothing while composing"
 // rule, routing English-mode keys into the same composition, and drawing.
-// See CLAUDE.md, "Key ownership — shell vs composer".
+// See AGENTS.md, "Key ownership — shell vs composer".
 
 #import <Cocoa/Cocoa.h>
 #import <InputMethodKit/InputMethodKit.h>

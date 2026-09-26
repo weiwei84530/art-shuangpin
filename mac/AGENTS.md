@@ -1,4 +1,4 @@
-# CLAUDE.md — ArtShuangpin for macOS
+# AGENTS.md — ArtShuangpin for macOS
 
 A native macOS **InputMethodKit** shell around the art-shuangpin C++ core, which sits one
 directory up: `../core`, `../engine`, `../cli`. This is the macOS half of the repository;
@@ -9,7 +9,7 @@ under `vendor/`. Both are gone. The reason for the merge was the mirror's one re
 the shell repo was private, so every Mac needed GitHub credentials, while everything it
 fetched into `vendor/` was already public.
 
-The root `CLAUDE.md` governs and is 繁體中文; this file covers what is specific to `mac/`
+The root `AGENTS.md` governs and is 繁體中文; this file covers what is specific to `mac/`
 and stays English (rule 5).
 
 ## What `mac/` is — and is not
@@ -60,7 +60,7 @@ its output.
    `release/README.txt` and the *printed output* of every `*.command` are **繁體中文** —
    those are read by the person installing, not by whoever is editing the repo. Comments
    inside those same scripts stay English. Replies to the user are 繁體中文. The root
-   `CLAUDE.md` states this ruling once; do not "fix" either half towards the other.
+   `AGENTS.md` states this ruling once; do not "fix" either half towards the other.
 6. **Git.** One public `origin`, `weiwei84530/art-shuangpin`, shared with the Windows half.
    The root rule governs: commit freely, **push only when asked**, stay on the current
    branch. New since the merge: **a tag is a publishing act** — pushing `vX.Y.Z` triggers
