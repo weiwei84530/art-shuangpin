@@ -195,8 +195,8 @@ class Composer {
   }
 
   // Called after a manual pick has been written into the store, with
-  // (context, reading, value) for the most specific context recorded. The
-  // shell uses it to persist the file; the CLI prints it.
+  // (left window as the file spells it, reading, value). The shell uses it
+  // to persist the file; the CLI prints it.
   std::function<void(const std::string&, const std::string&,
                      const std::string&)>
       onLearned;
@@ -241,14 +241,17 @@ class Composer {
   Result selectOnCurrentPage(size_t indexInPage);
   // Re-pins every position OUTSIDE [from, to) whose character changed since
   // `before`, so that fixing one word leaves the rest of the sentence
-  // exactly as it was (2026-08-09). Re-walks after each pin.
+  // exactly as it was (2026-08-09). Re-walks after each pin. `learned`
+  // marks the pins as belonging to a learned override, so they are undone
+  // with it.
   void restoreCharactersOutside(const std::vector<std::string>& before,
-                                size_t from, size_t to);
-  // Writes a manual pick into the store under both context lengths.
+                                size_t from, size_t to, bool learned = false);
+  // Writes a manual pick into the store with the window around it.
   void learnFromSelection(
       const Formosa::Gramambular2::ReadingGrid::Candidate& chosen);
-  // Applies every learned correction that matches the current walk,
-  // repeating until nothing more changes. Each override protects the rest
+  // Takes back the learned corrections applied so far, then applies every
+  // one that matches the current walk, repeating until nothing more
+  // changes. Each override protects the rest
   // of the sentence exactly like a manual pick does.
   void applyLearnedOverrides();
   // One pass of the above. Returns true if it changed anything.
@@ -256,10 +259,9 @@ class Composer {
   // Remembers the node just overridden from the store, and forgets the
   // entries the grid has since reset or someone else has rewritten.
   void noteLearnedOverride(size_t start, const std::string& value);
-  // True if this walk node is an override this composer wrote from the
-  // store and nobody has changed since.
-  bool isLearnedOverride(
-      const Formosa::Gramambular2::ReadingGrid::NodePtr& node) const;
+  // Drops the node starting at `start` from that list: a manual pin has
+  // taken it over.
+  void forgetLearnedOverrideAt(size_t start);
   // Space: settles the syllable in progress (default tone, or its bopomofo
   // when no reading fits), or types a half-width space when there is
   // nothing left to settle.
@@ -279,14 +281,13 @@ class Composer {
   // overrides after every walk. Shared with the shell, which persists it.
   std::shared_ptr<UserPreferences> preferences_;
 
-  // The overrides applied from that store, so that a LONGER record can
-  // replace one of them later (2026-09-08). Longest-match-first only sorts
-  // records that become applicable together, and typing runs left to
-  // right: when the first syllable lands, the phrase does not exist yet,
-  // so the single-character record overrides that position -- and an
-  // overridden position is never revisited. A "每次" record picked six
-  // times could therefore never beat a "鎂" record picked once. Only our
-  // own overrides are listed here, so a manual pick (and the pins that
+  // The overrides applied from that store, together with the pins that
+  // protect the rest of the sentence from them. Every re-walk undoes them
+  // all and decides again (2026-09-29), so a correction follows the
+  // sentence as it grows instead of latching on the keystroke it first
+  // matched -- which is also what used to keep a phrase record from ever
+  // replacing a single character that landed before it (2026-09-08). Only
+  // our own overrides are listed here, so a manual pick (and the pins that
   // protect it) still wins over anything the store has to say.
   struct LearnedOverride {
     Formosa::Gramambular2::ReadingGrid::NodePtr node;

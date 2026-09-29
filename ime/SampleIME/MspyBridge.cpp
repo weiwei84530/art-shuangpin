@@ -94,7 +94,14 @@ void CMspyBridge::LoadPreferences()
     }
     std::wstring dir = std::wstring(appData) + L"\\MspyIME";
     CreateDirectoryW(dir.c_str(), nullptr);
-    _userChoicesPath = dir + L"\\user-choices.txt";
+    // 2026-09-29 changed the record format (a window of characters and
+    // readings instead of one context and a count), so the file changed name
+    // too: an application that still has the previous DLL loaded rewrites
+    // the whole store on every pick, and would drop every line it cannot
+    // read. The previous file is read once to carry its picks over and is
+    // otherwise left alone.
+    _userChoicesPath = dir + L"\\user-choices-v2.txt";
+    const std::wstring previousPath = dir + L"\\user-choices.txt";
 
     // The pre-2026-08-09 store recorded no context, so nothing in it can be
     // turned into a contextual record. Move it aside rather than delete it:
@@ -112,7 +119,13 @@ void CMspyBridge::LoadPreferences()
     }
 
     std::ifstream in(_userChoicesPath.c_str(), std::ios::binary);
-    if (!in.is_open()) return;
+    if (!in.is_open())
+    {
+        // Nothing in the new format yet: start from the previous file, which
+        // loadFromText reads as it is.
+        in.open(previousPath.c_str(), std::ios::binary);
+        if (!in.is_open()) return;
+    }
     std::string text((std::istreambuf_iterator<char>(in)),
                      std::istreambuf_iterator<char>());
     in.close();

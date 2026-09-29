@@ -320,8 +320,15 @@ which is the whole user-visible point of the release.
 
 The macOS side of the port, and where it deviates:
 
-* **The file changed name with the format.**
-  `~/Library/Application Support/ArtShuangpin/user-choices.txt`. A
+* **The file changed name with the format — twice.**
+  `~/Library/Application Support/ArtShuangpin/user-choices-v2.txt` since
+  2026-09-29 (spec §7: a window of two characters and two readings, no
+  counts). With no v2 file yet, `-loadPreferences` reads the previous
+  `user-choices.txt` instead — `loadFromText` understands both formats — and
+  leaves it in place. The rename only matters on Windows, where an
+  application still holding the old DLL would rewrite the store and drop
+  every line it cannot parse; it is mirrored here so the two halves keep one
+  layout. Before that, a
   `user-phrases.txt` left by an earlier build records **no context**, and
   context is the whole of a record — it cannot be invented, so the old file
   is renamed to `user-phrases.txt.bak` and the new store starts empty.
@@ -356,7 +363,7 @@ order.
 
 ```sh
 build/repl --data ../out/data.txt \
-  --user-choices ~/Library/Application\ Support/ArtShuangpin/user-choices.txt \
+  --user-choices ~/Library/Application\ Support/ArtShuangpin/user-choices-v2.txt \
   --keys "wo3vidk4"
 ```
 

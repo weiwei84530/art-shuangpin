@@ -66,7 +66,18 @@ class ComposerTest : public ::testing::Test {
     inner->add("ㄅㄟ", "杯", -4);
     inner->add("ㄅㄨˊ-ㄒㄧㄡˋ-ㄍㄤ", "不鏽鋼", -5);
     inner->add("ㄍㄤ-ㄅㄟ", "鋼杯", -6.8);
-    lm_ = std::make_shared<RelaxedToneLM>(inner);
+    // 在/再: the dictionary says 在 wherever no word decides it.
+    inner->add("ㄗㄞˋ", "在", -2);
+    inner->add("ㄗㄞˋ", "再", -3);
+    inner->add("ㄔ", "吃", -3);
+    inner->add("ㄈㄢˋ", "飯", -3);
+    inner->add("ㄧ", "一", -2);
+    inner->add("ㄐㄧㄢˋ", "建", -3);
+    inner->add("ㄐㄧㄢˋ", "見", -3.5);
+    inner->add("ㄐㄧㄚ", "家", -3);
+    inner->add("ㄗㄞˋ-ㄐㄧㄢˋ", "再見", -2.5);
+    inner->add("ㄗㄞˋ-ㄐㄧㄚ", "在家", -3);
+    lm_ =std::make_shared<RelaxedToneLM>(inner);
     composer_ = std::make_unique<Composer>(lm_);
   }
 
@@ -917,8 +928,7 @@ TEST_F(ComposerTest, EnterSendsWhatIsOnScreen) {
   EXPECT_EQ(composer_->feedEnter().commitText, "種ㄕㄞ");
 }
 
-// What the shell is told to learn from a manual pick. A single-character
-// pick reports the phrase around it, never the character alone.
+// What a manual pick records, and how the records come back.
 class ComposerLearningTest : public ComposerTest {
  protected:
   void SetUp() override {
@@ -938,6 +948,18 @@ class ComposerLearningTest : public ComposerTest {
       }
     }
     FAIL() << "no candidate " << value;
+  }
+
+  // The value on file for `reading` in the given window, "" for none.
+  std::string Learned(const std::string& reading,
+                      std::vector<std::string> left,
+                      std::vector<std::string> right = {}) {
+    return prefs_->lookup({std::move(left), std::move(right)}, reading).value;
+  }
+
+  // Moves the cursor n characters left.
+  void Left(int n) {
+    for (int i = 0; i < n; ++i) Type("9");
   }
 
   std::shared_ptr<UserPreferences> prefs_;
@@ -968,13 +990,17 @@ TEST_F(ComposerLearningTest, TheCorrectionIsTiedToItsContext) {
   EXPECT_EQ(composer_->composedText(), "種好");
 }
 
-TEST_F(ComposerLearningTest, PicksAreRecordedUnderBothContextLengths) {
-  Type("wo3ni3hk3");
-  Type("9");
+TEST_F(ComposerLearningTest, APickIsRecordedWithTheWindowAroundIt) {
+  Type("wo3ni3hk3vs3");
+  Left(2);
   ASSERT_EQ(composer_->displaySegments().highlighted, "好");
   PickByValue("郝");
-  EXPECT_EQ(prefs_->lookup("你", "ㄏㄠˇ"), "郝");
-  EXPECT_EQ(prefs_->lookup("我你", "ㄏㄠˇ"), "郝");
+  const auto records = prefs_->all();
+  ASSERT_EQ(records.size(), 1u);
+  EXPECT_EQ(records[0].value, "郝");
+  EXPECT_EQ(records[0].reading, "ㄏㄠˇ");
+  EXPECT_EQ(records[0].left, "我你");
+  EXPECT_EQ(records[0].right, "ㄓㄨㄥˇ");
 }
 
 TEST_F(ComposerLearningTest, ContextIsLearnedFromInsideALongerWord) {
@@ -987,8 +1013,7 @@ TEST_F(ComposerLearningTest, ContextIsLearnedFromInsideALongerWord) {
   ASSERT_EQ(composer_->composedText(), "不鏽鋼悲");
   PickByValue("杯");
   ASSERT_EQ(composer_->composedText(), "不鏽鋼杯");
-  EXPECT_EQ(prefs_->lookup("鋼", "ㄅㄟ"), "杯");
-  EXPECT_EQ(prefs_->lookup("鏽鋼", "ㄅㄟ"), "杯");
+  EXPECT_EQ(Learned("ㄅㄟ", {"鏽", "鋼"}), "杯");
 
   // ...and it applies on its own the next time, without disturbing the
   // three-character word in front of it.
@@ -1007,8 +1032,9 @@ TEST_F(ComposerLearningTest, ContextStopsAtPunctuation) {
   Type("9");
   ASSERT_EQ(composer_->displaySegments().highlighted, "好");
   PickByValue("郝");
-  EXPECT_EQ(prefs_->lookup(UserPreferences::kStartContext, "ㄏㄠˇ"), "郝");
-  EXPECT_TRUE(prefs_->lookup("好", "ㄏㄠˇ").empty());
+  ASSERT_EQ(prefs_->all().size(), 1u);
+  EXPECT_EQ(prefs_->all()[0].left, UserPreferences::kBoundary);
+  EXPECT_TRUE(Learned("ㄏㄠˇ", {"^", "好"}).empty());
 }
 
 TEST_F(ComposerLearningTest, AManualPickOverridesWhatWasLearned) {
@@ -1035,8 +1061,8 @@ TEST_F(ComposerLearningTest, ALongerRecordReplacesTheOneItLatchedBehind) {
   // the phrase is still one syllable short of existing. Before 2026-09-08
   // that closed the position for good, and a phrase record picked over and
   // over could not beat a single-character record picked once.
-  prefs_->record(UserPreferences::kStartContext, "ㄋㄧˇ", "妳");
-  prefs_->record(UserPreferences::kStartContext, "ㄋㄧˇ-ㄏㄠˇ", "你好");
+  prefs_->record({{"^"}, {}}, "ㄋㄧˇ", "妳");
+  prefs_->record({{"^"}, {}}, "ㄋㄧˇ-ㄏㄠˇ", "你好");
 
   Type("ni3");
   ASSERT_EQ(composer_->composedText(), "妳");  // nothing longer matches yet
@@ -1045,8 +1071,8 @@ TEST_F(ComposerLearningTest, ALongerRecordReplacesTheOneItLatchedBehind) {
 }
 
 TEST_F(ComposerLearningTest, TheShorterRecordStandsWhereTheLongerDoesNotMatch) {
-  prefs_->record(UserPreferences::kStartContext, "ㄋㄧˇ", "妳");
-  prefs_->record(UserPreferences::kStartContext, "ㄋㄧˇ-ㄏㄠˇ", "你好");
+  prefs_->record({{"^"}, {}}, "ㄋㄧˇ", "妳");
+  prefs_->record({{"^"}, {}}, "ㄋㄧˇ-ㄏㄠˇ", "你好");
 
   // ㄋㄧˇ-ㄓㄨㄥˇ is not what the phrase record talks about.
   Type("ni3vs3");
@@ -1056,12 +1082,81 @@ TEST_F(ComposerLearningTest, TheShorterRecordStandsWhereTheLongerDoesNotMatch) {
 TEST_F(ComposerLearningTest, ALongerRecordDoesNotUndoAManualPick) {
   // Only OUR correction gives way to a longer one of ours. What the user
   // set by hand a keystroke ago is not ours to reconsider.
-  prefs_->record(UserPreferences::kStartContext, "ㄋㄧˇ-ㄏㄠˇ", "你好");
+  prefs_->record({{"^"}, {}}, "ㄋㄧˇ-ㄏㄠˇ", "你好");
   Type("ni3");
   PickByValue("妳");
   ASSERT_EQ(composer_->composedText(), "妳");
   Type("hk3");
   EXPECT_EQ(composer_->composedText(), "妳好");
+}
+
+// 在/再, the case the 2026-09-29 window was built for. One example per
+// meaning, both after 我 and both followed by 吃: only the syllable after
+// 吃 tells them apart, and the earlier character follows as it arrives.
+TEST_F(ComposerLearningTest, TheSyllablesAfterASpanDecideIt) {
+  Type("wo3zl4iiyi");
+  Settle();
+  ASSERT_EQ(composer_->composedText(), "我在吃一");
+  Left(3);
+  PickByValue("再");
+  ASSERT_EQ(composer_->composedText(), "我再吃一");
+  composer_->feedEnter();
+
+  // With a single example on file, 我 alone is agreement enough.
+  Type("wo3zl4iifj4");
+  ASSERT_EQ(composer_->composedText(), "我再吃飯");
+  Left(3);
+  PickByValue("在");
+  ASSERT_EQ(composer_->composedText(), "我在吃飯");
+  composer_->feedEnter();
+  ASSERT_EQ(prefs_->all().size(), 2u);
+
+  // Now both are on file, and the text changes as the sentence grows.
+  Type("wo3zl4");
+  EXPECT_EQ(composer_->composedText(), "我在");  // a tie: the dictionary's
+  Type("ii");
+  Settle();
+  EXPECT_EQ(composer_->composedText(), "我在吃");  // still a tie
+  Type("yi");
+  Settle();
+  EXPECT_EQ(composer_->composedText(), "我再吃一");
+  composer_->feedEsc();
+
+  Type("wo3zl4iifj4");
+  EXPECT_EQ(composer_->composedText(), "我在吃飯");
+}
+
+TEST_F(ComposerLearningTest, ACharacterLearnedAloneDoesNotSplitAWord) {
+  // 再 at the start, picked with nothing after it. It shows while 再 is all
+  // there is, and must neither stop 再見 from forming nor break up 在家.
+  prefs_->record({{"^"}, {}}, "ㄗㄞˋ", "再");
+  Type("zl4");
+  EXPECT_EQ(composer_->composedText(), "再");
+  Type("jm4");
+  EXPECT_EQ(composer_->composedText(), "再見");
+  composer_->feedEsc();
+
+  Type("zl4jw");
+  Settle();
+  EXPECT_EQ(composer_->composedText(), "在家");
+}
+
+TEST_F(ComposerLearningTest, ACharacterSplitsAWordItKnowsTheRestOf) {
+  prefs_->record({{"^"}, {"ㄐㄧㄚ"}}, "ㄗㄞˋ", "再");
+  Type("zl4jw");
+  Settle();
+  EXPECT_EQ(composer_->composedText(), "再家");
+}
+
+TEST_F(ComposerLearningTest, APhrasePickedOnceAppliesAfterAnything) {
+  Type("ni3hk3");
+  Left(2);
+  PickByValue("妳好");
+  ASSERT_EQ(composer_->composedText(), "妳好");
+  composer_->feedEnter();
+
+  Type("wo3ni3hk3");
+  EXPECT_EQ(composer_->composedText(), "我妳好");
 }
 
 TEST_F(ComposerLearningTest, WithoutAStoreNothingIsLearned) {

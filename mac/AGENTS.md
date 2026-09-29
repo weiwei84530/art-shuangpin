@@ -33,7 +33,7 @@ its output.
    `../core`, `../engine` and `../cli`, and `../cli/repl.exe` answers any composer-behaviour
    question without a Mac. Everything under `src/` compiles only in
    `../.github/workflows/mac.yml` and behaves only on the user's Mac — write it, push it,
-   read the CI log. Expect **174** tests on macOS against 176 here: `engine_tests` picks its
+   read the CI log. Expect **187** tests on macOS against 189 here: `engine_tests` picks its
    `MemoryMappedFile` test per platform and the POSIX file has two fewer cases.
 2. **Command Line Tools only.** The user has `xcode-select --install`, not full Xcode. Build
    with plain `clang++` driven by a `Makefile`, assemble the `.app` by hand, ad-hoc
@@ -188,7 +188,7 @@ McBopomofo's, and McBopomofo is a macOS input method. This C++ compiles on darwi
 | `MspyBridge.cpp` | `src/ArtBridge.mm` |
 | `KeyEventSink.cpp` → `InjectNavigationKey` (`SendInput`) | `src/ArtNavigation.mm` (`CGEventPost`) |
 | `CandidateWindow.cpp` (1492 lines) | `src/ArtCandidateWindow.mm` (roll our own `NSPanel`) |
-| `%APPDATA%\MspyIME\user-choices.txt` (v0.6; the old `user-phrases.txt` is parked as `.bak`) | `~/Library/Application Support/ArtShuangpin/user-choices.txt` |
+| `%APPDATA%\MspyIME\user-choices-v2.txt` (2026-09-29; the v0.6 `user-choices.txt` is imported once and left alone) | `~/Library/Application Support/ArtShuangpin/user-choices-v2.txt` |
 | `MoveFileEx(…, MOVEFILE_REPLACE_EXISTING)` for the atomic store rewrite | `std::rename` over the same directory |
 | `mspy-data.txt` beside the DLL | `ArtShuangpin.app/Contents/Resources/mspy-data.txt` |
 

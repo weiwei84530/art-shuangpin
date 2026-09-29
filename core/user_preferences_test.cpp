@@ -7,120 +7,189 @@
 namespace mspy {
 namespace {
 
-TEST(UserPreferencesTest, OneCorrectionIsEnough) {
-  UserPreferences prefs;
-  // A habit the store already holds, however strong.
-  for (int i = 0; i < 20; ++i) prefs.record("鋼", "ㄅㄟ", "悲");
-  ASSERT_EQ(prefs.lookup("鋼", "ㄅㄟ"), "悲");
+using Situation = UserPreferences::Situation;
 
-  // One correction flips it, with nothing to wait for.
-  prefs.record("鋼", "ㄅㄟ", "杯");
-  EXPECT_EQ(prefs.lookup("鋼", "ㄅㄟ"), "杯");
-
-  // And flips back just as cheaply: the store follows the user.
-  prefs.record("鋼", "ㄅㄟ", "悲");
-  EXPECT_EQ(prefs.lookup("鋼", "ㄅㄟ"), "悲");
+// The value a lookup settles on; "" for no match or a tie.
+std::string Value(const UserPreferences& prefs, const Situation& situation,
+                  const std::string& reading) {
+  return prefs.lookup(situation, reading).value;
 }
 
-TEST(UserPreferencesTest, ContextsAreIndependent) {
+TEST(UserPreferencesTest, TheNewestPickWinsAtOnce) {
   UserPreferences prefs;
-  prefs.record("鋼", "ㄅㄟ", "杯");
-  prefs.record("可", "ㄅㄟ", "悲");
-  EXPECT_EQ(prefs.lookup("鋼", "ㄅㄟ"), "杯");
-  EXPECT_EQ(prefs.lookup("可", "ㄅㄟ"), "悲");
-  // A context nobody has taught anything about stays untouched.
-  EXPECT_TRUE(prefs.lookup("茶", "ㄅㄟ").empty());
-  EXPECT_FALSE(prefs.hasContext("茶"));
-  EXPECT_TRUE(prefs.hasContext("鋼"));
-}
+  // However many times the old habit was picked...
+  for (int i = 0; i < 20; ++i) prefs.record({{"鋼"}, {}}, "ㄅㄟ", "悲");
+  ASSERT_EQ(Value(prefs, {{"鋼"}, {}}, "ㄅㄟ"), "悲");
 
-TEST(UserPreferencesTest, RivalsFadeOneCorrectionAtATime) {
-  UserPreferences prefs;
-  prefs.record("鋼", "ㄅㄟ", "悲");
-  prefs.record("鋼", "ㄅㄟ", "悲");  // a habit worth two corrections
-
-  prefs.record("鋼", "ㄅㄟ", "杯");
-  // 杯 wins at once, but 悲 is still on file: the loser has to be able to
-  // come back without starting from nothing.
-  EXPECT_EQ(prefs.lookup("鋼", "ㄅㄟ"), "杯");
-  EXPECT_EQ(prefs.size(), 2u);
-
-  // Sticking with 杯 wears the rival down to nothing.
-  prefs.record("鋼", "ㄅㄟ", "杯");
+  // ...one correction flips it, and one more flips it back.
+  prefs.record({{"鋼"}, {}}, "ㄅㄟ", "杯");
+  EXPECT_EQ(Value(prefs, {{"鋼"}, {}}, "ㄅㄟ"), "杯");
+  prefs.record({{"鋼"}, {}}, "ㄅㄟ", "悲");
+  EXPECT_EQ(Value(prefs, {{"鋼"}, {}}, "ㄅㄟ"), "悲");
+  // No counts: the store holds the one answer, not a tally.
   EXPECT_EQ(prefs.size(), 1u);
-  EXPECT_EQ(prefs.lookup("鋼", "ㄅㄟ"), "杯");
 }
 
-TEST(UserPreferencesTest, CountIsCapped) {
+TEST(UserPreferencesTest, ASingleCharacterNeedsSomeAgreement) {
   UserPreferences prefs;
-  for (int i = 0; i < 50; ++i) prefs.record("鋼", "ㄅㄟ", "杯");
-  const auto records = prefs.all();
-  ASSERT_EQ(records.size(), 1u);
-  EXPECT_LE(records[0].count, UserPreferences::kMaxCount);
+  prefs.record({{"鋼"}, {}}, "ㄅㄟ", "杯");
+  EXPECT_FALSE(prefs.lookup({{"茶"}, {}}, "ㄅㄟ").found);
+  EXPECT_FALSE(prefs.lookup({{"^"}, {}}, "ㄅㄟ").found);
+  EXPECT_TRUE(prefs.hasReading("ㄅㄟ"));
+  EXPECT_FALSE(prefs.hasReading("ㄅㄟˇ"));
+}
+
+TEST(UserPreferencesTest, AgreementStopsAtTheFirstMismatch) {
+  UserPreferences prefs;
+  prefs.record({{"不", "鏽"}, {}}, "ㄍㄤ", "剛");
+  // 鏽 matches, 不 would too, but only counting outward from the span.
+  const auto match = prefs.lookup({{"不", "鏽"}, {}}, "ㄍㄤ");
+  EXPECT_EQ(match.leftMatched, 2u);
+  EXPECT_EQ(prefs.lookup({{"生", "鏽"}, {}}, "ㄍㄤ").leftMatched, 1u);
+  EXPECT_FALSE(prefs.lookup({{"不", "繡"}, {}}, "ㄍㄤ").found);
+}
+
+// The 我在吃飯 / 我再吃一碗 pair: the same left window, told apart only by
+// the second reading on the right.
+class ZaiTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    prefs_.record({{"^", "我"}, {"ㄔ", "ㄧ"}}, "ㄗㄞˋ", "再");
+    prefs_.record({{"^", "我"}, {"ㄔ", "ㄈㄢˋ"}}, "ㄗㄞˋ", "在");
+  }
+  UserPreferences prefs_;
+};
+
+TEST_F(ZaiTest, TheLaterPickDoesNotEraseAnExampleItDisagreesWith) {
+  EXPECT_EQ(prefs_.size(), 2u);
+}
+
+TEST_F(ZaiTest, TheLongestAgreementWins) {
+  EXPECT_EQ(Value(prefs_, {{"^", "我"}, {"ㄔ", "ㄧ"}}, "ㄗㄞˋ"), "再");
+  EXPECT_EQ(Value(prefs_, {{"^", "我"}, {"ㄔ", "ㄈㄢˋ"}}, "ㄗㄞˋ"), "在");
+}
+
+TEST_F(ZaiTest, AnUndecidedTieIsLeftToTheDictionary) {
+  for (const Situation& s : {Situation{{"^", "我"}, {}},
+                             Situation{{"^", "我"}, {"ㄔ"}},
+                             Situation{{"^", "我"}, {"ㄔ", "ㄆㄧㄥˊ"}}}) {
+    const auto match = prefs_.lookup(s, "ㄗㄞˋ");
+    EXPECT_TRUE(match.found);
+    EXPECT_EQ(match.value, "");
+  }
+}
+
+TEST(UserPreferencesTest, ATieGoesToTheRightSide) {
+  UserPreferences prefs;
+  prefs.record({{"^", "他"}, {"ㄕㄨㄛ", "ㄕㄣˊ"}}, "ㄗㄞˋ", "在");
+  prefs.record({{"^", "你"}, {"ㄕㄨㄛ", "ㄧ"}}, "ㄗㄞˋ", "再");
+  ASSERT_EQ(prefs.size(), 2u);
+  // 你在說什麼: two agreeing tokens each, but 在's are both on the right.
+  EXPECT_EQ(Value(prefs, {{"^", "你"}, {"ㄕㄨㄛ", "ㄕㄣˊ"}}, "ㄗㄞˋ"), "在");
+}
+
+TEST(UserPreferencesTest, TheRightSideIgnoresTones) {
+  UserPreferences prefs;
+  // Picked with 一 typed plain...
+  prefs.record({{"^", "我"}, {"ㄔ", "ㄧ"}}, "ㄗㄞˋ", "再");
+  // ...and typed with its sandhi tone later, or 什 without its tone.
+  const auto match = prefs.lookup({{"^", "我"}, {"ㄔ", "ㄧˊ"}}, "ㄗㄞˋ");
+  EXPECT_EQ(match.rightMatched, 2u);
+  EXPECT_EQ(match.value, "再");
+}
+
+TEST(UserPreferencesTest, ANewPickReplacesACompatibleOlderOne) {
+  UserPreferences prefs;
+  // Learned with more on the right than the new pick can see...
+  prefs.record({{"^", "我"}, {"ㄔ", "ㄧ"}}, "ㄗㄞˋ", "再");
+  // ...but the new pick contradicts it wherever both windows look.
+  prefs.record({{"^", "我"}, {"ㄔ"}}, "ㄗㄞˋ", "在");
+  EXPECT_EQ(prefs.size(), 1u);
+  // So picking again in the very same sentence is never needed.
+  EXPECT_EQ(Value(prefs, {{"^", "我"}, {"ㄔ"}}, "ㄗㄞˋ"), "在");
+}
+
+TEST(UserPreferencesTest, APhraseAppliesAfterAnything) {
+  UserPreferences prefs;
+  prefs.record({{"^", "我"}, {}}, "ㄍㄤ-ㄅㄟ", "鋼杯");
+  const auto match = prefs.lookup({{"買"}, {"ㄌㄜ˙"}}, "ㄍㄤ-ㄅㄟ");
+  EXPECT_TRUE(match.found);
+  EXPECT_EQ(match.value, "鋼杯");
+}
+
+TEST(UserPreferencesTest, APhraseTieGoesToTheNewest) {
+  UserPreferences prefs;
+  prefs.record({{"甲"}, {}}, "ㄋㄧˇ-ㄗㄞˋ", "妳在");
+  prefs.record({{"乙"}, {}}, "ㄋㄧˇ-ㄗㄞˋ", "你在");
+  ASSERT_EQ(prefs.size(), 2u);
+  EXPECT_EQ(Value(prefs, {{"甲"}, {}}, "ㄋㄧˇ-ㄗㄞˋ"), "妳在");
+  EXPECT_EQ(Value(prefs, {{"丙"}, {}}, "ㄋㄧˇ-ㄗㄞˋ"), "你在");
 }
 
 TEST(UserPreferencesTest, RoundTripsThroughTheFile) {
   UserPreferences prefs;
-  prefs.record("鋼", "ㄅㄟ", "杯");
-  prefs.record("鏽鋼", "ㄅㄟ", "杯");
-  prefs.record(UserPreferences::kStartContext, "ㄧ", "一");
-  prefs.record("鋼", "ㄍㄤ-ㄅㄟ", "鋼杯");
+  prefs.record({{"^", "我"}, {"ㄔ", "ㄧ"}}, "ㄗㄞˋ", "再");
+  prefs.record({{"鏽", "鋼"}, {}}, "ㄅㄟ", "杯");
+  prefs.record({{"^"}, {"ㄏㄠˇ"}}, "ㄋㄧˇ", "妳");
   const std::string text = prefs.serialize();
+  EXPECT_NE(text.find("再 ㄗㄞˋ ^我 ㄔ-ㄧ "), std::string::npos);
+  EXPECT_NE(text.find("杯 ㄅㄟ 鏽鋼 * "), std::string::npos);
 
   UserPreferences reloaded;
   reloaded.loadFromText(text);
   EXPECT_EQ(reloaded.size(), prefs.size());
-  EXPECT_EQ(reloaded.lookup("鋼", "ㄅㄟ"), "杯");
-  EXPECT_EQ(reloaded.lookup("鏽鋼", "ㄅㄟ"), "杯");
-  EXPECT_EQ(reloaded.lookup(UserPreferences::kStartContext, "ㄧ"), "一");
-  EXPECT_EQ(reloaded.lookup("鋼", "ㄍㄤ-ㄅㄟ"), "鋼杯");
+  EXPECT_EQ(Value(reloaded, {{"^", "我"}, {"ㄔ", "ㄧ"}}, "ㄗㄞˋ"), "再");
+  EXPECT_EQ(Value(reloaded, {{"鏽", "鋼"}, {}}, "ㄅㄟ"), "杯");
+  EXPECT_EQ(Value(reloaded, {{"^"}, {"ㄏㄠˇ"}}, "ㄋㄧˇ"), "妳");
   EXPECT_FALSE(reloaded.dirty());
-  // Reloading must not reuse serials, or a later merge cannot order them.
-  reloaded.record("鋼", "ㄅㄟ", "盃");
-  EXPECT_EQ(reloaded.lookup("鋼", "ㄅㄟ"), "盃");
+  // Reloading must not reuse serials, or the next pick would not be the
+  // newest.
+  reloaded.record({{"鏽", "鋼"}, {}}, "ㄅㄟ", "盃");
+  EXPECT_EQ(Value(reloaded, {{"鏽", "鋼"}, {}}, "ㄅㄟ"), "盃");
 }
 
-TEST(UserPreferencesTest, SkipsJunkAndTheOldFormat) {
+TEST(UserPreferencesTest, ReadsThePreviousFormat) {
   UserPreferences prefs;
   prefs.loadFromText(
       "# comment\n"
       "\n"
+      "再 ㄗㄞˋ ^ 8 770\n"
+      "在 ㄗㄞˋ ^ 8 720\n"  // the same key, weaker: it never showed
       "杯 ㄅㄟ 鋼 2 7\n"
       "知道 ㄓ-ㄉㄠˋ 5 1754332800\n"  // a pre-2026-08-09 four-field line
-      "壞 ㄅㄟ 鋼 x 8\n"
-      "杯 ㄅㄟ 鋼 1 3\n");  // same triple, older serial: the newer wins
-  EXPECT_EQ(prefs.size(), 1u);
-  EXPECT_EQ(prefs.lookup("鋼", "ㄅㄟ"), "杯");
-  const auto records = prefs.all();
-  ASSERT_EQ(records.size(), 1u);
-  EXPECT_EQ(records[0].count, 2.0);
-  EXPECT_EQ(records[0].serial, 7);
+      "壞 ㄅㄟ 鋼 x 8\n");
+  EXPECT_EQ(Value(prefs, {{"^"}, {}}, "ㄗㄞˋ"), "再");
+  EXPECT_EQ(Value(prefs, {{"鋼"}, {}}, "ㄅㄟ"), "杯");
+  EXPECT_EQ(prefs.size(), 2u);
+  // Written back in the new format.
+  EXPECT_NE(prefs.serialize().find("再 ㄗㄞˋ ^ * 770"), std::string::npos);
+  // Serials carry on past the old ones.
+  prefs.record({{"^"}, {}}, "ㄗㄞˋ", "在");
+  EXPECT_EQ(Value(prefs, {{"^"}, {}}, "ㄗㄞˋ"), "在");
 }
 
-TEST(UserPreferencesTest, MergeKeepsTheStrongerRecord) {
+TEST(UserPreferencesTest, MergeLetsTheNewerPickWin) {
   // Every application hosts its own instance, so saving folds the file in.
+  UserPreferences file;
+  file.record({{"鋼"}, {}}, "ㄅㄟ", "悲");
+  file.record({{"茶"}, {}}, "ㄅㄟ", "杯");
+
   UserPreferences mine;
-  mine.record("鋼", "ㄅㄟ", "杯");
+  mine.loadFromText(file.serialize());
+  mine.record({{"鋼"}, {}}, "ㄅㄟ", "杯");
 
-  UserPreferences theirs;
-  theirs.record("鋼", "ㄅㄟ", "杯");
-  theirs.record("鋼", "ㄅㄟ", "杯");
-  theirs.record("茶", "ㄅㄟ", "杯");
-
-  mine.mergeFrom(theirs);
-  EXPECT_EQ(mine.lookup("鋼", "ㄅㄟ"), "杯");
-  EXPECT_EQ(mine.lookup("茶", "ㄅㄟ"), "杯");
-  const auto records = mine.all();
-  for (const auto& record : records) {
-    if (record.context == "鋼") EXPECT_EQ(record.count, 2.0);
-  }
+  // The copy on disk still has the pick this process just overruled; the
+  // merge must not bring it back.
+  mine.mergeFrom(file);
+  EXPECT_EQ(Value(mine, {{"鋼"}, {}}, "ㄅㄟ"), "杯");
+  EXPECT_EQ(Value(mine, {{"茶"}, {}}, "ㄅㄟ"), "杯");
+  EXPECT_EQ(mine.size(), 2u);
 }
 
 TEST(UserPreferencesTest, IgnoresEmptyFields) {
   UserPreferences prefs;
-  prefs.record("", "ㄅㄟ", "杯");
-  prefs.record("鋼", "", "杯");
-  prefs.record("鋼", "ㄅㄟ", "");
+  prefs.record({{"鋼"}, {}}, "", "杯");
+  prefs.record({{"鋼"}, {}}, "ㄅㄟ", "");
   EXPECT_EQ(prefs.size(), 0u);
   EXPECT_FALSE(prefs.dirty());
 }

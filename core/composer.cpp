@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <tuple>
 #include <utility>
 
 #include "double_pinyin.h"
@@ -240,23 +241,33 @@ std::vector<std::string> ValuesOf(const std::vector<WalkChar>& chars) {
   return values;
 }
 
-// The contexts a span at `loc` is learned and looked up under, most
-// specific first: the two characters in front of it, then the one in front
-// of it, then the start marker. Punctuation, settled bopomofo and English
-// end a context the way the start of the composition does -- what precedes
-// them says nothing about what follows.
-std::vector<std::string> ContextsAt(const std::vector<WalkChar>& chars,
-                                    size_t loc) {
+// What surrounds the span [loc, loc + span) in the current walk, as the
+// store records and matches it. Left: up to two characters, stopping at the
+// start of the composition or at a literal (punctuation, settled bopomofo,
+// English), which is marked with the boundary token -- what precedes those
+// says nothing about what follows. Right: up to two readings, stopping at
+// the end of what is in the grid or at a literal, unmarked, because more
+// is usually still to be typed there.
+UserPreferences::Situation SituationAt(const std::vector<WalkChar>& chars,
+                                       size_t loc, size_t span) {
   const auto usable = [&](size_t i) {
-    return i < chars.size() && !chars[i].literal && !chars[i].value.empty();
+    return i < chars.size() && !chars[i].literal && !chars[i].value.empty() &&
+           !chars[i].reading.empty();
   };
-  if (loc == 0 || !usable(loc - 1)) return {UserPreferences::kStartContext};
-  std::vector<std::string> contexts;
-  if (loc >= 2 && usable(loc - 2)) {
-    contexts.push_back(chars[loc - 2].value + chars[loc - 1].value);
+  UserPreferences::Situation situation;
+  for (size_t n = 1; n <= UserPreferences::kMaxLeft; ++n) {
+    if (n > loc || !usable(loc - n)) {
+      situation.left.push_back(UserPreferences::kBoundary);
+      break;
+    }
+    situation.left.push_back(chars[loc - n].value);
   }
-  contexts.push_back(chars[loc - 1].value);
-  return contexts;
+  std::reverse(situation.left.begin(), situation.left.end());
+  for (size_t i = loc + span;
+       i < loc + span + UserPreferences::kMaxRight && usable(i); ++i) {
+    situation.right.push_back(chars[i].reading);
+  }
+  return situation;
 }
 
 // True if any tone of this toneless bopomofo syllable exists. A bare key
@@ -860,7 +871,8 @@ Composer::Result Composer::selectCandidate(size_t index) {
 }
 
 void Composer::restoreCharactersOutside(
-    const std::vector<std::string>& before, size_t from, size_t to) {
+    const std::vector<std::string>& before, size_t from, size_t to,
+    bool learned) {
   // Each repair is a LENGTH-1 override, and overrideCandidate only resets
   // nodes overlapping the span it writes, so pinning one position can never
   // un-pin another one: the loop converges. The guard is belt-and-braces.
@@ -874,6 +886,13 @@ void Composer::restoreCharactersOutside(
       // single-reading node to pin it to; leave those alone.
       if (!grid_.overrideCandidate(i, before[i])) continue;
       walk_ = grid_.walk();
+      if (learned) {
+        noteLearnedOverride(i, before[i]);
+      } else {
+        // The node may have been ours with this very value; pinned by a
+        // manual pick it belongs to the user now, and must not be undone.
+        forgetLearnedOverrideAt(i);
+      }
       repaired = true;
       break;  // one pin can move several positions: re-measure first
     }
@@ -889,27 +908,43 @@ void Composer::learnFromSelection(
   // candidate each; there is nothing to learn about them.
   if (reading.find(kLiteralPrefix) != std::string::npos) return;
 
-  // Positions left of the chosen span are exactly what they were before the
+  // Everything outside the chosen span is exactly what it was before the
   // pick (restoreCharactersOutside just made sure of it), so the current
-  // walk is the right place to read the context off.
-  const auto chars = WalkChars(walk_);
-  const auto contexts = ContextsAt(chars, chosen.location);
-  for (const auto& context : contexts) {
-    preferences_->record(context, reading, chosen.value);
-  }
-  if (onLearned && !contexts.empty()) {
-    onLearned(contexts.front(), reading, chosen.value);
+  // walk is the right place to read the window off.
+  const auto situation = SituationAt(WalkChars(walk_), chosen.location,
+                                     chosen.spanningLength);
+  preferences_->record(situation, reading, chosen.value);
+  if (onLearned) {
+    onLearned(UserPreferences::FormatLeft(situation.left), reading,
+              chosen.value);
   }
 }
 
 void Composer::applyLearnedOverrides() {
   if (!preferences_ || grid_.length() == 0) return;
+
+  // Start over from what the dictionary and the user's own picks say
+  // (2026-09-29). A correction is decided on the sentence as it stands NOW:
+  // the syllable typed a moment ago may be exactly what shows the earlier
+  // guess was wrong (我在 + ㄔㄧ -> 我再吃一), or what completes a word the
+  // guess would have split (再 + ㄐㄧㄢˋ -> 再見, not 再建). Only our own
+  // overrides are undone; a manual pick and its pins are never ours.
+  bool undone = false;
+  for (const auto& o : learnedOverrides_) {
+    if (o.node != nullptr && o.node->isOverridden() &&
+        o.node->value() == o.value) {
+      o.node->reset();
+      undone = true;
+    }
+  }
+  learnedOverrides_.clear();
+  if (undone) walk_ = grid_.walk();
+
   // Each pass fixes at most one span and then re-walks, because one
-  // override can move several positions. A position is settled at most
-  // once by a record of each length, and a replacement is always LONGER
-  // than what it replaces, so kMaxLearnedSpan passes per position bound
-  // the loop.
-  for (size_t guard = 0; guard <= grid_.length() * kMaxLearnedSpan; ++guard) {
+  // override can move several positions. Every pass overrides at least one
+  // position that was not overridden before, and none is ever released
+  // within the loop, so the length of the buffer bounds it.
+  for (size_t guard = 0; guard <= grid_.length(); ++guard) {
     if (!applyOneLearnedOverride()) return;
   }
 }
@@ -935,12 +970,19 @@ void Composer::noteLearnedOverride(size_t start, const std::string& value) {
   }
 }
 
-bool Composer::isLearnedOverride(
-    const Formosa::Gramambular2::ReadingGrid::NodePtr& node) const {
-  for (const auto& o : learnedOverrides_) {
-    if (o.node == node) return node->value() == o.value;
+void Composer::forgetLearnedOverrideAt(size_t start) {
+  size_t loc = 0;
+  for (const auto& node : walk_.nodes) {
+    if (loc == start) {
+      learnedOverrides_.erase(
+          std::remove_if(learnedOverrides_.begin(), learnedOverrides_.end(),
+                         [&](const LearnedOverride& o) { return o.node == node; }),
+          learnedOverrides_.end());
+      return;
+    }
+    loc += node->spanningLength();
+    if (loc > start) return;
   }
-  return false;
 }
 
 bool Composer::applyOneLearnedOverride() {
@@ -949,72 +991,108 @@ bool Composer::applyOneLearnedOverride() {
   if (chars.size() != readings.size()) return false;
 
   // Positions already carrying an override are the user's own picks, the
-  // pins that protect them, and the corrections applied on an earlier pass.
-  // None of them may be second-guessed here -- except a correction of our
-  // own that a longer record now covers, which is the one thing the pass
-  // order cannot arrange on its own (see LearnedOverride).
+  // pins that protect them, and the corrections (and their pins) applied
+  // on an earlier pass of this re-walk -- which were the strongest at the
+  // time, see below. None of them is second-guessed here.
   std::vector<bool> overridden(chars.size(), false);
-  std::vector<bool> ours(chars.size(), false);
-  // Span of OUR override starting exactly here; 0 where there is none.
-  std::vector<size_t> ourSpanAt(chars.size(), 0);
+  // The walk node covering each position, as [nodeStart, nodeEnd).
+  std::vector<size_t> nodeStart(chars.size(), 0);
+  std::vector<size_t> nodeEnd(chars.size(), 0);
   size_t loc = 0;
   for (const auto& node : walk_.nodes) {
     const size_t span = node->spanningLength();
-    if (node->isOverridden()) {
-      const bool mine = isLearnedOverride(node);
-      for (size_t i = loc; i < loc + span && i < overridden.size(); ++i) {
-        overridden[i] = true;
-        ours[i] = mine;
-      }
-      if (mine && loc < ourSpanAt.size()) ourSpanAt[loc] = span;
+    for (size_t i = loc; i < loc + span && i < chars.size(); ++i) {
+      overridden[i] = node->isOverridden();
+      nodeStart[i] = loc;
+      nodeEnd[i] = loc + span;
     }
     loc += span;
   }
 
+  // Every example that has something to say about the sentence as it
+  // stands, whether it would change the text or keep it.
+  struct Candidate {
+    size_t start = 0;
+    size_t span = 0;
+    std::string value;  // empty: the examples tie and the dictionary keeps it
+    bool keeps = false;  // the text is already what it says
+    // How much the example knows about this spot: its own syllables plus
+    // the agreeing characters and readings around them. A phrase pins its
+    // syllables to each other, so 每次 outweighs a 鎂 learned in the same
+    // window (2026-09-08) -- but a single character picked with the words
+    // around it outweighs a phrase that only says "我再" (2026-09-29).
+    size_t strength = 0;
+    bool boundary = false;
+    int64_t serial = 0;
+  };
+  std::vector<Candidate> candidates;
   for (size_t start = 0; start < chars.size(); ++start) {
-    // Replacing one of our own corrections is only ever an upgrade: a
-    // record at least one syllable longer than the one already there.
-    size_t minSpan = 1;
-    if (overridden[start]) {
-      if (ourSpanAt[start] == 0) continue;
-      minSpan = ourSpanAt[start] + 1;
-    }
     const size_t maxSpan = std::min(kMaxLearnedSpan, chars.size() - start);
-    if (minSpan > maxSpan) continue;
-    const auto contexts = ContextsAt(chars, start);
-    // Longest match first: a learned two-character phrase outranks a
-    // learned single character sitting at the same place.
-    for (size_t span = maxSpan; span >= minSpan; --span) {
-      bool blocked = false;
-      std::string reading;
-      std::string current;
-      for (size_t i = start; i < start + span; ++i) {
-        if ((overridden[i] && !ours[i]) || chars[i].literal ||
-            chars[i].reading.empty()) {
-          blocked = true;
-          break;
-        }
-        if (i > start) reading += '-';
-        reading += NormalizeReading(readings[i]);
-        current += chars[i].value;
+    std::string reading;
+    std::string current;
+    for (size_t span = 1; span <= maxSpan; ++span) {
+      const size_t i = start + span - 1;
+      if (overridden[i] || chars[i].literal || chars[i].reading.empty()) {
+        break;  // every longer span would cross the same wall
       }
-      if (blocked) break;  // a shorter span here would end at the same wall
+      if (span > 1) reading += '-';
+      reading += chars[i].reading;
+      current += chars[i].value;
+      if (!preferences_->hasReading(reading)) continue;
 
-      for (const auto& context : contexts) {
-        if (!preferences_->hasContext(context)) continue;
-        const std::string value = preferences_->lookup(context, reading);
-        if (value.empty() || value == current) continue;
-
-        const auto before = ValuesOf(chars);
-        if (!grid_.overrideCandidate(start, value)) continue;
-        walk_ = grid_.walk();
-        noteLearnedOverride(start, value);
-        // A learned correction is as narrow as a manual one: whatever the
-        // re-walk moved outside this span goes straight back.
-        restoreCharactersOutside(before, start, start + span);
-        return true;
+      const auto match =
+          preferences_->lookup(SituationAt(chars, start, span), reading);
+      if (!match.found) continue;
+      // An example splits a word the walk formed only if its window
+      // covers the rest of that word: 再 learned before ㄕㄨㄛ says nothing
+      // about 在家, and 再 learned with nothing after it must not stop 再見
+      // from forming.
+      if (nodeStart[start] + match.leftMatched < start ||
+          nodeEnd[i] > i + 1 + match.rightMatched) {
+        continue;
       }
+      Candidate c;
+      c.start = start;
+      c.span = span;
+      c.value = match.value;
+      c.keeps = match.value.empty() || match.value == current;
+      c.strength = span + match.leftMatched + match.rightMatched;
+      c.boundary = match.boundary;
+      c.serial = match.serial;
+      candidates.push_back(std::move(c));
     }
+  }
+
+  // Strongest first. One that keeps the text still claims its span, so a
+  // weaker example cannot pick apart what a stronger one found right (or
+  // found too close to call).
+  std::stable_sort(candidates.begin(), candidates.end(),
+                   [](const Candidate& a, const Candidate& b) {
+                     return std::tie(a.strength, a.boundary, a.serial) >
+                            std::tie(b.strength, b.boundary, b.serial);
+                   });
+  std::vector<bool> claimed(chars.size(), false);
+  for (const auto& c : candidates) {
+    bool overlaps = false;
+    for (size_t i = c.start; i < c.start + c.span; ++i) {
+      overlaps = overlaps || claimed[i];
+    }
+    if (overlaps) continue;
+    if (c.keeps) {
+      for (size_t i = c.start; i < c.start + c.span; ++i) claimed[i] = true;
+      continue;
+    }
+
+    const auto before = ValuesOf(chars);
+    if (!grid_.overrideCandidate(c.start, c.value)) continue;
+    walk_ = grid_.walk();
+    noteLearnedOverride(c.start, c.value);
+    // A learned correction is as narrow as a manual one: whatever the
+    // re-walk moved outside this span goes straight back -- and those
+    // pins are ours too, so the next keystroke can take them back.
+    restoreCharactersOutside(before, c.start, c.start + c.span,
+                             /*learned=*/true);
+    return true;
   }
   return false;
 }

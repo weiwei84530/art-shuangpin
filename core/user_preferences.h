@@ -2,39 +2,53 @@
 //
 // Behavior contract: docs/spec.md §7.
 //
-// Every record answers one question: "right after <context>, the reading
-// <reading> means <value>". The composer applies a matching record as a
-// HIGH-SCORE node override on the reading grid, which is what makes ONE
-// correction enough (2026-08-09). The two stores this replaces could not
-// manage that:
+// Every record is one EXAMPLE of a manual pick: "the reading <reading>,
+// between <left> and <right>, was picked as <value>". The composer applies
+// the example that best matches the sentence being typed as a HIGH-SCORE
+// node override on the reading grid, which is what makes ONE correction
+// enough (2026-08-09).
 //
-//   - the 2026-08-04 store scored a learned phrase 1e-6 above the best
-//     dictionary entry for the SAME key. That wins the key but not the
-//     walk: 不鏽鋼(-5) + 悲(-3) beats 不(-2) + 鏽(-3) + 鋼杯(-6.8) no
-//     matter how the last term is nudged, so correcting 悲 to 杯 changed
-//     nothing the next time round. Measured, not deduced.
-//   - a single-character pick was widened into the two-syllable phrase
-//     around it and was simply DROPPED when the neighbour was part of a
-//     longer word -- picking 杯 after 不鏽鋼 learned nothing at all.
+// The window around the span (2026-09-29):
+//
+//   left   up to two CHARACTERS in front of the span, nearest last. `^`
+//          stands for "nothing usable in front": the start of the
+//          composition, or punctuation, settled bopomofo or English.
+//   right  up to two READINGS after the span, nearest first. Readings, not
+//          characters, because what follows is often still wrong itself
+//          when the span is decided (再見 has to fire while it still reads
+//          再建). Nothing past the end of the composition or a literal.
+//          Compared without tone marks: tone 1 is usually left off, and 一
+//          is typed ㄧˊ or ㄧˋ by sandhi, without it being another word.
+//
+// Matching counts how many window tokens agree, walking outward from the
+// span on each side and stopping at the first disagreement. The example
+// with the most agreeing characters and readings wins; a tie goes to the
+// one with more agreement on the RIGHT (what follows decides 在/再 far more
+// often than what precedes), then to one that also agrees on `^`. The
+// boundary never outweighs a character: it is a position, not a word. A single character still tied after that is left to the
+// dictionary rather than guessed -- that is what stops "我在吃飯" and
+// "我再吃一碗" from flipping each other back and forth. A phrase breaks the
+// tie by recency instead, and needs no agreeing token at all: a phrase
+// picked once applies after anything.
+//
+// There are no counts: the newest pick wins. `record` deletes every older
+// example that disagrees in value but not in context (every token the two
+// windows both have agrees), because such an example would otherwise tie
+// with -- or outrank -- the pick just made, in the very sentence it was
+// made in. Examples that disagree in context stay; they are how the same
+// reading learns two answers.
 //
 // File format (one record per line, fields never contain a space):
 //
-//     值 讀音鍵 上下文 次數 序號
-//     杯 ㄅㄟ 鋼 2 17
-//     杯 ㄅㄟ 鏽鋼 1 18
-//     一 ㄧ ^ 1 4
+//     值 讀音鍵 左 右 序號
+//     再 ㄗㄞˋ ^我 ㄔ-ㄧ 17
+//     在 ㄗㄞˋ ^我 ㄔ-ㄈㄢˋ 18
+//     鋼杯 ㄍㄤ-ㄅㄟ 鏽 * 4
 //
-// The context is the one OR two characters immediately before the span, and
-// `^` means nothing precedes it (start of the composition, or the first
-// character after punctuation, settled bopomofo or English). Both lengths
-// are written on every pick, so the habit generalizes -- "after 鋼" fires in
-// a sentence that never mentions 鏽 -- while the longer one wins where both
-// match.
-//
-// There is NO time decay: strength is what the user did LAST, not how
-// recently. `record` lifts the picked value above every rival for its key
-// and knocks one off each rival, so a habit flips on the first correction
-// and flips back just as easily; `kMaxCount` keeps the numbers bounded.
+// `*` is an empty right window. The pre-2026-09-29 format
+// (值 讀音鍵 上下文 次數 序號, the fourth field a number) is still read, so
+// the file an older build left behind carries over: each (context, reading)
+// keeps its strongest value as an example with an empty right window.
 // Every record carries a serial so that two application processes, each
 // with its own copy of the store, merge to the same answer.
 
@@ -49,44 +63,66 @@ namespace mspy {
 
 class UserPreferences {
  public:
-  // Ceiling on a record's count, so no habit becomes immovable.
-  static constexpr double kMaxCount = 8.0;
-  // Context for a span with nothing usable in front of it.
-  static constexpr const char* kStartContext = "^";
+  // Window size on each side of the span.
+  static constexpr size_t kMaxLeft = 2;
+  static constexpr size_t kMaxRight = 2;
+  // Left token for "nothing usable in front of here".
+  static constexpr const char* kBoundary = "^";
 
-  struct Record {
-    std::string context;
-    std::string reading;
+  // What surrounds a span in the sentence being typed or picked in.
+  struct Situation {
+    std::vector<std::string> left;   // text order; the nearest is back()
+    std::vector<std::string> right;  // text order; the nearest is front()
+  };
+
+  // The outcome of a lookup.
+  struct Match {
+    // Some example matched. With `value` empty the best matches disagree
+    // and the dictionary should decide.
+    bool found = false;
     std::string value;
-    double count = 1.0;
+    // Agreeing characters (left, the boundary not counted) and readings
+  // (right) of the winning example.
+    size_t leftMatched = 0;
+    size_t rightMatched = 0;
+    // The winning example also agrees on the boundary in front.
+    bool boundary = false;
+    // Serial of the winning example: larger is newer.
     int64_t serial = 0;
   };
 
-  // Parses the whole file. Unparseable lines are skipped rather than
-  // fatal: the file is rewritten in place and a partial write must not
-  // cost the rest of it.
+  // One stored example, as the file spells it.
+  struct Record {
+    std::string value;
+    std::string reading;
+    std::string left;
+    std::string right;
+    int64_t serial = 0;
+  };
+
+  // Parses the whole file, in either format. Unparseable lines are skipped
+  // rather than fatal: the file is rewritten in place and a partial write
+  // must not cost the rest of it.
   void loadFromText(const std::string& text);
   std::string serialize() const;
 
-  // Cheap gate for the per-keystroke scan: false means no record in the
-  // store mentions this context at all.
-  bool hasContext(const std::string& context) const;
+  // Cheap gate for the per-keystroke scan: false means nothing was ever
+  // picked for this reading.
+  bool hasReading(const std::string& reading) const;
 
-  // The value learned for (context, reading), or empty. Ranked by count,
-  // then by serial, so the strongest and then the newest record wins.
-  std::string lookup(const std::string& context,
-                     const std::string& reading) const;
+  // The best example for `reading` in `situation`. A reading of several
+  // syllables (a phrase) matches with no agreeing token; a single
+  // character needs at least one (the boundary counts for this).
+  Match lookup(const Situation& situation, const std::string& reading) const;
 
-  // Records a deliberate pick. The value ends up ranked above every rival
-  // for the same (context, reading) -- one correction is enough -- and each
-  // rival loses a point so the store follows the user rather than the other
-  // way round.
-  void record(const std::string& context, const std::string& reading,
+  // Records a deliberate pick made in `situation`. The next lookup in the
+  // same situation returns `value`, whatever was on file before.
+  void record(const Situation& situation, const std::string& reading,
               const std::string& value);
 
   // Folds another copy (normally the file as a sibling process left it)
-  // into this one, keeping the stronger record of each triple. Every
-  // application hosts its own TIP instance, so saving must merge.
+  // into this one. Every application hosts its own TIP instance, so saving
+  // must merge; newer picks win exactly as they would in one process.
   void mergeFrom(const UserPreferences& other);
 
   bool dirty() const { return dirty_; }
@@ -95,20 +131,24 @@ class UserPreferences {
   // Every record, for the CLI and for tests.
   std::vector<Record> all() const;
 
+  // The file's spelling of a window side.
+  static std::string FormatLeft(const std::vector<std::string>& left);
+  static std::string FormatRight(const std::vector<std::string>& right);
+
  private:
-  struct Entry {
+  struct Example {
     std::string value;
-    double count = 1.0;
+    std::vector<std::string> left;
+    std::vector<std::string> right;
     int64_t serial = 0;
   };
 
-  // Strongest first (count, then serial).
-  static bool StrongerThan(const Entry& a, const Entry& b);
-  std::vector<Entry>* find(const std::string& context,
-                           const std::string& reading);
+  // Newest first, then drops every example that a newer one contradicts
+  // (see the header comment) or duplicates.
+  static void Normalize(std::vector<Example>* examples);
 
-  // context -> reading -> values
-  std::map<std::string, std::map<std::string, std::vector<Entry>>> byContext_;
+  // reading -> examples, newest first
+  std::map<std::string, std::vector<Example>> byReading_;
   int64_t nextSerial_ = 1;
   bool dirty_ = false;
 };

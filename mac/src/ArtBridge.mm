@@ -294,7 +294,16 @@ NSString *ArtStringFromUTF8(const std::string &utf8) {
         ArtLog(@"cannot create %@: %@", dir, error);
         return;
     }
-    _userChoicesPath = [dir stringByAppendingPathComponent:@"user-choices.txt"];
+    // 2026-09-29 changed the record format (a window of characters and
+    // readings instead of one context and a count), so the file changed name
+    // again. One process serves every application here, so there is no stale
+    // copy racing to rewrite it as there is on Windows — the rename is kept
+    // anyway, so the two halves keep the same file layout. The previous file
+    // is read once to carry its picks over and is otherwise left alone.
+    _userChoicesPath =
+        [dir stringByAppendingPathComponent:@"user-choices-v2.txt"];
+    NSString *previousPath =
+        [dir stringByAppendingPathComponent:@"user-choices.txt"];
 
     // A store left by a pre-v0.4.0 build records no context, and context is
     // the whole of a v0.6 record — it cannot be invented. Move the old file
@@ -315,6 +324,11 @@ NSString *ArtStringFromUTF8(const std::string &utf8) {
 
     std::ifstream in(_userChoicesPath.fileSystemRepresentation,
                      std::ios::binary);
+    if (!in.is_open()) {
+        // Nothing in the new format yet: start from the previous file, which
+        // loadFromText reads as it is.
+        in.open(previousPath.fileSystemRepresentation, std::ios::binary);
+    }
     if (!in.is_open()) {
         return;  // nothing learned yet; the file appears on first selection
     }

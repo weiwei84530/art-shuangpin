@@ -53,7 +53,8 @@ public:
     const std::vector<std::wstring>& CandidateTexts();
 
 private:
-    // Loads %APPDATA%\MspyIME\user-choices.txt into _preferences. A
+    // Loads %APPDATA%\MspyIME\user-choices-v2.txt into _preferences, or the
+    // pre-2026-09-29 user-choices.txt while there is none yet. A
     // user-phrases.txt left by a pre-2026-08-09 build is renamed aside: it
     // records no context, which the contextual store cannot invent.
     void LoadPreferences();

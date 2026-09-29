@@ -17,7 +17,7 @@ pause() {
 }
 
 SUPPORT="$HOME/Library/Application Support/ArtShuangpin"
-CHOICES="$SUPPORT/user-choices.txt"
+CHOICES="$SUPPORT/user-choices-v2.txt"
 # Parked by the first v0.4.0 launch: it predates the contextual store and
 # cannot be converted, so it is kept rather than read.
 LEGACY="$SUPPORT/user-phrases.txt.bak"
