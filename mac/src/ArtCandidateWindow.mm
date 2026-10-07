@@ -202,6 +202,9 @@ static const CGFloat kMinPanelWidth = 90.0;
     // whether it currently is. Needed because a space change can order it
     // out from underneath us — see -observeSpaceChanges.
     BOOL _wantsVisible;
+    // Bumped by every -bringPanelToFront, so only the latest show runs its
+    // delayed visibility check.
+    NSUInteger _showGeneration;
 }
 
 + (ArtCandidateWindow *)shared {
@@ -234,9 +237,63 @@ static const CGFloat kMinPanelWidth = 90.0;
                      queue:[NSOperationQueue mainQueue]
                 usingBlock:^(NSNotification *note) {
                     if (self->_wantsVisible) {
-                        [self->_panel orderFront:nil];
+                        [self bringPanelToFront];
                     }
                 }];
+}
+
+// Puts the panel on top of whatever space is active now (2026-10-07).
+//
+// Reported from full-screen Chrome and Cursor: the candidate list
+// occasionally never appears, and taking the window out of full screen
+// brings it back. Two things in the old `[_panel orderFront:nil]` could
+// each produce exactly that, and both are cheap to rule out:
+//
+//  * -orderFront: is documented as moving a window to the front of its
+//    level *for the active application*. This process is never the active
+//    application -- an input method server serves other people's windows --
+//    and -orderFrontRegardless is the call made for that case.
+//  * A panel that is already ordered in stays associated with the space it
+//    was ordered in on. Ordering it front again is then a no-op as far as
+//    the window server is concerned, CanJoinAllSpaces notwithstanding, and
+//    a full-screen app is a space of its own. If the panel is not on the
+//    active space it is ordered out first, so the next order-in happens
+//    here. Only then: doing it on every refresh would flicker.
+//
+// Then, a tenth of a second later, the panel checks whether it is actually
+// visible (occlusion state is updated asynchronously). If it is not, that
+// is written to the log unconditionally -- it is the one fact the next
+// report needs -- and the order-in is repeated once.
+- (void)bringPanelToFront {
+    if (_panel.isVisible && !_panel.isOnActiveSpace) {
+        ArtLog(@"candidate panel was on another space; re-ordering");
+        [_panel orderOut:nil];
+    }
+    [_panel orderFrontRegardless];
+
+    const NSUInteger generation = ++_showGeneration;
+    __weak ArtCandidateWindow *weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        ArtCandidateWindow *strongSelf = weakSelf;
+        if (strongSelf == nil || !strongSelf->_wantsVisible ||
+            strongSelf->_showGeneration != generation) {
+            return;
+        }
+        NSPanel *panel = strongSelf->_panel;
+        if ((panel.occlusionState & NSWindowOcclusionStateVisible) != 0) {
+            return;
+        }
+        ArtLogAlways(@"candidate panel occluded after show: frame=%@ visible=%d "
+                     @"onActiveSpace=%d screen=%@ level=%ld front=%@",
+                     NSStringFromRect(panel.frame), panel.isVisible,
+                     panel.isOnActiveSpace,
+                     NSStringFromRect(panel.screen ? panel.screen.frame : NSZeroRect),
+                     (long)panel.level,
+                     [NSWorkspace sharedWorkspace].frontmostApplication.bundleIdentifier);
+        [panel orderOut:nil];
+        [panel orderFrontRegardless];
+    });
 }
 
 - (void)buildPanel {
@@ -308,7 +365,9 @@ static const CGFloat kMinPanelWidth = 90.0;
     _view.frame = NSMakeRect(0, 0, size.width, size.height);
     [_view setNeedsDisplay:YES];
     _wantsVisible = YES;
-    [_panel orderFront:nil];
+    ArtLog(@"candidates: anchor=%@ frame=%@", NSStringFromRect(anchorRect),
+           NSStringFromRect(frame));
+    [self bringPanelToFront];
 }
 
 - (NSPoint)originForSize:(NSSize)size

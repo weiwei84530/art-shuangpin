@@ -154,7 +154,7 @@ static NSColor *ArtChineseBorderColor(void) {
     [_view display];
 
     _panel.alphaValue = 1.0;
-    [_panel orderFront:nil];
+    [_panel orderFrontRegardless];
 
     __weak ArtModeHUD *weakSelf = self;
     NSPanel *panel = _panel;

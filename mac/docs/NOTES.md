@@ -648,6 +648,32 @@ corner reads as a bug while a slightly stale position does not.
     `syncWithResult:` and pass it to `flashChinese:nearRect:`. The user chose
     not to change it blind at v0.9.0.
 
+12. **(Open, fix under test since v0.11.0+) The candidate list occasionally
+    never appears in full-screen Chrome or Cursor; leaving full screen
+    brings it back.** Reported 2026-10-07 on a build that already had the
+    v0.8.4 `CGShieldingWindowLevel()` fix, so the level is not the cause.
+
+    Not reproduced, so two plausible causes were removed at once in
+    `-bringPanelToFront`: every `orderFront:` became `orderFrontRegardless`
+    (this process is never the active application, which is the case that
+    call exists for), and a panel still ordered in on another space is
+    ordered out before being ordered in again. The same method checks the
+    panel's occlusion state 0.1 s after showing and, if it is not visible,
+    logs one line **unconditionally** and re-orders it once.
+
+    If it still happens, that line is the evidence. In Console.app filter on
+    `candidate panel occluded`, or:
+
+    ```
+    log show --last 10m --predicate 'process CONTAINS "ArtShuangpin"' | grep occluded
+    ```
+
+    It prints the panel frame, whether it thinks it is on the active space,
+    the screen and the frontmost app. No line at all while the list is
+    missing means the window server believes the panel is visible -- look at
+    the frame (turn on the debug flag to get `candidates: anchor=… frame=…`
+    for every show): it is then a position problem, not an ordering one.
+
 ## The name and the icon in the input menu
 
 Both were wrong at once, and the diagnosis for each is worth keeping because

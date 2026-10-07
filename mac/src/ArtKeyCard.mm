@@ -330,7 +330,7 @@ static void DrawRight(NSString *text, NSDictionary *attributes, CGFloat right, C
     _view.frame = NSMakeRect(0, 0, size.width, size.height);
     [_view setNeedsDisplay:YES];
     [_view display];
-    [_panel orderFront:nil];
+    [_panel orderFrontRegardless];
 }
 
 - (void)hide {
