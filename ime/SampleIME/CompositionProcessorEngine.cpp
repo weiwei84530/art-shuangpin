@@ -1701,6 +1701,15 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeedMspy(UINT uCode, _In_reads_(1)
         return FALSE;
     }
 
+    // [MspyIME] `|` shows the keyboard reminder card (2026-10-07,
+    // KeyCard.h). It is a key Chinese mode already ate without output, so
+    // claiming it changes nothing else -- and it never reaches the composer,
+    // whatever state the composition is in.
+    if (wch == L'|')
+    {
+        return eat(CATEGORY_NONE, FUNCTION_KEY_CARD);
+    }
+
     if (composer->wouldConsume(static_cast<char>(wch)))
     {
         if (pwch)

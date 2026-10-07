@@ -756,6 +756,7 @@ STDAPI CSampleIME::Deactivate()
     // them down here rather than leaving them to the destructor, which COM
     // may run later and elsewhere.
     _modeIndicator.Destroy();
+    _keyCard.Destroy();
 
     _UninitFunctionProviderSink();
 

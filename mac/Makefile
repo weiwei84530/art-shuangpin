@@ -142,6 +142,7 @@ SHELL_SRC := \
   src/ArtInputController.mm \
   src/ArtCandidateWindow.mm \
   src/ArtModeHUD.mm \
+  src/ArtKeyCard.mm \
   src/ArtNavigation.mm
 
 # patsubst, not a plain prefix.  $(ENGINE_SRC:%=$(BUILD)/%.o) would name the

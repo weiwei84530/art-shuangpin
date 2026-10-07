@@ -369,6 +369,14 @@ STDAPI CSampleIME::OnTestKeyDown(ITfContext *pContext, WPARAM wParam, LPARAM lPa
     UINT code = 0;
     *pIsEaten = _IsKeyEaten(pContext, (UINT)wParam, &code, &wch, &KeystrokeState);
 
+    // [MspyIME] Any key but the card's own takes the keyboard card down and
+    // then does its usual job. This has to happen in the TEST call: a key we
+    // do not eat never reaches OnKeyDown.
+    if (KeystrokeState.Function != FUNCTION_KEY_CARD)
+    {
+        _DismissKeyCardForKey((UINT)wParam);
+    }
+
     if (KeystrokeState.Category == CATEGORY_INVOKE_COMPOSITION_EDIT_SESSION)
     {
         //
@@ -380,6 +388,30 @@ STDAPI CSampleIME::OnTestKeyDown(ITfContext *pContext, WPARAM wParam, LPARAM lPa
     }
 
     return S_OK;
+}
+
+//+---------------------------------------------------------------------------
+//
+// _DismissKeyCardForKey    [MspyIME]
+//
+// Modifiers alone do not count as "a key": reaching `|` means pressing Shift
+// first, and closing the card on that Shift would make `|` reopen it instead
+// of toggling it off.
+//----------------------------------------------------------------------------
+
+void CSampleIME::_DismissKeyCardForKey(UINT vk)
+{
+    switch (vk)
+    {
+    case VK_SHIFT: case VK_LSHIFT: case VK_RSHIFT:
+    case VK_CONTROL: case VK_LCONTROL: case VK_RCONTROL:
+    case VK_MENU: case VK_LMENU: case VK_RMENU:
+    case VK_LWIN: case VK_RWIN: case VK_CAPITAL:
+        return;
+    default:
+        break;
+    }
+    _keyCard.Hide();
 }
 
 //+---------------------------------------------------------------------------
@@ -400,6 +432,13 @@ STDAPI CSampleIME::OnKeyDown(ITfContext *pContext, WPARAM wParam, LPARAM lParam,
 
     *pIsEaten = _IsKeyEaten(pContext, (UINT)wParam, &code, &wch, &KeystrokeState);
 
+    // [MspyIME] Repeated here because a host may call KeyDown without a
+    // TestKeyDown first; hiding twice is harmless.
+    if (KeystrokeState.Function != FUNCTION_KEY_CARD)
+    {
+        _DismissKeyCardForKey((UINT)wParam);
+    }
+
     if (*pIsEaten)
     {
         // [MspyIME] Idle navigation keys need no document access: skip the
@@ -407,6 +446,25 @@ STDAPI CSampleIME::OnKeyDown(ITfContext *pContext, WPARAM wParam, LPARAM lParam,
         if (KeystrokeState.Function == FUNCTION_NAV_INJECT)
         {
             InjectNavigationKey(code);
+            return S_OK;
+        }
+
+        // [MspyIME] The keyboard card neither reads nor touches the
+        // document. Auto-repeat (bit 30: key was already down) must not
+        // flicker it on and off while `|` is held.
+        if (KeystrokeState.Function == FUNCTION_KEY_CARD)
+        {
+            if ((lParam & (1 << 30)) == 0)
+            {
+                if (_keyCard.IsVisible())
+                {
+                    _keyCard.Hide();
+                }
+                else
+                {
+                    _keyCard.Show(GetFocus() != nullptr ? GetFocus() : GetForegroundWindow());
+                }
+            }
             return S_OK;
         }
 

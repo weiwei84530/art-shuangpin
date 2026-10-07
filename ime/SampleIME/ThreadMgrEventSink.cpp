@@ -51,6 +51,9 @@ STDAPI CSampleIME::OnSetFocus(_In_ ITfDocumentMgr *pDocMgrFocus, _In_ ITfDocumen
 {
     pDocMgrPrevFocus;
 
+    // [MspyIME] The keyboard card belongs to the field it was opened in.
+    _keyCard.Hide();
+
     // [MspyIME] Coming back to this application restores the Chinese/
     // English mode it was left in, whatever another application did to the
     // shared keyboard open/close state meanwhile.

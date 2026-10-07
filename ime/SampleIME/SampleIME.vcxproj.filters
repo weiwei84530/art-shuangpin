@@ -98,6 +98,9 @@
     <ClInclude Include="ModeIndicator.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="KeyCard.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="LanguageBar.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -230,6 +233,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="ModeIndicator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="KeyCard.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="LanguageBar.cpp">

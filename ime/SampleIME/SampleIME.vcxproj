@@ -53,6 +53,7 @@
     <ClInclude Include="Globals.h" />
     <ClInclude Include="KeyHandlerEditSession.h" />
     <ClInclude Include="ModeIndicator.h" />
+    <ClInclude Include="KeyCard.h" />
     <ClInclude Include="MspyBridge.h" />
     <ClInclude Include="LanguageBar.h" />
     <ClInclude Include="Private.h" />
@@ -100,6 +101,7 @@
     <ClCompile Include="KeyHandler.cpp" />
     <ClCompile Include="KeyHandlerEditSession.cpp" />
     <ClCompile Include="ModeIndicator.cpp" />
+    <ClCompile Include="KeyCard.cpp" />
     <ClCompile Include="LanguageBar.cpp" />
     <ClCompile Include="MspyBridge.cpp" />
     <ClCompile Include="Register.cpp" />

@@ -13,6 +13,7 @@
 
 #import "ArtBridge.h"
 #import "ArtModeHUD.h"
+#import "ArtKeyCard.h"
 #import "ArtNavigation.h"
 
 #pragma mark - shell state
@@ -134,6 +135,7 @@ bool IsCaretMovementKeyCode(unsigned short code) {
 
 - (void)activateServer:(id)sender {
     [[ArtCandidateWindow shared] hide];
+    [[ArtKeyCard shared] hide];
 
     id<IMKTextInput> client = (id<IMKTextInput>)sender;
 
@@ -171,6 +173,7 @@ bool IsCaretMovementKeyCode(unsigned short code) {
     // stands between a long buffer and its disappearance.
     [self commitCompositionInto:(id<IMKTextInput>)sender];
     [[ArtCandidateWindow shared] hide];
+    [[ArtKeyCard shared] hide];
 }
 
 - (void)commitComposition:(id)sender {
@@ -250,6 +253,15 @@ bool IsCaretMovementKeyCode(unsigned short code) {
                                           NSEventModifierFlagOption)) != 0;
     const unsigned short keyCode = event.keyCode;
     const BOOL active = bridge.state != ArtComposerStateEmpty;
+
+    // The keyboard card (ArtKeyCard.h): any key but its own takes it down and
+    // then does its usual job. Modifiers alone never get here -- they arrive
+    // as flags-changed -- so pressing Shift on the way to `|` cannot close it.
+    const BOOL cardKey = sChineseMode && !hasCommandLike &&
+                         [event.characters isEqualToString:@"|"];
+    if (!cardKey) {
+        [[ArtKeyCard shared] hide];
+    }
 
     // Shortcuts belong to the application.
     if (hasCommandLike) {
@@ -334,6 +346,20 @@ bool IsCaretMovementKeyCode(unsigned short code) {
     }
     if (ch == 0 || ch >= 0x80) {
         return NO;
+    }
+    // `|` toggles the keyboard card (2026-10-07), as upstream's
+    // FUNCTION_KEY_CARD does. Chinese mode already ate it without output,
+    // and it never reaches the composer.
+    if (ch == '|') {
+        if (!event.isARepeat) {
+            ArtKeyCard *card = [ArtKeyCard shared];
+            if (card.visible) {
+                [card hide];
+            } else {
+                [card showNearRect:[self caretRectForClient:client]];
+            }
+        }
+        return YES;
     }
     if (![bridge wouldConsumeChar:(char)ch]) {
         return NO;

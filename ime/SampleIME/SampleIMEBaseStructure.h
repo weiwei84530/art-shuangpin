@@ -83,7 +83,11 @@ enum KEYSTROKE_FUNCTION
     // [MspyIME] A key typed in English mode while a composition is live: it
     // joins the buffer as literal text instead of going to the application,
     // so one uncommitted string can hold Chinese and English together.
-    FUNCTION_ENGLISH_INPUT
+    FUNCTION_ENGLISH_INPUT,
+
+    // [MspyIME] `|` in Chinese mode: toggle the keyboard reminder card
+    // (KeyCard.h). Handled directly in OnKeyDown, like FUNCTION_NAV_INJECT.
+    FUNCTION_KEY_CARD
 };
 
 //---------------------------------------------------------------------

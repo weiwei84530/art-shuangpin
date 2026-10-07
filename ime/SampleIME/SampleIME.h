@@ -9,6 +9,7 @@
 
 #include "KeyHandlerEditSession.h"
 #include "ModeIndicator.h"
+#include "KeyCard.h"
 #include "SampleIMEBaseStructure.h"
 
 class CLangBarItemButton;
@@ -147,6 +148,8 @@ public:
     void _FlashModeIndicatorForFocus(_In_opt_ ITfDocumentMgr *pDocMgrFocus);
     BOOL _MeasureCaretUnderLock(TfEditCookie ec, _In_opt_ ITfContext *pContext, _Out_ RECT *prc);
     void _FlashModeIndicatorAt(const RECT *prcCaret);
+    // [MspyIME] The keyboard card (KeyCard.h): any non-modifier key hides it.
+    void _DismissKeyCardForKey(UINT vk);
     // [MspyIME] The caret cannot be read at focus time: a Chromium text
     // store answers GetTextExt with the bounds it was last TOLD about, and
     // the renderer reports the newly focused field only a few frames later,
@@ -299,6 +302,10 @@ private:
     // [MspyIME] The 中/英 bubble. One per TIP instance = one per thread, so
     // its window and timers never leave the thread that created them.
     CModeIndicator _modeIndicator;
+
+    // [MspyIME] The keyboard reminder card, `|` in Chinese mode. Same
+    // one-per-thread lifetime as the bubble.
+    CKeyCard _keyCard;
 
     ITfDocumentMgr* _pDocMgrLastFocused;
 
