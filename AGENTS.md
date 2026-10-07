@@ -140,6 +140,13 @@ v0.3 到 v0.6 分別是 1、1、2、1 個檔案。多數上游改動 Mac 完全�
 
 ## 狀態記錄
 
+- 2026-10-07：**macOS 全螢幕選字窗偶爾不見（Chrome／Cursor，取消全螢幕即恢復）——修正待使用者實測**。
+  v0.8.4 的層級修正之後仍會發生，所以不是層級。沒有重現環境，一次拿掉兩個可能原因（`b0a50ba`，只動 `mac/src/`）：
+  所有面板改用 `orderFrontRegardless`（輸入法行程永遠不是 active app，`orderFront:` 不保證到最前）、
+  選字窗若還掛在別的 space 先 `orderOut` 再顯示；顯示 0.1 秒後查 occlusion，**看不到就無條件寫一行 log 並重顯示一次**。
+  查法寫在 `mac/docs/NOTES.md`〈What to check first〉第 12 條。測試包是 CI 的 dev artifact，原封不動存成
+  `out/art-shuangpin-mac-v0.11.0-test-b0a50ba.zip`（`verify_zip.py` 通過），**沒有打 tag**；確認修好才併進下一版。
+
 - 2026-10-07：**tag v0.11.0 並發佈 GitHub Release**（兩個資產：`art-shuangpin-v0.11.0.zip`、`art-shuangpin-mac-v0.11.0.zip`）。
   內容只有鍵位提示卡（見下一條），`core/`／`engine/`／`data/` 零改動。v0.10.0 已於 09-29 發佈，所以升到 0.11.0。
   check-parity 報的落差只是 `docs/spec.md` 那個 commit（Mac 版同 commit 已跟上），推進 marker 即 aligned；
