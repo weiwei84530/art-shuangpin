@@ -140,7 +140,12 @@ v0.3 到 v0.6 分別是 1、1、2、1 個檔案。多數上游改動 Mac 完全�
 
 ## 狀態記錄
 
-- 2026-10-07：**鍵位提示卡（使用者要求，尚未發佈，VERSION 仍 0.10.0）**。中文模式 `|` 開關、任何非修飾鍵收掉並照常執行，
+- 2026-10-07：**tag v0.11.0 並發佈 GitHub Release**（兩個資產：`art-shuangpin-v0.11.0.zip`、`art-shuangpin-mac-v0.11.0.zip`）。
+  內容只有鍵位提示卡（見下一條），`core/`／`engine/`／`data/` 零改動。v0.10.0 已於 09-29 發佈，所以升到 0.11.0。
+  check-parity 報的落差只是 `docs/spec.md` 那個 commit（Mac 版同 commit 已跟上），推進 marker 即 aligned；
+  兩架構 `ctest` 各 189、check-tutorials 12 課、check-drill-coverage 全覆蓋；**打 tag 前確認 push 的 macOS CI 綠燈**
+  （`ArtKeyCard.mm` 第一次被編譯，零警告、187 測試過）。本機已用 v0.11.0 的打包重裝。
+- 2026-10-07：**鍵位提示卡（使用者要求）**。中文模式 `|` 開關、任何非修飾鍵收掉並照常執行，
   兩個平台都做（Windows `KeyCard`、macOS `ArtKeyCard`），`IsVirtualKeyNeedMspy` 與 `-handleKeyDown:` 同步加一條、
   `upstream-alignment.txt` 的 hash 已更新。版面經使用者看截圖兩輪定案（聲調／功能分色、聲調與標點移到右上、
   功能一般字重、輔助韻母淡化）。**截圖方法**：把 `KeyCard.cpp` 連同三個 stub 標頭（`Private.h`/`Globals.h`/`Define.h`）
