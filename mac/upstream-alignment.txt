@@ -13,8 +13,8 @@
 
 # The most recent commit whose changes under core/ engine/ cli/ data/ and
 # docs/spec.md were read against mac/src/.
-commit                          = cafdd40f01b73f944dac7f8a2e7d48e997e62ff1
-version                         = 0.10.0
+commit                          = a1a6d05484f6d5e4211a3614a0ce1144889e6cf3
+version                         = 0.11.0
 
 # Bodies of the two Windows key-routing functions the Mac transliterates
 # rather than shares -- ArtInputController.mm reproduces their order
