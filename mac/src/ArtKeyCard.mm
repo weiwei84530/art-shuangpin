@@ -12,20 +12,26 @@ struct KeyCap {
     const char *initial;    // orange, top right
     const char *vowel;      // small, under the initial: the key alone as a syllable
     const char *finals[3];  // teal, bottom right, top to bottom
-    const char *control;    // grey, bottom left
+    const char *function;   // slate, bottom left: what the key does
+    const char *tone;       // purple, top right where an initial would be:
+                            // the tone mark, or the full-width punctuation
 };
 
+// The digit row has two jobs (spec §6): a tone key while a syllable is
+// still bopomofo, and an editing key otherwise -- the idle editing layer, or
+// the cursor/menu keys inside a composition. The function label is the
+// shortest wording that covers both.
 const KeyCap kRow0[] = {
-    {"1", nullptr, nullptr, {}, "ˉ"},
-    {"2", nullptr, nullptr, {}, "ˊ"},
-    {"3", nullptr, nullptr, {}, "ˇ"},
-    {"4", nullptr, nullptr, {}, "ˋ"},
-    {"5", nullptr, nullptr, {}, "˙"},
-    {"6", nullptr, nullptr, {}, "⌫"},
-    {"7", nullptr, nullptr, {}, "ˋ 頁"},
-    {"8", nullptr, nullptr, {}, "ˇ 選"},
-    {"9", nullptr, nullptr, {}, "ˊ ◂"},
-    {"0", nullptr, nullptr, {}, "ˉ ▸"},
+    {"1", nullptr, nullptr, {}, "行首", "ˉ"},
+    {"2", nullptr, nullptr, {}, "選到行首", "ˊ"},
+    {"3", nullptr, nullptr, {}, "選到行尾", "ˇ"},
+    {"4", nullptr, nullptr, {}, "行尾", "ˋ"},
+    {"5", nullptr, nullptr, {}, "⌦ 刪除", "˙"},
+    {"6", nullptr, nullptr, {}, "⌫ 退格", nullptr},
+    {"7", nullptr, nullptr, {}, "↑ 上頁", "ˋ"},
+    {"8", nullptr, nullptr, {}, "↓ 選字", "ˇ"},
+    {"9", nullptr, nullptr, {}, "← 左移", "ˊ"},
+    {"0", nullptr, nullptr, {}, "→ 右移", "ˉ"},
 };
 
 const KeyCap kRow1[] = {
@@ -62,9 +68,9 @@ const KeyCap kRow3[] = {
     {"B", "ㄅ", "ㄛ", {"ㄡ"}, nullptr},
     {"N", "ㄋ", "ㄜ", {"ㄧㄣ"}, nullptr},
     {"M", "ㄇ", "ㄛ", {"ㄧㄢ"}, nullptr},
-    {",", nullptr, nullptr, {}, "，"},
-    {".", nullptr, nullptr, {}, "。"},
-    {"/", nullptr, nullptr, {}, "、"},
+    {",", nullptr, nullptr, {}, nullptr, "，"},
+    {".", nullptr, nullptr, {}, nullptr, "。"},
+    {"/", nullptr, nullptr, {}, nullptr, "、"},
 };
 
 struct Row {
@@ -96,6 +102,7 @@ const CGFloat kLetterSize = 17;
 const CGFloat kZhuyinSize = 14;
 const CGFloat kVowelSize = 12;
 const CGFloat kTitleSize = 13;
+const CGFloat kFunctionSize = 11;
 
 NSString *S(const char *utf8) {
     return [NSString stringWithUTF8String:utf8];
@@ -106,7 +113,11 @@ NSString *S(const char *utf8) {
 // panel does.
 NSColor *InitialColor() { return [NSColor systemOrangeColor]; }
 NSColor *FinalColor() { return [NSColor systemTealColor]; }
-NSColor *ControlColor() { return [NSColor secondaryLabelColor]; }
+NSColor *ToneColor() { return [NSColor systemPurpleColor]; }
+NSColor *FunctionColor() { return [NSColor secondaryLabelColor]; }
+// The recited vowel under an initial is a memory aid, not something to read
+// first: a pale tint of the initial's orange, close to the keycap.
+NSColor *VowelColor() { return [[NSColor systemOrangeColor] colorWithAlphaComponent:0.4]; }
 
 int TotalColumnsQuarters() {
     int widest = 0;
@@ -171,7 +182,8 @@ static void DrawRight(NSString *text, NSDictionary *attributes, CGFloat right, C
         {@"鍵位提示　", [NSColor labelColor]},
         {@"■ 聲母　", InitialColor()},
         {@"■ 韻母　", FinalColor()},
-        {@"■ 聲調／功能", ControlColor()},
+        {@"■ 聲調／符號　", ToneColor()},
+        {@"■ 功能", FunctionColor()},
     };
     for (const Run &run : legend) {
         NSDictionary *a = @{NSFontAttributeName : titleFont, NSForegroundColorAttributeName : run.color};
@@ -188,11 +200,14 @@ static void DrawRight(NSString *text, NSDictionary *attributes, CGFloat right, C
     NSDictionary *initialAttr = @{NSFontAttributeName : zhuyinFont,
                                   NSForegroundColorAttributeName : InitialColor()};
     NSDictionary *vowelAttr = @{NSFontAttributeName : vowelFont,
-                                NSForegroundColorAttributeName : InitialColor()};
+                                NSForegroundColorAttributeName : VowelColor()};
+    NSDictionary *toneAttr = @{NSFontAttributeName : letterFont,
+                               NSForegroundColorAttributeName : ToneColor()};
     NSDictionary *finalAttr = @{NSFontAttributeName : zhuyinFont,
                                 NSForegroundColorAttributeName : FinalColor()};
-    NSDictionary *controlAttr = @{NSFontAttributeName : zhuyinFont,
-                                  NSForegroundColorAttributeName : ControlColor()};
+    NSFont *functionFont = CardFont(kFunctionSize, NSFontWeightRegular);
+    NSDictionary *functionAttr = @{NSFontAttributeName : functionFont,
+                                   NSForegroundColorAttributeName : FunctionColor()};
 
     const CGFloat pitchX = kKeyWidth + kKeyGap;
     const CGFloat pitchY = kKeyHeight + kKeyGap;
@@ -233,9 +248,14 @@ static void DrawRight(NSString *text, NSDictionary *attributes, CGFloat right, C
                 DrawRight(S(cap.finals[f]), finalAttr, NSMaxX(inner), y);
             }
 
-            if (cap.control != nullptr) {
-                [S(cap.control) drawAtPoint:NSMakePoint(NSMinX(inner), NSMaxY(inner) + 1 - lineHeight)
-                             withAttributes:controlAttr];
+            if (cap.tone != nullptr) {
+                DrawRight(S(cap.tone), toneAttr, NSMaxX(inner), NSMinY(inner) + 1);
+            }
+
+            if (cap.function != nullptr) {
+                const CGFloat functionLine = ceil(functionFont.ascender - functionFont.descender);
+                [S(cap.function) drawAtPoint:NSMakePoint(NSMinX(inner), NSMaxY(inner) + 1 - functionLine)
+                              withAttributes:functionAttr];
             }
         }
     }

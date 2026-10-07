@@ -44,6 +44,8 @@ private:
     HFONT _zhuyinFont = nullptr;
     HFONT _vowelFont = nullptr;
     HFONT _titleFont = nullptr;
+    HFONT _functionFont = nullptr;
+    HFONT _toneFont = nullptr;
     UINT  _dpi = 0;
     int   _cardWidth = 0;
     int   _cardHeight = 0;

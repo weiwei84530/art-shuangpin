@@ -16,20 +16,26 @@ struct KeyCap
     const WCHAR* initial;      // orange, top right
     const WCHAR* vowel;        // small, under the initial: the key alone as a syllable
     const WCHAR* finals[3];    // teal, bottom right, top to bottom
-    const WCHAR* control;      // grey, bottom left
+    const WCHAR* function;     // slate, bottom left: what the key does
+    const WCHAR* tone;         // purple, top right where an initial would be:
+                               // the tone mark, or the full-width punctuation
 };
 
+// The digit row has two jobs (spec §6): a tone key while a syllable is
+// still bopomofo, and an editing key otherwise -- the idle editing layer, or
+// the cursor/menu keys inside a composition. The function label is the
+// shortest wording that covers both.
 const KeyCap kRow0[] = {
-    { L'1', nullptr, nullptr, {}, L"ˉ" },
-    { L'2', nullptr, nullptr, {}, L"ˊ" },
-    { L'3', nullptr, nullptr, {}, L"ˇ" },
-    { L'4', nullptr, nullptr, {}, L"ˋ" },
-    { L'5', nullptr, nullptr, {}, L"˙" },
-    { L'6', nullptr, nullptr, {}, L"⌫" },
-    { L'7', nullptr, nullptr, {}, L"ˋ 頁" },
-    { L'8', nullptr, nullptr, {}, L"ˇ 選" },
-    { L'9', nullptr, nullptr, {}, L"ˊ ◂" },
-    { L'0', nullptr, nullptr, {}, L"ˉ ▸" },
+    { L'1', nullptr, nullptr, {}, L"行首",     L"ˉ" },
+    { L'2', nullptr, nullptr, {}, L"選到行首", L"ˊ" },
+    { L'3', nullptr, nullptr, {}, L"選到行尾", L"ˇ" },
+    { L'4', nullptr, nullptr, {}, L"行尾",     L"ˋ" },
+    { L'5', nullptr, nullptr, {}, L"⌦ 刪除",   L"˙" },
+    { L'6', nullptr, nullptr, {}, L"⌫ 退格",   nullptr },
+    { L'7', nullptr, nullptr, {}, L"↑ 上頁",   L"ˋ" },
+    { L'8', nullptr, nullptr, {}, L"↓ 選字",   L"ˇ" },
+    { L'9', nullptr, nullptr, {}, L"← 左移",   L"ˊ" },
+    { L'0', nullptr, nullptr, {}, L"→ 右移",   L"ˉ" },
 };
 
 const KeyCap kRow1[] = {
@@ -66,9 +72,9 @@ const KeyCap kRow3[] = {
     { L'B', L"ㄅ", L"ㄛ", { L"ㄡ" }, nullptr },
     { L'N', L"ㄋ", L"ㄜ", { L"ㄧㄣ" }, nullptr },
     { L'M', L"ㄇ", L"ㄛ", { L"ㄧㄢ" }, nullptr },
-    { L',', nullptr, nullptr, {}, L"，" },
-    { L'.', nullptr, nullptr, {}, L"。" },
-    { L'/', nullptr, nullptr, {}, L"、" },
+    { L',', nullptr, nullptr, {}, nullptr, L"，" },
+    { L'.', nullptr, nullptr, {}, nullptr, L"。" },
+    { L'/', nullptr, nullptr, {}, nullptr, L"、" },
 };
 
 struct Row
@@ -100,12 +106,17 @@ const int kLetterPt = 13;
 const int kZhuyinPt = 11;
 const int kVowelPt  = 9;
 const int kTitlePt  = 10;
+const int kFunctionPt = 8;
 
 // Darker than the tutorial site's colours: those sit on a grey keycap, these
 // on a white one, and the site's orange is unreadable on white.
 const COLORREF kInitialColor  = RGB(0xC8, 0x67, 0x1A);
 const COLORREF kFinalColor    = RGB(0x1E, 0x85, 0x77);
-const COLORREF kControlColor  = RGB(0x6B, 0x73, 0x96);
+const COLORREF kToneColor     = RGB(0x7B, 0x4F, 0xC9);
+const COLORREF kFunctionColor = RGB(0x5C, 0x67, 0x80);
+// The recited vowel under an initial is a memory aid, not something to read
+// first: a pale tint of the initial's orange, close to the keycap.
+const COLORREF kVowelColor    = RGB(0xDE, 0xBF, 0xA6);
 const COLORREF kKeyFillColor  = RGB(0xF6, 0xF7, 0xF9);
 const COLORREF kKeyEdgeColor  = RGB(0xDD, 0xDF, 0xE4);
 const COLORREF kLetterColor   = RGB(0x30, 0x30, 0x30);
@@ -168,7 +179,8 @@ void CKeyCard::Destroy()
 
 void CKeyCard::_DeleteFonts()
 {
-    HFONT* const fonts[] = { &_letterFont, &_zhuyinFont, &_vowelFont, &_titleFont };
+    HFONT* const fonts[] = { &_letterFont, &_zhuyinFont, &_vowelFont, &_titleFont,
+                             &_functionFont, &_toneFont };
     for (HFONT* font : fonts)
     {
         if (*font != nullptr)
@@ -225,6 +237,8 @@ void CKeyCard::_UpdateMetricsForDpi()
     _zhuyinFont = makeFont(kZhuyinPt, FW_BOLD);
     _vowelFont  = makeFont(kVowelPt, FW_BOLD);
     _titleFont  = makeFont(kTitlePt, FW_NORMAL);
+    _functionFont = makeFont(kFunctionPt, FW_NORMAL);
+    _toneFont   = makeFont(kLetterPt, FW_BOLD);
 
     const int pitchQuarters = TotalColumnsQuarters();
     const int pitch = _Scale(kKeyWidth + kKeyGap);
@@ -327,7 +341,8 @@ void CKeyCard::_OnPaint(_In_ HDC dcHandle)
         { L"鍵位提示　", CANDWND_ITEM_COLOR },
         { L"■ 聲母　", kInitialColor },
         { L"■ 韻母　", kFinalColor },
-        { L"■ 聲調／功能", kControlColor },
+        { L"■ 聲調／符號　", kToneColor },
+        { L"■ 功能", kFunctionColor },
     };
     int cursorX = title.left;
     for (const Run& run : legend)
@@ -385,6 +400,7 @@ void CKeyCard::_OnPaint(_In_ HDC dcHandle)
                 if (cap.vowel != nullptr)
                 {
                     SelectObject(dc, _vowelFont);
+                    SetTextColor(dc, kVowelColor);
                     rc.top += line;
                     DrawText(dc, cap.vowel, -1, &rc, DT_RIGHT | DT_TOP | textFlags);
                 }
@@ -407,11 +423,20 @@ void CKeyCard::_OnPaint(_In_ HDC dcHandle)
                 }
             }
 
-            if (cap.control != nullptr)
+            if (cap.tone != nullptr)
             {
-                SelectObject(dc, _zhuyinFont);
-                SetTextColor(dc, kControlColor);
-                DrawText(dc, cap.control, -1, &inner, DT_LEFT | DT_BOTTOM | textFlags);
+                SelectObject(dc, _toneFont);
+                SetTextColor(dc, kToneColor);
+                RECT rc = inner;
+                rc.top += _Scale(1);
+                DrawText(dc, cap.tone, -1, &rc, DT_RIGHT | DT_TOP | textFlags);
+            }
+
+            if (cap.function != nullptr)
+            {
+                SelectObject(dc, _functionFont);
+                SetTextColor(dc, kFunctionColor);
+                DrawText(dc, cap.function, -1, &inner, DT_LEFT | DT_BOTTOM | textFlags);
             }
         }
     }
