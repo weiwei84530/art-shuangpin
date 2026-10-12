@@ -140,6 +140,12 @@ v0.3 到 v0.6 分別是 1、1、2、1 個檔案。多數上游改動 Mac 完全�
 
 ## 狀態記錄
 
+- 2026-10-12：**tag v0.11.1 並發佈 GitHub Release**（兩個資產：`art-shuangpin-v0.11.1.zip`、`art-shuangpin-mac-v0.11.1.zip`）。
+  內容只有下一條的 macOS 全螢幕選字窗修正（`mac/src/` 三個檔案），Windows 除版本號外與 v0.11.0 相同（內文有明講可不必更新）。
+  check-parity aligned、兩架構 `ctest` 各 189、check-tutorials／check-drill-coverage 全綠；打 tag 前確認 push 的 macOS CI 綠燈。
+  Release 內文附上「還是發生時」要跑的 `log show … | grep occluded`。本機已用 v0.11.1 的打包重裝。
+  **修正是否真的解決，仍以使用者在 Mac 全螢幕 Chrome／Cursor 的長期使用為準**（偶發問題，沒有重現步驟）。
+
 - 2026-10-07：**macOS 全螢幕選字窗偶爾不見（Chrome／Cursor，取消全螢幕即恢復）——修正待使用者實測**。
   v0.8.4 的層級修正之後仍會發生，所以不是層級。沒有重現環境，一次拿掉兩個可能原因（`b0a50ba`，只動 `mac/src/`）：
   所有面板改用 `orderFrontRegardless`（輸入法行程永遠不是 active app，`orderFront:` 不保證到最前）、
