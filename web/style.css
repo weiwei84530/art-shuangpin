@@ -287,13 +287,6 @@ body.drilling .drill-bar { margin-top: 12px; }
   letter-spacing: .3px; text-align: right;
 }
 .key .cap .sub-i { top: 4px; right: 5px; color: var(--init-c); font-weight: 700; }
-/* The vowel the initial is recited with -- ㄎ on its own is ㄎㄜ. Same size
-   as the initial, told apart by weight rather than by size: ㄧ is a single
-   horizontal stroke and shrinking it turns it into a dash. */
-.key .cap .sub-i i {
-  display: block; font-style: normal; font-weight: 600;
-  margin-top: 2px; opacity: .92;
-}
 /* one line per reading: the pairs are too wide to sit side by side, and
    stacking them keeps every key's annotation in the same narrow column */
 .key .cap .sub-f { bottom: 4px; right: 5px; color: var(--final-c); font-weight: 600; }

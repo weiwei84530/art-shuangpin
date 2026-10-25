@@ -97,37 +97,34 @@ TEST(DoublePinyinTest, SingleKeySyllables) {
   EXPECT_EQ(DecodeSingleKey('y'), std::vector<std::string>{"ㄧ"});
   EXPECT_EQ(DecodeSingleKey('e'), std::vector<std::string>{"ㄜ"});
 
-  // The remaining initials stand for the syllable they are recited with
-  // (2026-08-09): ㄛ after ㄅㄆㄇㄈ, ㄜ after ㄉㄊㄋㄌㄍㄎㄏ, ㄧ after ㄐㄑㄒ.
-  EXPECT_EQ(DecodeSingleKey('b'), std::vector<std::string>{"ㄅㄛ"});
-  EXPECT_EQ(DecodeSingleKey('p'), std::vector<std::string>{"ㄆㄛ"});
-  EXPECT_EQ(DecodeSingleKey('m'), std::vector<std::string>{"ㄇㄛ"});
-  EXPECT_EQ(DecodeSingleKey('f'), std::vector<std::string>{"ㄈㄛ"});
-  EXPECT_EQ(DecodeSingleKey('d'), std::vector<std::string>{"ㄉㄜ"});
-  EXPECT_EQ(DecodeSingleKey('t'), std::vector<std::string>{"ㄊㄜ"});
-  EXPECT_EQ(DecodeSingleKey('n'), std::vector<std::string>{"ㄋㄜ"});
-  EXPECT_EQ(DecodeSingleKey('l'), std::vector<std::string>{"ㄌㄜ"});
-  EXPECT_EQ(DecodeSingleKey('g'), std::vector<std::string>{"ㄍㄜ"});
-  EXPECT_EQ(DecodeSingleKey('k'), std::vector<std::string>{"ㄎㄜ"});
-  EXPECT_EQ(DecodeSingleKey('h'), std::vector<std::string>{"ㄏㄜ"});
+  // Every initial that can take ㄧ stands for initial + ㄧ (2026-10-25).
+  EXPECT_EQ(DecodeSingleKey('b'), std::vector<std::string>{"ㄅㄧ"});
+  EXPECT_EQ(DecodeSingleKey('p'), std::vector<std::string>{"ㄆㄧ"});
+  EXPECT_EQ(DecodeSingleKey('m'), std::vector<std::string>{"ㄇㄧ"});
+  EXPECT_EQ(DecodeSingleKey('d'), std::vector<std::string>{"ㄉㄧ"});
+  EXPECT_EQ(DecodeSingleKey('t'), std::vector<std::string>{"ㄊㄧ"});
+  EXPECT_EQ(DecodeSingleKey('n'), std::vector<std::string>{"ㄋㄧ"});
+  EXPECT_EQ(DecodeSingleKey('l'), std::vector<std::string>{"ㄌㄧ"});
   EXPECT_EQ(DecodeSingleKey('j'), std::vector<std::string>{"ㄐㄧ"});
   EXPECT_EQ(DecodeSingleKey('q'), std::vector<std::string>{"ㄑㄧ"});
   EXPECT_EQ(DecodeSingleKey('x'), std::vector<std::string>{"ㄒㄧ"});
+  // ㄈㄍㄎㄏ cannot take ㄧ, and there is no fallback vowel.
+  for (char c : {'f', 'g', 'k', 'h'}) {
+    EXPECT_TRUE(DecodeSingleKey(c).empty()) << "key " << c;
+  }
 }
 
 TEST(DoublePinyinTest, SingleKeyMatchesTypingTheDefaultFinal) {
   // The lone key must mean exactly what spelling it out means; a divergence
   // here would make the shortcut ambiguous.
-  for (const auto& [key, final] : std::vector<std::pair<char, char>>{
-           {'b', 'o'}, {'p', 'o'}, {'m', 'o'}, {'f', 'o'}, {'d', 'e'},
-           {'t', 'e'}, {'n', 'e'}, {'l', 'e'}, {'g', 'e'}, {'k', 'e'},
-           {'h', 'e'}, {'j', 'i'}, {'q', 'i'}, {'x', 'i'}}) {
-    EXPECT_EQ(DecodeSingleKey(key).front(), DecodeKeyPair(key, final).front())
+  for (char key : {'b', 'p', 'm', 'd', 't', 'n', 'l', 'j', 'q', 'x'}) {
+    EXPECT_EQ(DecodeSingleKey(key).front(), DecodeKeyPair(key, 'i').front())
         << "key " << key;
   }
-  // Every letter is now a single-key syllable.
+  // Every letter except ㄈㄍㄎㄏ is a single-key syllable.
   for (char c = 'a'; c <= 'z'; ++c) {
-    EXPECT_FALSE(DecodeSingleKey(c).empty()) << "key " << c;
+    const bool none = c == 'f' || c == 'g' || c == 'k' || c == 'h';
+    EXPECT_EQ(DecodeSingleKey(c).empty(), none) << "key " << c;
   }
   EXPECT_TRUE(DecodeSingleKey(';').empty());
 }

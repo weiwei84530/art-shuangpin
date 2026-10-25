@@ -451,7 +451,7 @@ TEST_F(ComposerTest, SixDeletesWhileBopomofoShowsAndFiveKeepsTheNeutralTone) {
   // 2026-08-17 reverses the 2026-08-14 ruling that 5 and its mirror 6 could
   // not be borrowed: 6 is Backspace in every state now, which leaves the
   // neutral tone one key instead of two.
-  Type("d5");
+  Type("de5");
   EXPECT_EQ(composer_->composedText(), "的");
   composer_->feedEsc();
 
@@ -847,18 +847,18 @@ TEST_F(ComposerTest, ToneWithNoDictionaryEntryLeavesTheWindowOpen) {
 }
 
 TEST_F(ComposerTest, SpaceSettlesVisibleBopomofoResidue) {
-  // A lone first key + Space settles its bopomofo symbol into the
-  // composition (like '`'), without committing.
-  Type("n");
-  EXPECT_EQ(composer_->composedText(), "ㄋ");
+  // A lone initial with no single-key syllable (ㄈ, 2026-10-25) + Space
+  // settles its bopomofo symbol into the composition, without committing.
+  Type("f");
+  EXPECT_EQ(composer_->composedText(), "ㄈ");
   auto r = composer_->feedChar(' ');
   EXPECT_TRUE(r.consumed);
   EXPECT_EQ(r.commitText, "");
   EXPECT_EQ(composer_->state(), Composer::State::kComposing);
   auto segments = composer_->displaySegments();
-  EXPECT_EQ(segments.before, "ㄋ");   // settled, not retrofittable
+  EXPECT_EQ(segments.before, "ㄈ");   // settled, not retrofittable
   EXPECT_EQ(segments.unconfirmed, "");
-  EXPECT_EQ(composer_->feedEnter().commitText, "ㄋ");
+  EXPECT_EQ(composer_->feedEnter().commitText, "ㄈ");
 
   // A syllable no toneless entry accepts settles as bopomofo too.
   Type("ul");
@@ -868,15 +868,15 @@ TEST_F(ComposerTest, SpaceSettlesVisibleBopomofoResidue) {
   composer_->feedEsc();
 
   // Converted text and settled symbols mix, then commit together.
-  Type("vs3n");
+  Type("vs3f");
   composer_->feedChar(' ');
-  EXPECT_EQ(composer_->composedText(), "種ㄋ");
-  EXPECT_EQ(composer_->feedEnter().commitText, "種ㄋ");
+  EXPECT_EQ(composer_->composedText(), "種ㄈ");
+  EXPECT_EQ(composer_->feedEnter().commitText, "種ㄈ");
 
   // Enter no longer drops unsettled residue either (2026-08-17): it sends
   // the screen, bopomofo and all.
-  Type("vs3n");
-  EXPECT_EQ(composer_->feedEnter().commitText, "種ㄋ");
+  Type("vs3f");
+  EXPECT_EQ(composer_->feedEnter().commitText, "種ㄈ");
 }
 
 TEST_F(ComposerTest, BacktickTypesItself) {
@@ -1227,10 +1227,10 @@ TEST_F(ComposerTest, SeparatorSpaceOnlyWhereTheScriptsMeet) {
   composer_->feedEsc();
 
   // A bopomofo symbol counts as Chinese.
-  Type("n");
-  composer_->feedChar(' ');  // settles ㄋ as a symbol, no reading fits
+  Type("f");
+  composer_->feedChar(' ');  // settles ㄈ as a symbol, no reading fits
   composer_->switchLanguage(true);
-  EXPECT_EQ(composer_->composedText(), "ㄋ ");
+  EXPECT_EQ(composer_->composedText(), "ㄈ ");
 }
 
 TEST_F(ComposerTest, LanguageSwitchWithNothingComposingIsNotConsumed) {

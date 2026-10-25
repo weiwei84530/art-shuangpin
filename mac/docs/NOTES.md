@@ -648,9 +648,9 @@ corner reads as a bug while a slightly stale position does not.
     `syncWithResult:` and pass it to `flashChinese:nearRect:`. The user chose
     not to change it blind at v0.9.0.
 
-12. **(Open, fix under test since v0.11.0+) The candidate list occasionally
-    never appears in full-screen Chrome or Cursor; leaving full screen
-    brings it back.** Reported 2026-10-07 on a build that already had the
+12. **(Open, second fix under test since 2026-10-25) The candidate list
+    occasionally never appears in full-screen Chrome or Cursor; leaving full
+    screen brings it back.** Reported 2026-10-07 on a build that already had the
     v0.8.4 `CGShieldingWindowLevel()` fix, so the level is not the cause.
 
     Not reproduced, so two plausible causes were removed at once in
@@ -673,6 +673,25 @@ corner reads as a bug while a slightly stale position does not.
     missing means the window server believes the panel is visible -- look at
     the frame (turn on the debug flag to get `candidates: anchor=… frame=…`
     for every show): it is then a position problem, not an ordering one.
+
+    **It still happened after v0.11.1**, and the user added the clue that
+    mattered: several full-screen windows spread over several displays,
+    switched between with a keyboard shortcut (⌘⌥+arrow on that Mac), and
+    never in a window that had only just gone full screen. Second fix,
+    again blind (no Mac here, the user chose to try it untested):
+    `NSWindowCollectionBehaviorCanJoinAllSpaces` and `…Stationary` are gone
+    from all three panels (candidate list, mode HUD, key card), leaving
+    `FullScreenAuxiliary | IgnoresCycle`. A join-all-spaces window is, as
+    far as the window server is concerned, already on every space, so the
+    order-out / order-in of the first fix could not move it; a managed
+    window lands on whichever space is active when it is ordered in, which
+    is what every show and every space change already does. Squirrel sets
+    no collection behaviour at all on its panel. `-showCandidates:` also
+    orders the panel out before `-setFrame:` carries it onto another
+    display, since each display has its own space.
+
+    If this does not fix it either, the `occluded` log line above is still
+    there and is the next thing to ask for.
 
 ## The name and the icon in the input menu
 

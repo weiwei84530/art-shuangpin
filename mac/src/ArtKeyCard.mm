@@ -5,12 +5,11 @@
 namespace {
 
 // One keycap's annotations. Mirrors ime/SampleIME/KeyCard.cpp and
-// web/tutorials.js (INITIALS, SINGLE_VOWELS, FINALS, CONTROLS); change all
+// web/tutorials.js (INITIALS, FINALS, CONTROLS); change all
 // three together.
 struct KeyCap {
     const char *label;
     const char *initial;    // orange, top right
-    const char *vowel;      // small, under the initial: the key alone as a syllable
     const char *finals[3];  // teal, bottom right, top to bottom
     const char *function;   // slate, bottom left: what the key does
     const char *tone;       // purple, top right where an initial would be:
@@ -22,55 +21,55 @@ struct KeyCap {
 // the cursor/menu keys inside a composition. The function label is the
 // shortest wording that covers both.
 const KeyCap kRow0[] = {
-    {"1", nullptr, nullptr, {}, "行首", "ˉ"},
-    {"2", nullptr, nullptr, {}, "選到行首", "ˊ"},
-    {"3", nullptr, nullptr, {}, "選到行尾", "ˇ"},
-    {"4", nullptr, nullptr, {}, "行尾", "ˋ"},
-    {"5", nullptr, nullptr, {}, "⌦ 刪除", "˙"},
-    {"6", nullptr, nullptr, {}, "⌫ 退格", nullptr},
-    {"7", nullptr, nullptr, {}, "↑ 上頁", "ˋ"},
-    {"8", nullptr, nullptr, {}, "↓ 選字", "ˇ"},
-    {"9", nullptr, nullptr, {}, "← 左移", "ˊ"},
-    {"0", nullptr, nullptr, {}, "→ 右移", "ˉ"},
+    {"1", nullptr, {}, "行首", "ˉ"},
+    {"2", nullptr, {}, "選到行首", "ˊ"},
+    {"3", nullptr, {}, "選到行尾", "ˇ"},
+    {"4", nullptr, {}, "行尾", "ˋ"},
+    {"5", nullptr, {}, "⌦ 刪除", "˙"},
+    {"6", nullptr, {}, "⌫ 退格", nullptr},
+    {"7", nullptr, {}, "↑ 上頁", "ˋ"},
+    {"8", nullptr, {}, "↓ 選字", "ˇ"},
+    {"9", nullptr, {}, "← 左移", "ˊ"},
+    {"0", nullptr, {}, "→ 右移", "ˉ"},
 };
 
 const KeyCap kRow1[] = {
-    {"Q", "ㄑ", "ㄧ", {"ㄧㄡ"}, nullptr},
-    {"W", "ㄨ", nullptr, {"ㄧㄚ", "ㄨㄚ"}, nullptr},
-    {"E", nullptr, nullptr, {"ㄜ"}, nullptr},
-    {"R", "ㄖ", nullptr, {"ㄦ", "ㄨㄢ", "ㄩㄢ"}, nullptr},
-    {"T", "ㄊ", "ㄜ", {"ㄩㄝ"}, nullptr},
-    {"Y", "ㄧ", nullptr, {"ㄨㄞ", "ㄩ"}, nullptr},
-    {"U", "ㄕ", nullptr, {"ㄨ", "ㄩ"}, nullptr},
-    {"I", "ㄔ", nullptr, {"ㄧ"}, nullptr},
-    {"O", nullptr, nullptr, {"ㄛ", "ㄨㄛ"}, nullptr},
-    {"P", "ㄆ", "ㄛ", {"ㄨㄣ", "ㄩㄣ"}, nullptr},
+    {"Q", "ㄑ", {"ㄧㄡ"}, nullptr},
+    {"W", "ㄨ", {"ㄧㄚ", "ㄨㄚ"}, nullptr},
+    {"E", nullptr, {"ㄜ"}, nullptr},
+    {"R", "ㄖ", {"ㄦ", "ㄨㄢ", "ㄩㄢ"}, nullptr},
+    {"T", "ㄊ", {"ㄩㄝ"}, nullptr},
+    {"Y", "ㄧ", {"ㄨㄞ", "ㄩ"}, nullptr},
+    {"U", "ㄕ", {"ㄨ", "ㄩ"}, nullptr},
+    {"I", "ㄔ", {"ㄧ"}, nullptr},
+    {"O", nullptr, {"ㄛ", "ㄨㄛ"}, nullptr},
+    {"P", "ㄆ", {"ㄨㄣ", "ㄩㄣ"}, nullptr},
 };
 
 const KeyCap kRow2[] = {
-    {"A", nullptr, nullptr, {"ㄚ"}, nullptr},
-    {"S", "ㄙ", nullptr, {"ㄨㄥ", "ㄩㄥ"}, nullptr},
-    {"D", "ㄉ", "ㄜ", {"ㄧㄤ", "ㄨㄤ"}, nullptr},
-    {"F", "ㄈ", "ㄛ", {"ㄣ"}, nullptr},
-    {"G", "ㄍ", "ㄜ", {"ㄥ"}, nullptr},
-    {"H", "ㄏ", "ㄜ", {"ㄤ"}, nullptr},
-    {"J", "ㄐ", "ㄧ", {"ㄢ"}, nullptr},
-    {"K", "ㄎ", "ㄜ", {"ㄠ"}, nullptr},
-    {"L", "ㄌ", "ㄜ", {"ㄞ"}, nullptr},
-    {";", nullptr, nullptr, {"ㄧㄥ"}, nullptr},
+    {"A", nullptr, {"ㄚ"}, nullptr},
+    {"S", "ㄙ", {"ㄨㄥ", "ㄩㄥ"}, nullptr},
+    {"D", "ㄉ", {"ㄧㄤ", "ㄨㄤ"}, nullptr},
+    {"F", "ㄈ", {"ㄣ"}, nullptr},
+    {"G", "ㄍ", {"ㄥ"}, nullptr},
+    {"H", "ㄏ", {"ㄤ"}, nullptr},
+    {"J", "ㄐ", {"ㄢ"}, nullptr},
+    {"K", "ㄎ", {"ㄠ"}, nullptr},
+    {"L", "ㄌ", {"ㄞ"}, nullptr},
+    {";", nullptr, {"ㄧㄥ"}, nullptr},
 };
 
 const KeyCap kRow3[] = {
-    {"Z", "ㄗ", nullptr, {"ㄟ"}, nullptr},
-    {"X", "ㄒ", "ㄧ", {"ㄧㄝ"}, nullptr},
-    {"C", "ㄘ", nullptr, {"ㄧㄠ"}, nullptr},
-    {"V", "ㄓ", nullptr, {"ㄨㄟ", "ㄩㄝ"}, nullptr},
-    {"B", "ㄅ", "ㄛ", {"ㄡ"}, nullptr},
-    {"N", "ㄋ", "ㄜ", {"ㄧㄣ"}, nullptr},
-    {"M", "ㄇ", "ㄛ", {"ㄧㄢ"}, nullptr},
-    {",", nullptr, nullptr, {}, nullptr, "，"},
-    {".", nullptr, nullptr, {}, nullptr, "。"},
-    {"/", nullptr, nullptr, {}, nullptr, "、"},
+    {"Z", "ㄗ", {"ㄟ"}, nullptr},
+    {"X", "ㄒ", {"ㄧㄝ"}, nullptr},
+    {"C", "ㄘ", {"ㄧㄠ"}, nullptr},
+    {"V", "ㄓ", {"ㄨㄟ", "ㄩㄝ"}, nullptr},
+    {"B", "ㄅ", {"ㄡ"}, nullptr},
+    {"N", "ㄋ", {"ㄧㄣ"}, nullptr},
+    {"M", "ㄇ", {"ㄧㄢ"}, nullptr},
+    {",", nullptr, {}, nullptr, "，"},
+    {".", nullptr, {}, nullptr, "。"},
+    {"/", nullptr, {}, nullptr, "、"},
 };
 
 struct Row {
@@ -100,7 +99,6 @@ const CGFloat kZhuyinLine = 16;
 
 const CGFloat kLetterSize = 17;
 const CGFloat kZhuyinSize = 14;
-const CGFloat kVowelSize = 12;
 const CGFloat kTitleSize = 13;
 const CGFloat kFunctionSize = 11;
 
@@ -115,9 +113,6 @@ NSColor *InitialColor() { return [NSColor systemOrangeColor]; }
 NSColor *FinalColor() { return [NSColor systemTealColor]; }
 NSColor *ToneColor() { return [NSColor systemPurpleColor]; }
 NSColor *FunctionColor() { return [NSColor secondaryLabelColor]; }
-// The recited vowel under an initial is a memory aid, not something to read
-// first: a pale tint of the initial's orange, close to the keycap.
-NSColor *VowelColor() { return [[NSColor systemOrangeColor] colorWithAlphaComponent:0.4]; }
 
 int TotalColumnsQuarters() {
     int widest = 0;
@@ -172,7 +167,6 @@ static void DrawRight(NSString *text, NSDictionary *attributes, CGFloat right, C
     NSFont *titleFont = CardFont(kTitleSize, NSFontWeightRegular);
     NSFont *letterFont = CardFont(kLetterSize, NSFontWeightSemibold);
     NSFont *zhuyinFont = CardFont(kZhuyinSize, NSFontWeightBold);
-    NSFont *vowelFont = CardFont(kVowelSize, NSFontWeightBold);
 
     // Title line doubles as the legend.
     CGFloat x = kPadding;
@@ -199,8 +193,6 @@ static void DrawRight(NSString *text, NSDictionary *attributes, CGFloat right, C
                                  NSForegroundColorAttributeName : [NSColor labelColor]};
     NSDictionary *initialAttr = @{NSFontAttributeName : zhuyinFont,
                                   NSForegroundColorAttributeName : InitialColor()};
-    NSDictionary *vowelAttr = @{NSFontAttributeName : vowelFont,
-                                NSForegroundColorAttributeName : VowelColor()};
     NSDictionary *toneAttr = @{NSFontAttributeName : letterFont,
                                NSForegroundColorAttributeName : ToneColor()};
     NSDictionary *finalAttr = @{NSFontAttributeName : zhuyinFont,
@@ -234,9 +226,6 @@ static void DrawRight(NSString *text, NSDictionary *attributes, CGFloat right, C
 
             if (cap.initial != nullptr) {
                 DrawRight(S(cap.initial), initialAttr, NSMaxX(inner), NSMinY(inner) + 1);
-                if (cap.vowel != nullptr) {
-                    DrawRight(S(cap.vowel), vowelAttr, NSMaxX(inner), NSMinY(inner) + 1 + kZhuyinLine);
-                }
             }
 
             int finalsCount = 0;
@@ -289,7 +278,7 @@ static void DrawRight(NSString *text, NSDictionary *attributes, CGFloat right, C
                                               backing:NSBackingStoreBuffered
                                                 defer:NO];
         // Same window setup as the candidate panel and the mode HUD: above
-        // full-screen presentations, on every space, never takes focus or a
+        // full-screen presentations, on the active space, never takes focus or a
         // click. See ArtCandidateWindow.mm for why the level is this one.
         _panel.floatingPanel = YES;
         _panel.level = CGShieldingWindowLevel();
@@ -298,9 +287,7 @@ static void DrawRight(NSString *text, NSDictionary *attributes, CGFloat right, C
         _panel.hasShadow = YES;
         _panel.hidesOnDeactivate = NO;
         _panel.ignoresMouseEvents = YES;
-        _panel.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces |
-                                    NSWindowCollectionBehaviorStationary |
-                                    NSWindowCollectionBehaviorFullScreenAuxiliary |
+        _panel.collectionBehavior = NSWindowCollectionBehaviorFullScreenAuxiliary |
                                     NSWindowCollectionBehaviorIgnoresCycle;
         _view = [[ArtKeyCardView alloc] initWithFrame:frame];
         _panel.contentView = _view;
@@ -330,6 +317,11 @@ static void DrawRight(NSString *text, NSDictionary *attributes, CGFloat right, C
     _view.frame = NSMakeRect(0, 0, size.width, size.height);
     [_view setNeedsDisplay:YES];
     [_view display];
+    // A managed window lands on the space that is active when it is ordered
+    // in; one left up on another space has to be ordered out first.
+    if (_panel.isVisible && !_panel.isOnActiveSpace) {
+        [_panel orderOut:nil];
+    }
     [_panel orderFrontRegardless];
 }
 

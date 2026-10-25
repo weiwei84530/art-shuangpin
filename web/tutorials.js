@@ -48,16 +48,6 @@ const INITIALS = {
   z:'ㄗ', c:'ㄘ', s:'ㄙ', v:'ㄓ', i:'ㄔ', u:'ㄕ', y:'ㄧ', w:'ㄨ'
 };
 
-// The vowel an initial is recited with, shown in small type under it: these
-// keys are a syllable on their own (ㄎ alone is ㄎㄜ, so 可 = k + tone).
-// The other initials already ARE their syllable (ㄗ ㄘ ㄙ ㄖ ㄓ ㄔ ㄕ) and
-// need no second glyph. Mirrors DefaultFinalKey() in core/double_pinyin.cpp.
-const SINGLE_VOWELS = {
-  b:'ㄛ', p:'ㄛ', m:'ㄛ', f:'ㄛ',
-  d:'ㄜ', t:'ㄜ', n:'ㄜ', l:'ㄜ', g:'ㄜ', k:'ㄜ', h:'ㄜ',
-  j:'ㄧ', q:'ㄧ', x:'ㄧ'
-};
-
 // Final (韻母) shown bottom-right in teal: every reading the key produces as
 // the SECOND key of a syllable, one per line, always ordered plain → ㄧ →
 // ㄨ → ㄩ. The ㄩ readings are the ones that only follow ㄐㄑㄒ (ju = ㄐㄩ,
@@ -111,8 +101,8 @@ const TUTORIALS = [
         cap: '來打「你好」。<kbd>n</kbd>＝ㄋ。' },
       { keys: ['i'], screen: { comp: [['ㄋㄧ','p']] },
         cap: '<kbd>i</kbd>＝ㄧ。注意：<kbd>i</kbd> 當<b>第一鍵</b>是聲母 ㄔ，當<b>第二鍵</b>是韻母 ㄧ——橘色與青色標的就是這兩種身分。' },
-      { keys: ['3'], screen: { comp: [['你','s']] },
-        cap: '<kbd>3</kbd>＝三聲，套到剛完成的音節上，<b>字馬上出現</b>：你。' },
+      { keys: ['3'], screen: { comp: [['你','s']] }, alt: true,
+        cap: '<kbd>3</kbd>＝三聲，套到剛完成的音節上，<b>字馬上出現</b>：你。（〈單鍵音節〉那一課會教你連 <kbd>i</kbd> 都可以省。）' },
       { keys: ['h'], screen: { comp: [['你','s'],['ㄏ','p']] },
         cap: '直接接著打下一個音節，<kbd>h</kbd>＝ㄏ。' },
       { keys: ['k'], screen: { comp: [['你','s'],['ㄏㄠ','p']] },
@@ -171,32 +161,32 @@ const TUTORIALS = [
     id: 'single', stage: '效率', title: '單鍵音節：把兩鍵縮成一鍵',
     steps: [
       { keys: [], screen: {  },
-        cap: '<b>26 個字母鍵，每一個單獨按都是一個完整音節</b>，韻母鍵可以整個省略。分兩類。第一類是<b>注音本身就是音節</b>：<kbd>z</kbd>ㄗ <kbd>c</kbd>ㄘ <kbd>s</kbd>ㄙ <kbd>r</kbd>ㄖ <kbd>v</kbd>ㄓ <kbd>i</kbd>ㄔ <kbd>u</kbd>ㄕ <kbd>y</kbd>ㄧ <kbd>w</kbd>ㄨ <kbd>a</kbd>ㄚ <kbd>e</kbd>ㄜ <kbd>o</kbd>ㄛ。' },
+        cap: '很多音節的韻母鍵可以<b>整個省略</b>，一個字只要兩鍵。分兩類。第一類是<b>注音本身就是音節</b>：<kbd>z</kbd>ㄗ <kbd>c</kbd>ㄘ <kbd>s</kbd>ㄙ <kbd>r</kbd>ㄖ <kbd>v</kbd>ㄓ <kbd>i</kbd>ㄔ <kbd>u</kbd>ㄕ <kbd>y</kbd>ㄧ <kbd>w</kbd>ㄨ <kbd>a</kbd>ㄚ <kbd>e</kbd>ㄜ <kbd>o</kbd>ㄛ。' },
       { keys: [], screen: {  },
-        cap: '第二類是<b>注音的呼名</b>——你唸「ㄅ」的時候其實唸的是「ㄅㄛ」。所以 ㄅㄆㄇㄈ 帶 ㄛ、ㄉㄊㄋㄌㄍㄎㄏ 帶 ㄜ、ㄐㄑㄒ 帶 ㄧ。鍵盤上<b>橘色聲母下方的小字</b>就是這個預設韻母。' },
-      { keys: ['w','o','3'], screen: { comp: [['我','s']] },
-        cap: '實際用用看。先打「我」。' },
-      { keys: ['d'], screen: { comp: [['我','s'],['ㄉ','p']] },
-        cap: '「的」的注音是 ㄉㄜ˙——<kbd>d</kbd> 的呼名正好就是 ㄉㄜ，所以只要按 <kbd>d</kbd>。' },
-      { keys: ['Space'], screen: { comp: [['我','s'],['的','s']] },
-        cap: '空白鍵收尾，「的」出來了。<b>兩鍵一個字</b>（<kbd>d</kbd> 加空白），而不是三鍵。「了」＝<kbd>l</kbd>＋空白也一樣。' },
-      { keys: ['Enter'], screen: { text: '我的', comp: [] },
-        cap: '<kbd>Enter</kbd> 上屏。省略韻母鍵的實際做法是<b>幫你按下那個預設韻母鍵</b>，所以 <kbd>d</kbd> 和 <kbd>d</kbd><kbd>e</kbd> 是同一個讀音 ㄉㄜ，<b>不可能有歧義</b>。' },
-      { keys: ['w','f','2'], screen: { comp: [['文','s']] },
-        cap: '再看一組：打「文字」。「文」＝<kbd>w</kbd><kbd>f</kbd><kbd>2</kbd>。' },
-      { keys: ['z'], screen: { comp: [['文','s'],['ㄗ','p']] },
+        cap: '第二類只有一條規則：<b>聲母單獨按＝聲母＋ㄧ</b>。<kbd>b</kbd>ㄅㄧ <kbd>p</kbd>ㄆㄧ <kbd>m</kbd>ㄇㄧ <kbd>d</kbd>ㄉㄧ <kbd>t</kbd>ㄊㄧ <kbd>n</kbd>ㄋㄧ <kbd>l</kbd>ㄌㄧ <kbd>j</kbd>ㄐㄧ <kbd>q</kbd>ㄑㄧ <kbd>x</kbd>ㄒㄧ。<kbd>f</kbd> <kbd>g</kbd> <kbd>k</kbd> <kbd>h</kbd>（ㄈㄍㄎㄏ）接不了 ㄧ，<b>沒有單鍵</b>，一定要打韻母鍵。' },
+      { keys: ['n'], screen: { comp: [['ㄋ','p']] },
+        cap: '實際用用看。打「你」：按 <kbd>n</kbd>，畫面先顯示 ㄋ。' },
+      { keys: ['3'], screen: { comp: [['你','s']] },
+        cap: '直接補三聲 <kbd>3</kbd>——ㄋ 自動帶上 ㄧ，「你」出來了。<b>兩鍵一個字</b>，聲調也含在裡面。' },
+      { keys: ['d','e'], screen: { comp: [['你','s'],['ㄉㄜ','p']] },
+        cap: '「的」是 ㄉㄜ˙，韻母不是 ㄧ，所以照常打 <kbd>d</kbd><kbd>e</kbd>。單按 <kbd>d</kbd> 會是 ㄉㄧ（地、低）。' },
+      { keys: ['Space'], screen: { comp: [['你','s'],['的','s']] },
+        cap: '空白鍵定案成「的」。後面還有字時連空白都不用按，下一個音節的第一鍵就會幫你定案，所以「的」一樣只花<b>兩鍵</b>。「了」＝<kbd>l</kbd><kbd>e</kbd> 也是。' },
+      { keys: ['w','f','2'], screen: { comp: [['你','s'],['的','s'],['文','s']] },
+        cap: '再看第一類：打「文字」。「文」＝<kbd>w</kbd><kbd>f</kbd><kbd>2</kbd>。' },
+      { keys: ['z'], screen: { comp: [['你','s'],['的','s'],['文','s'],['ㄗ','p']] },
         cap: '「字」是 ㄗˋ，而 <kbd>z</kbd> 本身就是 ㄗ。' },
-      { keys: ['4'], screen: { comp: [['文','s'],['字','s']] },
-        cap: '補 <kbd>4</kbd>——<b>一個字兩鍵搞定</b>，聲調也含在裡面了。' },
-      { keys: ['Enter'], screen: { text: '我的文字', comp: [] },
-        cap: '<kbd>Enter</kbd> 上屏。最後是<b>唯一要記的規則</b>。' },
+      { keys: ['4'], screen: { comp: [['你','s'],['的','s'],['文','s'],['字','s']] },
+        cap: '補 <kbd>4</kbd>——又是兩鍵一個字。' },
+      { keys: ['Enter'], screen: { text: '你的文字', comp: [] },
+        cap: '<kbd>Enter</kbd> 上屏。省略韻母鍵的實際做法是<b>幫你按下 <kbd>i</kbd></b>，所以 <kbd>n</kbd><kbd>3</kbd> 和 <kbd>n</kbd><kbd>i</kbd><kbd>3</kbd> 是同一個讀音 ㄋㄧˇ，<b>不可能有歧義</b>。最後是<b>唯一要記的規則</b>。' },
       { keys: ['v'], screen: { comp: [['ㄓ','p']] },
         cap: '單鍵音節<b>後面一定要用空白鍵或聲調鍵收尾</b>，不然下一鍵會被當成它的韻母。打「知識」：先按 <kbd>v</kbd>＝ㄓ。' },
       { keys: ['Space'], screen: { comp: [['之','s']] },
         cap: '空白鍵收尾。跑出來是最常用的「之」——別急，整句轉換還沒看到後面。' },
       { keys: ['u','4'], screen: { comp: [['知','s'],['識','s']] },
         cap: '接著打「識」（<kbd>u</kbd><kbd>4</kbd>），整句轉換一跑，前面的「之」<b>自動修正成「知」</b>。<b>不要直接連打 <kbd>v</kbd><kbd>u</kbd></b>——那兩鍵是 ㄓㄨ（住／主）。' },
-      { keys: ['Enter'], screen: { text: '我的文字知識', comp: [] },
+      { keys: ['Enter'], screen: { text: '你的文字知識', comp: [] },
         cap: '這些鍵<b>仍然可以接韻母鍵</b>（<kbd>u</kbd>＋<kbd>l</kbd>＝ㄕㄞ、<kbd>d</kbd>＋<kbd>l</kbd>＝ㄉㄞ），只有空白鍵和聲調鍵會把單鍵當成一個完整音節收掉。' },
       { keys: [], screen: {  },
         cap: '一個取捨：<kbd>y</kbd> 是 ㄧ 不是 ㄩ，ㄩ 仍要打 <kbd>y</kbd><kbd>u</kbd>。詞庫統計 ㄧ 系比 ㄩ 系常用（單音節約 1.6 倍、整個系列約 2.3 倍），而詞格的一個節點只能對應一個讀音，兩者無法共用同一鍵。' }
@@ -226,7 +216,7 @@ const TUTORIALS = [
   {
     id: 'menu', stage: '效率', title: '選字：游標與候選選單',
     steps: [
-      { keys: ['n','i','3','h','k','3'], screen: { comp: [['你','s'],['好','s']] },
+      { keys: ['n','3','h','k','3'], screen: { comp: [['你','s'],['好','s']] },
         cap: '先打出「你好」。兩個音節都給了聲調，也就是<b>都已經定案</b>了。' },
       { keys: [], screen: {  },
         cap: '這時<b>數字鍵換了一種身分</b>。判斷法很簡單：<b>畫面上還是注音</b>→數字全是聲調鍵；<b>畫面上已經是字</b>→數字是控制鍵。<kbd>9</kbd>/<kbd>0</kbd> 移游標、<kbd>8</kbd> 開選單。' },
@@ -257,7 +247,7 @@ const TUTORIALS = [
   {
     id: 'memory', stage: '效率', title: '選字記憶：改一次就記住',
     steps: [
-      { keys: ['n','i','3','h','k','3'], screen: { comp: [['你','s'],['好','s']] },
+      { keys: ['n','3','h','k','3'], screen: { comp: [['你','s'],['好','s']] },
         cap: '接著上一課。一樣打「你好」。' },
       { keys: ['9','9','8'], screen: { anchor: 0, cur: 0, menu: { anchor: 0, page: '1/5', sel: null,
           items: ['妳好','妳','擬','昵','旎','薿'] } },
@@ -266,8 +256,8 @@ const TUTORIALS = [
         cap: '一樣選「妳」。' },
       { keys: ['Enter'], screen: { text: '妳好', comp: [], anchor: null, cur: null },
         cap: '<kbd>Enter</kbd> 上屏。到這裡都和上一課相同——重點在下一步。' },
-      { keys: ['n','i','3'], screen: { comp: [['妳','s']] },
-        cap: '再打一次同樣的 <kbd>n</kbd><kbd>i</kbd><kbd>3</kbd>。<b>這次直接就是「妳」</b>：剛才那一次選擇已經記住了，不用再開選單。' },
+      { keys: ['n','3'], screen: { comp: [['妳','s']] },
+        cap: '再打一次同樣的 <kbd>n</kbd><kbd>3</kbd>。<b>這次直接就是「妳」</b>：剛才那一次選擇已經記住了，不用再開選單。' },
       { keys: ['h','k','3'], screen: { comp: [['妳','s'],['好','s']] },
         cap: '後面照常打。<b>改一次就生效</b>，不需要重複好幾次去「養」它。' },
       { keys: ['Enter'], screen: { text: '妳好妳好', comp: [] },
@@ -283,7 +273,7 @@ const TUTORIALS = [
   {
     id: 'punct', stage: '情境', title: '標點：留在組字串裡，不上屏',
     steps: [
-      { keys: ['n','i','3','h','k','3'], screen: { comp: [['你','s'],['好','s']] },
+      { keys: ['n','3','h','k','3'], screen: { comp: [['你','s'],['好','s']] },
         cap: '打「你好」。' },
       { keys: [','], screen: { comp: [['你','s'],['好','s'],['，','s']] },
         cap: '<kbd>,</kbd>＝全形「，」。標點<b>自己也留在組字串裡</b>——底線還在，整段都沒上屏。（如果前面還有沒定案的注音，標點會順手用預設的一聲／輕聲把它定案掉，所以習慣上先給聲調再打標點。）' },
@@ -336,7 +326,7 @@ const TUTORIALS = [
     steps: [
       { keys: [], screen: {  },
         cap: '這套輸入法把數字排借來做編輯，手不用移到方向鍵區。數字排有<b>兩種身分</b>，分界是「畫面上還有沒有組字串」。' },
-      { keys: ['n','i','3','h','k','3'], screen: { comp: [['你','s'],['好','s']] },
+      { keys: ['n','3','h','k','3'], screen: { comp: [['你','s'],['好','s']] },
         cap: '先打「你好」。<b>組字中</b>：<kbd>9</kbd>/<kbd>0</kbd> 移游標、<kbd>8</kbd> 開選單、<kbd>5</kbd>/<kbd>6</kbd> 往右／往左刪（<kbd>6</kbd> 在畫面還是注音時也能用，一次刪掉整個音節）。' },
       { keys: ['Backspace'], screen: { comp: [['你','s']] },
         cap: '<kbd>⌫</kbd> 刪掉「好」。（音節打到一半時是<b>逐鍵</b>刪，已經成字則是<b>逐字</b>刪。）' },
@@ -356,11 +346,11 @@ const TUTORIALS = [
       { keys: ['n','c'], screen: { comp: [['ㄋㄧㄠ','p']] },
         cap: '有時候要輸出注音符號本身（標讀音、教小朋友）。<kbd>n</kbd><kbd>c</kbd>＝ㄋㄧㄠ，而詞庫裡<b>只有 ㄋㄧㄠˇ 和 ㄋㄧㄠˋ</b>，沒有一聲也沒有輕聲。' },
       { keys: ['Space'], screen: { comp: [['ㄋ','s'],['ㄧ','s'],['ㄠ','s']] },
-        cap: '空白鍵沒有字可以定案，就把<b>注音本身</b>定案成符號留在組字串裡——可以和中文混排、用游標編輯、<kbd>⌫</kbd> 逐符號刪。<kbd>f</kbd> 也一樣：ㄈㄛ 只有二聲的「佛」，所以 <kbd>f</kbd>＋空白得到 ㄈ，要「佛」請打 <kbd>f</kbd><kbd>2</kbd>。' },
-      { keys: ['k'], screen: { comp: [['ㄋ','s'],['ㄧ','s'],['ㄠ','s'],['ㄎ','p']] },
-        cap: '第二條路更直接：<b>畫面上還是注音的時候按 <kbd>Enter</kbd>，就原樣送出</b>。<kbd>k</kbd> 顯示 ㄎ——它其實是個完整的音節 ㄎㄜ，按空白鍵會變成字。' },
-      { keys: ['Enter'], screen: { text: 'ㄋㄧㄠㄎ', comp: [] },
-        cap: '<kbd>Enter</kbd> 送出的就是<b>畫面上的東西</b>：ㄋㄧㄠ 和 ㄎ 都原樣出去。要「科」就先按空白鍵或聲調鍵讓它成字，再 <kbd>Enter</kbd>。' },
+        cap: '空白鍵沒有字可以定案，就把<b>注音本身</b>定案成符號留在組字串裡——可以和中文混排、用游標編輯、<kbd>⌫</kbd> 逐符號刪。<kbd>f</kbd> <kbd>g</kbd> <kbd>k</kbd> <kbd>h</kbd> 也一樣：它們沒有單鍵音節，<kbd>f</kbd>＋空白得到 ㄈ，要「佛」請打 <kbd>f</kbd><kbd>o</kbd><kbd>2</kbd>。' },
+      { keys: ['b'], screen: { comp: [['ㄋ','s'],['ㄧ','s'],['ㄠ','s'],['ㄅ','p']] },
+        cap: '第二條路更直接：<b>畫面上還是注音的時候按 <kbd>Enter</kbd>，就原樣送出</b>。<kbd>b</kbd> 顯示 ㄅ——它其實是個完整的音節 ㄅㄧ，按空白鍵會變成字。' },
+      { keys: ['Enter'], screen: { text: 'ㄋㄧㄠㄅ', comp: [] },
+        cap: '<kbd>Enter</kbd> 送出的就是<b>畫面上的東西</b>：ㄋㄧㄠ 和 ㄅ 都原樣出去。要「逼」就先按空白鍵或聲調鍵讓它成字，再 <kbd>Enter</kbd>。' },
       { keys: [], screen: {  },
         cap: '所以 <kbd>Enter</kbd> <b>不會丟掉任何東西</b>。以前打到一半的音節（只按了 <kbd>n</kbd> 的 ㄋ）按 <kbd>Enter</kbd> 會憑空消失，現在會照樣送出去。' }
     ]

@@ -32,10 +32,7 @@ function buildKeyboard() {
       let html = `<span class="main">${label}</span>`;
       const low = id.toLowerCase();
       if (INITIALS[low] && id.length === 1) {
-        // The recited vowel goes right under the initial: it is what the
-        // key means when it is a syllable all by itself.
-        const vowel = SINGLE_VOWELS[low] ? `<i>${SINGLE_VOWELS[low]}</i>` : '';
-        html += `<span class="sub-i">${INITIALS[low]}${vowel}</span>`;
+        html += `<span class="sub-i">${INITIALS[low]}</span>`;
       }
       if (FINALS[low] && id.length === 1) {
         html += `<span class="sub-f">` +

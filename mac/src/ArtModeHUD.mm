@@ -114,8 +114,6 @@ static NSColor *ArtChineseBorderColor(void) {
         _panel.hidesOnDeactivate = NO;
         _panel.ignoresMouseEvents = YES;
         _panel.collectionBehavior =
-            NSWindowCollectionBehaviorCanJoinAllSpaces |
-            NSWindowCollectionBehaviorStationary |
             NSWindowCollectionBehaviorFullScreenAuxiliary |
             NSWindowCollectionBehaviorIgnoresCycle;
         _view = [[ArtModeHUDView alloc] initWithFrame:frame];

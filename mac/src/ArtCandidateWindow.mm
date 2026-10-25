@@ -226,10 +226,10 @@ static const CGFloat kMinPanelWidth = 90.0;
 }
 
 // Switching spaces — Mission Control, a full-screen app, or a window manager
-// bound to ⌥+arrow — can leave the panel behind on the space it was ordered
-// front on, even with NSWindowCollectionBehaviorCanJoinAllSpaces. Re-ordering
-// it front on the new space is cheap and idempotent; doing it only when the
-// panel is supposed to be up means an idle input method does nothing at all.
+// bound to ⌥+arrow — leaves the panel behind on the space it was ordered
+// front on (it is a managed window, see -buildPanel). Re-ordering it front
+// on the new space is cheap; doing it only when the panel is supposed to be
+// up means an idle input method does nothing at all.
 - (void)observeSpaceChanges {
     [[[NSWorkspace sharedWorkspace] notificationCenter]
         addObserverForName:NSWorkspaceActiveSpaceDidChangeNotification
@@ -255,10 +255,10 @@ static const CGFloat kMinPanelWidth = 90.0;
 //    and -orderFrontRegardless is the call made for that case.
 //  * A panel that is already ordered in stays associated with the space it
 //    was ordered in on. Ordering it front again is then a no-op as far as
-//    the window server is concerned, CanJoinAllSpaces notwithstanding, and
-//    a full-screen app is a space of its own. If the panel is not on the
-//    active space it is ordered out first, so the next order-in happens
-//    here. Only then: doing it on every refresh would flicker.
+//    the window server is concerned, and a full-screen app is a space of
+//    its own. If the panel is not on the active space it is ordered out
+//    first, so the next order-in puts it on the active one. Only then:
+//    doing it on every refresh would flicker.
 //
 // Then, a tenth of a second later, the panel checks whether it is actually
 // visible (occlusion state is updated asynchronously). If it is not, that
@@ -323,9 +323,20 @@ static const CGFloat kMinPanelWidth = 90.0;
     _panel.hasShadow = YES;
     _panel.hidesOnDeactivate = NO;
     _panel.becomesKeyOnlyIfNeeded = YES;
-    _panel.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces |
-                                NSWindowCollectionBehaviorStationary |
-                                NSWindowCollectionBehaviorFullScreenAuxiliary |
+    // Not CanJoinAllSpaces / Stationary any more (2026-10-25). The panel
+    // still went missing in full-screen apps after the 2026-10-07 fix, on a
+    // Mac with several full-screen windows spread over several displays and
+    // switched between with a keyboard shortcut -- and never in a window
+    // that had only just gone full screen. A window that "joins all spaces"
+    // is, to the window server, already on every space, so the order-out /
+    // order-in in -bringPanelToFront cannot move it anywhere; if the server
+    // has it filed against a space that is no longer in front, nothing we
+    // do reaches it. With the default (managed) behaviour a window is put
+    // on whichever space is active when it is ordered in, which is what
+    // -bringPanelToFront already does on every show and every space change.
+    // Squirrel sets no collection behaviour at all; FullScreenAuxiliary is
+    // kept so the panel may share a space with a full-screen window.
+    _panel.collectionBehavior = NSWindowCollectionBehaviorFullScreenAuxiliary |
                                 NSWindowCollectionBehaviorIgnoresCycle;
 
     _view = [[ArtCandidateView alloc] initWithFrame:frame];
@@ -361,6 +372,15 @@ static const CGFloat kMinPanelWidth = 90.0;
     // every refresh, not only on first show.
     frame.origin = [self originForSize:size anchorRect:anchorRect
                               fallback:frame.origin];
+    // Moving onto another display: each display has its own space, and a
+    // window dragged across by -setFrame: stays filed against the space it
+    // was ordered in on. Order it out so -bringPanelToFront orders it in on
+    // the destination display's space (2026-10-25).
+    if (_panel.isVisible && _panel.screen != nil &&
+        !NSPointInRect(NSMakePoint(NSMidX(frame), NSMidY(frame)),
+                       _panel.screen.frame)) {
+        [_panel orderOut:nil];
+    }
     [_panel setFrame:frame display:YES];
     _view.frame = NSMakeRect(0, 0, size.width, size.height);
     [_view setNeedsDisplay:YES];

@@ -42,7 +42,6 @@ private:
     HWND  _wndHandle = nullptr;
     HFONT _letterFont = nullptr;
     HFONT _zhuyinFont = nullptr;
-    HFONT _vowelFont = nullptr;
     HFONT _titleFont = nullptr;
     HFONT _functionFont = nullptr;
     HFONT _toneFont = nullptr;

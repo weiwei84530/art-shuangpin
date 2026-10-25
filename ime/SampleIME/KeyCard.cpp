@@ -8,13 +8,12 @@
 namespace
 {
 // One keycap's annotations. Mirrors web/tutorials.js (INITIALS,
-// SINGLE_VOWELS, FINALS, CONTROLS) and mac/src/ArtKeyCard.mm; change all
+// FINALS, CONTROLS) and mac/src/ArtKeyCard.mm; change all
 // three together.
 struct KeyCap
 {
     WCHAR        label;
     const WCHAR* initial;      // orange, top right
-    const WCHAR* vowel;        // small, under the initial: the key alone as a syllable
     const WCHAR* finals[3];    // teal, bottom right, top to bottom
     const WCHAR* function;     // slate, bottom left: what the key does
     const WCHAR* tone;         // purple, top right where an initial would be:
@@ -26,55 +25,55 @@ struct KeyCap
 // the cursor/menu keys inside a composition. The function label is the
 // shortest wording that covers both.
 const KeyCap kRow0[] = {
-    { L'1', nullptr, nullptr, {}, L"行首",     L"ˉ" },
-    { L'2', nullptr, nullptr, {}, L"選到行首", L"ˊ" },
-    { L'3', nullptr, nullptr, {}, L"選到行尾", L"ˇ" },
-    { L'4', nullptr, nullptr, {}, L"行尾",     L"ˋ" },
-    { L'5', nullptr, nullptr, {}, L"⌦ 刪除",   L"˙" },
-    { L'6', nullptr, nullptr, {}, L"⌫ 退格",   nullptr },
-    { L'7', nullptr, nullptr, {}, L"↑ 上頁",   L"ˋ" },
-    { L'8', nullptr, nullptr, {}, L"↓ 選字",   L"ˇ" },
-    { L'9', nullptr, nullptr, {}, L"← 左移",   L"ˊ" },
-    { L'0', nullptr, nullptr, {}, L"→ 右移",   L"ˉ" },
+    { L'1', nullptr, {}, L"行首",     L"ˉ" },
+    { L'2', nullptr, {}, L"選到行首", L"ˊ" },
+    { L'3', nullptr, {}, L"選到行尾", L"ˇ" },
+    { L'4', nullptr, {}, L"行尾",     L"ˋ" },
+    { L'5', nullptr, {}, L"⌦ 刪除",   L"˙" },
+    { L'6', nullptr, {}, L"⌫ 退格",   nullptr },
+    { L'7', nullptr, {}, L"↑ 上頁",   L"ˋ" },
+    { L'8', nullptr, {}, L"↓ 選字",   L"ˇ" },
+    { L'9', nullptr, {}, L"← 左移",   L"ˊ" },
+    { L'0', nullptr, {}, L"→ 右移",   L"ˉ" },
 };
 
 const KeyCap kRow1[] = {
-    { L'Q', L"ㄑ", L"ㄧ", { L"ㄧㄡ" }, nullptr },
-    { L'W', L"ㄨ", nullptr, { L"ㄧㄚ", L"ㄨㄚ" }, nullptr },
-    { L'E', nullptr, nullptr, { L"ㄜ" }, nullptr },
-    { L'R', L"ㄖ", nullptr, { L"ㄦ", L"ㄨㄢ", L"ㄩㄢ" }, nullptr },
-    { L'T', L"ㄊ", L"ㄜ", { L"ㄩㄝ" }, nullptr },
-    { L'Y', L"ㄧ", nullptr, { L"ㄨㄞ", L"ㄩ" }, nullptr },
-    { L'U', L"ㄕ", nullptr, { L"ㄨ", L"ㄩ" }, nullptr },
-    { L'I', L"ㄔ", nullptr, { L"ㄧ" }, nullptr },
-    { L'O', nullptr, nullptr, { L"ㄛ", L"ㄨㄛ" }, nullptr },
-    { L'P', L"ㄆ", L"ㄛ", { L"ㄨㄣ", L"ㄩㄣ" }, nullptr },
+    { L'Q', L"ㄑ", { L"ㄧㄡ" }, nullptr },
+    { L'W', L"ㄨ", { L"ㄧㄚ", L"ㄨㄚ" }, nullptr },
+    { L'E', nullptr, { L"ㄜ" }, nullptr },
+    { L'R', L"ㄖ", { L"ㄦ", L"ㄨㄢ", L"ㄩㄢ" }, nullptr },
+    { L'T', L"ㄊ", { L"ㄩㄝ" }, nullptr },
+    { L'Y', L"ㄧ", { L"ㄨㄞ", L"ㄩ" }, nullptr },
+    { L'U', L"ㄕ", { L"ㄨ", L"ㄩ" }, nullptr },
+    { L'I', L"ㄔ", { L"ㄧ" }, nullptr },
+    { L'O', nullptr, { L"ㄛ", L"ㄨㄛ" }, nullptr },
+    { L'P', L"ㄆ", { L"ㄨㄣ", L"ㄩㄣ" }, nullptr },
 };
 
 const KeyCap kRow2[] = {
-    { L'A', nullptr, nullptr, { L"ㄚ" }, nullptr },
-    { L'S', L"ㄙ", nullptr, { L"ㄨㄥ", L"ㄩㄥ" }, nullptr },
-    { L'D', L"ㄉ", L"ㄜ", { L"ㄧㄤ", L"ㄨㄤ" }, nullptr },
-    { L'F', L"ㄈ", L"ㄛ", { L"ㄣ" }, nullptr },
-    { L'G', L"ㄍ", L"ㄜ", { L"ㄥ" }, nullptr },
-    { L'H', L"ㄏ", L"ㄜ", { L"ㄤ" }, nullptr },
-    { L'J', L"ㄐ", L"ㄧ", { L"ㄢ" }, nullptr },
-    { L'K', L"ㄎ", L"ㄜ", { L"ㄠ" }, nullptr },
-    { L'L', L"ㄌ", L"ㄜ", { L"ㄞ" }, nullptr },
-    { L';', nullptr, nullptr, { L"ㄧㄥ" }, nullptr },
+    { L'A', nullptr, { L"ㄚ" }, nullptr },
+    { L'S', L"ㄙ", { L"ㄨㄥ", L"ㄩㄥ" }, nullptr },
+    { L'D', L"ㄉ", { L"ㄧㄤ", L"ㄨㄤ" }, nullptr },
+    { L'F', L"ㄈ", { L"ㄣ" }, nullptr },
+    { L'G', L"ㄍ", { L"ㄥ" }, nullptr },
+    { L'H', L"ㄏ", { L"ㄤ" }, nullptr },
+    { L'J', L"ㄐ", { L"ㄢ" }, nullptr },
+    { L'K', L"ㄎ", { L"ㄠ" }, nullptr },
+    { L'L', L"ㄌ", { L"ㄞ" }, nullptr },
+    { L';', nullptr, { L"ㄧㄥ" }, nullptr },
 };
 
 const KeyCap kRow3[] = {
-    { L'Z', L"ㄗ", nullptr, { L"ㄟ" }, nullptr },
-    { L'X', L"ㄒ", L"ㄧ", { L"ㄧㄝ" }, nullptr },
-    { L'C', L"ㄘ", nullptr, { L"ㄧㄠ" }, nullptr },
-    { L'V', L"ㄓ", nullptr, { L"ㄨㄟ", L"ㄩㄝ" }, nullptr },
-    { L'B', L"ㄅ", L"ㄛ", { L"ㄡ" }, nullptr },
-    { L'N', L"ㄋ", L"ㄜ", { L"ㄧㄣ" }, nullptr },
-    { L'M', L"ㄇ", L"ㄛ", { L"ㄧㄢ" }, nullptr },
-    { L',', nullptr, nullptr, {}, nullptr, L"，" },
-    { L'.', nullptr, nullptr, {}, nullptr, L"。" },
-    { L'/', nullptr, nullptr, {}, nullptr, L"、" },
+    { L'Z', L"ㄗ", { L"ㄟ" }, nullptr },
+    { L'X', L"ㄒ", { L"ㄧㄝ" }, nullptr },
+    { L'C', L"ㄘ", { L"ㄧㄠ" }, nullptr },
+    { L'V', L"ㄓ", { L"ㄨㄟ", L"ㄩㄝ" }, nullptr },
+    { L'B', L"ㄅ", { L"ㄡ" }, nullptr },
+    { L'N', L"ㄋ", { L"ㄧㄣ" }, nullptr },
+    { L'M', L"ㄇ", { L"ㄧㄢ" }, nullptr },
+    { L',', nullptr, {}, nullptr, L"，" },
+    { L'.', nullptr, {}, nullptr, L"。" },
+    { L'/', nullptr, {}, nullptr, L"、" },
 };
 
 struct Row
@@ -104,7 +103,6 @@ const int kZhuyinLine   = 16;
 
 const int kLetterPt = 13;
 const int kZhuyinPt = 11;
-const int kVowelPt  = 9;
 const int kTitlePt  = 10;
 const int kFunctionPt = 8;
 
@@ -114,9 +112,6 @@ const COLORREF kInitialColor  = RGB(0xC8, 0x67, 0x1A);
 const COLORREF kFinalColor    = RGB(0x1E, 0x85, 0x77);
 const COLORREF kToneColor     = RGB(0x7B, 0x4F, 0xC9);
 const COLORREF kFunctionColor = RGB(0x5C, 0x67, 0x80);
-// The recited vowel under an initial is a memory aid, not something to read
-// first: a pale tint of the initial's orange, close to the keycap.
-const COLORREF kVowelColor    = RGB(0xDE, 0xBF, 0xA6);
 const COLORREF kKeyFillColor  = RGB(0xF6, 0xF7, 0xF9);
 const COLORREF kKeyEdgeColor  = RGB(0xDD, 0xDF, 0xE4);
 const COLORREF kLetterColor   = RGB(0x30, 0x30, 0x30);
@@ -179,7 +174,7 @@ void CKeyCard::Destroy()
 
 void CKeyCard::_DeleteFonts()
 {
-    HFONT* const fonts[] = { &_letterFont, &_zhuyinFont, &_vowelFont, &_titleFont,
+    HFONT* const fonts[] = { &_letterFont, &_zhuyinFont, &_titleFont,
                              &_functionFont, &_toneFont };
     for (HFONT* font : fonts)
     {
@@ -235,7 +230,6 @@ void CKeyCard::_UpdateMetricsForDpi()
     };
     _letterFont = makeFont(kLetterPt, FW_SEMIBOLD);
     _zhuyinFont = makeFont(kZhuyinPt, FW_BOLD);
-    _vowelFont  = makeFont(kVowelPt, FW_BOLD);
     _titleFont  = makeFont(kTitlePt, FW_NORMAL);
     _functionFont = makeFont(kFunctionPt, FW_NORMAL);
     _toneFont   = makeFont(kLetterPt, FW_BOLD);
@@ -397,13 +391,6 @@ void CKeyCard::_OnPaint(_In_ HDC dcHandle)
                 RECT rc = inner;
                 rc.top += _Scale(1);
                 DrawText(dc, cap.initial, -1, &rc, DT_RIGHT | DT_TOP | textFlags);
-                if (cap.vowel != nullptr)
-                {
-                    SelectObject(dc, _vowelFont);
-                    SetTextColor(dc, kVowelColor);
-                    rc.top += line;
-                    DrawText(dc, cap.vowel, -1, &rc, DT_RIGHT | DT_TOP | textFlags);
-                }
             }
 
             int finalsCount = 0;
