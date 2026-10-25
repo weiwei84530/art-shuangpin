@@ -140,7 +140,14 @@ v0.3 到 v0.6 分別是 1、1、2、1 個檔案。多數上游改動 Mac 完全�
 
 ## 狀態記錄
 
-- 2026-10-25：**單鍵音節改成「聲母＋ㄧ」一條規則（使用者要求）＋ macOS 全螢幕選字窗第二次修正**（尚未發佈，VERSION 仍 0.11.1）。
+- 2026-10-25：**tag v0.12.0 並發佈 GitHub Release**（兩個資產：`art-shuangpin-v0.12.0.zip`、`art-shuangpin-mac-v0.12.0.zip`）。
+  內容＝下一條的單鍵規則與 macOS 面板 collection behavior。行為改變故升 minor。check-parity aligned（`--fix` 帶上 version）、
+  兩架構 `ctest` 各 189、check-tutorials 12 課、check-drill-coverage 401＋10＝411；**打 tag 前確認 push 的 macOS CI 綠燈**
+  （這是改過的三個 `mac/src/` 檔案第一次被編譯）。commit ba5dd4f 另派 subagent 審查 P0／P1：無。
+  本機已用 v0.12.0 的打包重裝（sha256 相同）。weiweistudio.com 作品頁（`E:\Projects\my-website`）同日更新並 push：
+  效率區塊的十格換成新規則、示範「你好，世界。」改成 `n3`（12 鍵）。**Mac 修正是否有效仍待使用者長期使用確認。**
+
+- 2026-10-25：**單鍵音節改成「聲母＋ㄧ」一條規則（使用者要求）＋ macOS 全螢幕選字窗第二次修正**（隨 v0.12.0 發佈）。
   (a) `DefaultFinalKey` 只剩 `b p m d t n l j q x`→`i`；`f g k h` 不再有單鍵（使用者裁示不留任何例外）。
   **先量過才做**：按聲調鍵時 ㄧ 幾乎每個鍵都贏（你 12.1、理 17.0、力 22.9、地 19.4 vs 呼名韻母幾乎 0），
   只按空白時舊規則贏（的 153.5 vs 低 1.8、了 27.0 vs 哩 ≈0）。使用者的判斷：「的」改打 `de` 也是兩鍵
